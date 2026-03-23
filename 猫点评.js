@@ -1,68 +1,23 @@
 // ==UserScript==
 // @name        猫点评
 // @author      铭茗
-// @version     1.3.0
+// @version     1.4.0
 // @description 猫掌柜AI点评跑团日志，支持OpenAI兼容API
-// @timestamp   1742745600
+// @timestamp   1742749200
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E7%8C%AB%E7%82%B9%E8%AF%84.js
 // ==/UserScript==
 
 let ext = seal.ext.find('猫点评');
 if (!ext) {
-  ext = seal.ext.new('猫点评', '铭茗', '1.3.0');
+  ext = seal.ext.new('猫点评', '铭茗', '1.4.0');
   seal.ext.register(ext);
 }
 
-// ========== 配置注册（WebUI支持）==========
-try {
-  // 手动创建配置项并设置类型
-  const configBaseUrl = seal.ext.newConfigItem(ext, 'baseUrl', 'https://api.openai.com/v1', 'OpenAI兼容API地址');
-  configBaseUrl.type = 'string';
-  
-  const configToken = seal.ext.newConfigItem(ext, 'token', '', 'API密钥(Token)');
-  configToken.type = 'string';
-  
-  const configModel = seal.ext.newConfigItem(ext, 'model', 'gpt-3.5-turbo', '模型名称');
-  configModel.type = 'string';
-  
-  seal.ext.registerConfig(ext, configBaseUrl, configToken, configModel);
-  console.log('猫点评: 配置注册成功');
-} catch (e) {
-  console.log('猫点评: 配置注册失败:', e);
-}
-
-// ========== 配置读取 ==========
-function getConfig() {
-  try {
-    const token = seal.ext.getStringConfig(ext, 'token');
-    if (token) {
-      return {
-        baseUrl: seal.ext.getStringConfig(ext, 'baseUrl').replace(/\/$/, ''),
-        token: token,
-        model: seal.ext.getStringConfig(ext, 'model')
-      };
-    }
-  } catch (e) {
-    console.log('WebUI配置读取失败:', e);
-  }
-  
-  // 回退到 storage 存储
-  try {
-    const data = ext.storageGet('config');
-    if (data) return JSON.parse(data);
-  } catch (e) {}
-  
-  return {
-    baseUrl: 'https://api.openai.com/v1',
-    token: '',
-    model: 'gpt-3.5-turbo'
-  };
-}
-
-function saveConfig(config) {
-  ext.storageSet('config', JSON.stringify(config));
-}
+// ========== 配置注册 ==========
+seal.ext.registerStringConfig(ext, 'baseUrl', 'https://api.openai.com/v1', 'OpenAI兼容API地址');
+seal.ext.registerStringConfig(ext, 'token', '', 'API密钥(Token)');
+seal.ext.registerStringConfig(ext, 'model', 'gpt-3.5-turbo', '模型名称');
 
 // ========== 日志解析 ==========
 function parseLogContent(html) {
@@ -199,82 +154,28 @@ async function callOpenAI(config, prompt) {
 }
 
 // ========== 命令定义 ==========
-const cmdConfig = seal.ext.newCmdItemInfo();
-cmdConfig.name = '猫点评设置';
-cmdConfig.help = `猫点评设置：
-
-.猫点评设置 地址 <url>  // 设置API地址
-.猫点评设置 token <token>  // 设置API密钥
-.猫点评设置 模型 <model>  // 设置模型名称
-.猫点评设置 查看  // 查看当前配置`;
-
-cmdConfig.solve = (ctx, msg, cmdArgs) => {
-  const args = cmdArgs.args || [];
-  const action = args[0];
-  const value = args.slice(1).join(' ');
-  let config = getConfig();
-  let reply = '';
-  
-  switch (action) {
-    case '地址':
-    case 'url':
-      if (!value) {
-        reply = '请提供API地址';
-      } else {
-        config.baseUrl = value.replace(/\/$/, '');
-        saveConfig(config);
-        reply = `✅ API地址已设置为: ${config.baseUrl}`;
-      }
-      break;
-    case 'token':
-    case '密钥':
-      if (!value) {
-        reply = '请提供API密钥';
-      } else {
-        config.token = value;
-        saveConfig(config);
-        reply = '✅ API密钥已设置';
-      }
-      break;
-    case '模型':
-    case 'model':
-      if (!value) {
-        reply = '请提供模型名称';
-      } else {
-        config.model = value;
-        saveConfig(config);
-        reply = `✅ 模型已设置为: ${config.model}`;
-      }
-      break;
-    case '查看':
-    case 'view':
-      reply = `API地址: ${config.baseUrl}\n模型: ${config.model}\n密钥: ${config.token ? '已设置' : '未设置'}`;
-      break;
-    default:
-      return seal.ext.newCmdExecuteResult(true);
-  }
-  seal.replyToSender(ctx, msg, reply);
-  return seal.ext.newCmdExecuteResult(true);
-};
-
 const cmdReview = seal.ext.newCmdItemInfo();
 cmdReview.name = '猫点评';
 cmdReview.help = `猫点评 - 猫掌柜AI点评跑团日志
 
 .猫点评 <日志链接>  // 点评跑团日志
 .猫点评 测试  // 测试API连接
-.猫点评设置 ...  // 配置API
 
-示例:
-.猫点评 https://log.xiaocui.icu/?key=N1AG#330891`;
+配置请在WebUI插件设置中修改`;
 
 cmdReview.solve = (ctx, msg, cmdArgs) => {
   const args = cmdArgs.args || [];
   
+  // 获取配置
+  const config = {
+    baseUrl: seal.ext.getStringConfig(ext, 'baseUrl').replace(/\/$/, ''),
+    token: seal.ext.getStringConfig(ext, 'token'),
+    model: seal.ext.getStringConfig(ext, 'model')
+  };
+  
   if (args[0] === '测试' || args[0] === 'test') {
-    const config = getConfig();
     if (!config.token) {
-      seal.replyToSender(ctx, msg, '❌ 请先设置API密钥\n使用 .猫点评设置 token <密钥>');
+      seal.replyToSender(ctx, msg, '❌ 请先在WebUI插件设置中配置API密钥');
       return seal.ext.newCmdExecuteResult(true);
     }
     seal.replyToSender(ctx, msg, '⏳ 正在测试连接...');
@@ -295,9 +196,8 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  const config = getConfig();
   if (!config.token) {
-    seal.replyToSender(ctx, msg, '❌ 请先设置API密钥\n使用 .猫点评设置 token <密钥>');
+    seal.replyToSender(ctx, msg, '❌ 请先在WebUI插件设置中配置API密钥');
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -324,5 +224,4 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap['猫点评'] = cmdReview;
-ext.cmdMap['猫点评设置'] = cmdConfig;
 ext.cmdMap['review'] = cmdReview;
