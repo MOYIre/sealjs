@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        猫点评
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 猫掌柜AI点评跑团日志，支持OpenAI兼容API
 // @timestamp   1742745600
 // @license     Apache-2
@@ -10,31 +10,64 @@
 
 let ext = seal.ext.find('猫点评');
 if (!ext) {
-  ext = seal.ext.new('猫点评', '铭茗', '1.0.0');
+  ext = seal.ext.new('猫点评', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 
-// ========== 配置管理 ==========
-const CONFIG_KEY = 'config';
+// ========== 配置注册（WebUI支持）==========
+ext.registerConfig(
+  {
+    key: 'baseUrl',
+    type: 'string',
+    defaultValue: 'https://api.openai.com/v1',
+    description: 'OpenAI兼容API地址'
+  },
+  {
+    key: 'token',
+    type: 'string',
+    defaultValue: '',
+    description: 'API密钥(Token)'
+  },
+  {
+    key: 'model',
+    type: 'string',
+    defaultValue: 'gpt-3.5-turbo',
+    description: '模型名称'
+  },
+  {
+    key: 'maxTokens',
+    type: 'int',
+    defaultValue: 1500,
+    description: '最大输出Token数'
+  },
+  {
+    key: 'temperature',
+    type: 'float',
+    defaultValue: 0.8,
+    description: '生成温度(0-2，越高越随机)'
+  }
+);
 
+// ========== 配置读取 ==========
 function getConfig() {
   try {
-    const data = ext.storageGet(CONFIG_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
+    return {
+      baseUrl: ext.getStringConfig('baseUrl').replace(/\/$/, ''),
+      token: ext.getStringConfig('token'),
+      model: ext.getStringConfig('model'),
+      maxTokens: ext.getIntConfig('maxTokens'),
+      temperature: ext.getFloatConfig('temperature')
+    };
   } catch (e) {
-    console.log('配置读取失败:', e);
+    console.log('配置读取失败，使用默认值:', e);
+    return {
+      baseUrl: 'https://api.openai.com/v1',
+      token: '',
+      model: 'gpt-3.5-turbo',
+      maxTokens: 1500,
+      temperature: 0.8
+    };
   }
-  return {
-    baseUrl: 'https://api.openai.com/v1',
-    token: '',
-    model: 'gpt-3.5-turbo'
-  };
-}
-
-function saveConfig(config) {
-  ext.storageSet(CONFIG_KEY, JSON.stringify(config));
 }
 
 // ========== 日志解析 ==========
@@ -71,11 +104,10 @@ function extractLogInfo(text) {
   };
   
   // 用于识别骰娘的常见名称
-  const diceNames = ['骰娘', '海豹', '骰子', 'Dice', 'dice', 'SealDice'];
+  const diceNames = ['骰娘', '海豹', '骰子', 'Dice', 'dice', 'SealDice', 'sealdice'];
   // 用于识别KP的常见标识
-  const kpKeywords = ['KP', 'kp', '守密人', 'GM', 'gm', 'DM', 'dm'];
+  const kpKeywords = ['KP', 'kp', '守密人', 'GM', 'gm', 'DM', 'dm', 'ST', 'st'];
   
-  let currentSpeaker = null;
   let potentialKP = null;
   let speakerCount = {};
   
@@ -97,19 +129,24 @@ function extractLogInfo(text) {
       speakerCount[speaker] = (speakerCount[speaker] || 0) + 1;
       
       // 检查是否是骰娘
-      const isDice = diceNames.some(name => speaker.includes(name));
+      const isDice = diceNames.some(name => 
+        speaker.toLowerCase().includes(name.toLowerCase())
+      );
       
       // 检查是否是KP
-      const isKP = kpKeywords.some(kw => speaker.includes(kw));
+      const isKP = kpKeywords.some(kw => 
+        speaker.includes(kw) || speaker.toLowerCase().includes(kw.toLowerCase())
+      );
       
       if (isDice) {
         // 骰娘发言：只提取成功/失败
+        const successMatch = content.match(/(大成功|极难成功|困难成功|成功|大失败|失败)/);
         const rollMatch = content.match(/(\d+)\s*(?:出目|D100|d100)/i);
-        const successMatch = content.match(/(成功|失败|大成功|大失败|极难成功|困难成功)/);
-        if (rollMatch || successMatch) {
+        if (successMatch) {
           info.diceResults.push({
             speaker,
-            content: successMatch ? successMatch[0] : (rollMatch ? `出目${rollMatch[1]}` : content.slice(0, 50))
+            result: successMatch[0],
+            value: rollMatch ? rollMatch[1] : ''
           });
         }
       } else if (isKP && !potentialKP) {
@@ -124,7 +161,6 @@ function extractLogInfo(text) {
       
       info.rawLines.push({ speaker, content, isDice, isKP });
     } else {
-      // 无法解析的行，可能是描述文字
       info.rawLines.push({ speaker: '系统', content: line, isDice: false, isKP: false });
     }
   }
@@ -132,7 +168,6 @@ function extractLogInfo(text) {
   // 如果没有通过名称识别到KP，找发言最多的玩家作为KP（启发式）
   if (!potentialKP && Object.keys(speakerCount).length > 0) {
     const sortedSpeakers = Object.entries(speakerCount).sort((a, b) => b[1] - a[1]);
-    // 假设发言最多的是KP或主要玩家
     if (sortedSpeakers.length > 1) {
       potentialKP = sortedSpeakers[0][0];
     }
@@ -155,22 +190,20 @@ function formatLogForAI(info, maxLength = 8000) {
     formatted += `玩家: ${info.players.join(', ')}\n`;
   }
   
-  formatted += '\n【关键事件】\n';
-  
-  // 骰点结果摘要
+  formatted += '\n【骰点记录】\n';
   if (info.diceResults.length > 0) {
-    formatted += '\n骰点记录:\n';
-    const recentRolls = info.diceResults.slice(-20); // 最近20次
+    const recentRolls = info.diceResults.slice(-30);
     for (const roll of recentRolls) {
-      formatted += `- ${roll.speaker}: ${roll.content}\n`;
+      formatted += `- ${roll.result}${roll.value ? '(' + roll.value + ')' : ''}\n`;
     }
+  } else {
+    formatted += '(无骰点记录)\n';
   }
   
-  // 角色扮演内容摘要
   formatted += '\n【对话摘要】\n';
   let content = '';
   for (const line of info.rawLines) {
-    if (line.isDice) continue; // 跳过骰娘的详细输出
+    if (line.isDice) continue;
     const lineText = `${line.speaker}: ${line.content}\n`;
     if (content.length + lineText.length > maxLength) break;
     content += lineText;
@@ -212,8 +245,8 @@ async function callOpenAI(config, prompt) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 1500,
-        temperature: 0.8
+        max_tokens: config.maxTokens,
+        temperature: config.temperature
       })
     });
     
@@ -231,20 +264,13 @@ async function callOpenAI(config, prompt) {
 
 // ========== 图片生成 ==========
 async function generateImage(config, comment) {
-  // 使用AI生成点评图片的描述
   const imagePrompt = `创建一张精美的点评卡片图片，内容如下：
 
-${comment}
+${comment.slice(0, 500)}
 
-风格要求：
-- 可爱的猫咪主题边框
-- 柔和的渐变背景（粉色到紫色）
-- 清晰的文字排版
-- 装饰性的星星和爪印图案
-- 右下角有"猫掌柜点评"的水印`;
+风格要求：可爱的猫咪主题，柔和的渐变背景，清晰的文字排版`;
 
   try {
-    // 如果配置了DALL-E或其他图像生成API
     const imageUrl = `${config.baseUrl}/images/generations`;
     
     const response = await fetch(imageUrl, {
@@ -255,7 +281,7 @@ ${comment}
       },
       body: JSON.stringify({
         model: 'dall-e-3',
-        prompt: imagePrompt.slice(0, 1000), // 限制长度
+        prompt: imagePrompt,
         size: '1024x1024',
         quality: 'standard',
         n: 1
@@ -263,8 +289,6 @@ ${comment}
     });
     
     if (!response.ok) {
-      // 如果图像API不可用，返回null
-      console.log('图像生成不可用');
       return null;
     }
     
@@ -276,158 +300,7 @@ ${comment}
   }
 }
 
-// 生成文字图片（使用HTML Canvas风格的SVG）
-function generateTextImage(comment) {
-  // 将评论转换为简化的HTML格式，供后续处理
-  const lines = comment.split('\n');
-  let htmlContent = `<html>
-<head>
-<style>
-body { 
-  font-family: 'Microsoft YaHei', sans-serif; 
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 30px;
-  color: #333;
-}
-.card {
-  background: rgba(255,255,255,0.95);
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-}
-.title {
-  text-align: center;
-  font-size: 24px;
-  color: #764ba2;
-  margin-bottom: 20px;
-  border-bottom: 2px dashed #667eea;
-  padding-bottom: 10px;
-}
-.content {
-  font-size: 16px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-.footer {
-  text-align: right;
-  margin-top: 20px;
-  font-size: 14px;
-  color: #999;
-}
-</style>
-</head>
-<body>
-<div class="card">
-<div class="title">🐱 猫掌柜点评</div>
-<div class="content">${comment}</div>
-<div class="footer">——猫掌柜 喵~</div>
-</div>
-</body>
-</html>`;
-  
-  return htmlContent;
-}
-
 // ========== 命令定义 ==========
-
-// 设置命令
-const cmdConfig = seal.ext.newCmdItemInfo();
-cmdConfig.name = '猫点评设置';
-cmdConfig.help = `
-猫点评设置：
-
-.猫点评设置 地址 <url>  // 设置API地址（默认OpenAI）
-.猫点评设置 token <token>  // 设置API密钥
-.猫点评设置 模型 <model>  // 设置模型名称（默认gpt-3.5-turbo）
-.猫点评设置 查看  // 查看当前配置
-.猫点评设置 测试  // 测试API连接
-
-示例:
-.猫点评设置 地址 https://api.openai.com/v1
-.猫点评设置 token sk-xxxxx
-.猫点评设置 模型 gpt-4
-`;
-cmdConfig.solve = (ctx, msg, cmdArgs) => {
-  const args = cmdArgs.args || [];
-  const action = args[0];
-  const value = args.slice(1).join(' ');
-  
-  let config = getConfig();
-  let reply = '';
-  
-  switch (action) {
-    case '地址':
-    case 'url':
-    case 'baseUrl':
-      if (!value) {
-        reply = '请提供API地址\n示例: .猫点评设置 地址 https://api.openai.com/v1';
-      } else {
-        config.baseUrl = value.replace(/\/$/, ''); // 移除末尾斜杠
-        saveConfig(config);
-        reply = `✅ API地址已设置为: ${config.baseUrl}`;
-      }
-      break;
-      
-    case 'token':
-    case '密钥':
-    case 'key':
-      if (!value) {
-        reply = '请提供API密钥\n示例: .猫点评设置 token sk-xxxxx';
-      } else {
-        config.token = value;
-        saveConfig(config);
-        reply = '✅ API密钥已设置（出于安全考虑不显示）';
-      }
-      break;
-      
-    case '模型':
-    case 'model':
-      if (!value) {
-        reply = '请提供模型名称\n示例: .猫点评设置 模型 gpt-4';
-      } else {
-        config.model = value;
-        saveConfig(config);
-        reply = `✅ 模型已设置为: ${config.model}`;
-      }
-      break;
-      
-    case '查看':
-    case 'view':
-    case 'show':
-      reply = `📋 当前配置:\n`;
-      reply += `API地址: ${config.baseUrl}\n`;
-      reply += `模型: ${config.model}\n`;
-      reply += `密钥: ${config.token ? '已设置' : '未设置'}`;
-      break;
-      
-    case '测试':
-    case 'test':
-      if (!config.token) {
-        reply = '❌ 请先设置API密钥';
-      } else {
-        reply = '⏳ 正在测试连接...';
-        seal.replyToSender(ctx, msg, reply);
-        
-        // 异步测试
-        (async () => {
-          try {
-            const testResult = await callOpenAI(config, '请回复"连接成功"三个字');
-            seal.replyToSender(ctx, msg, `✅ API连接成功！\n响应: ${testResult}`);
-          } catch (e) {
-            seal.replyToSender(ctx, msg, `❌ 连接失败: ${e.message}`);
-          }
-        })();
-        return seal.ext.newCmdExecuteResult(true);
-      }
-      break;
-      
-    default:
-      return seal.ext.newCmdExecuteResult(true);
-  }
-  
-  seal.replyToSender(ctx, msg, reply);
-  return seal.ext.newCmdExecuteResult(true);
-};
 
 // 主命令：猫点评
 const cmdReview = seal.ext.newCmdItemInfo();
@@ -437,11 +310,9 @@ cmdReview.help = `
 
 .猫点评 <日志链接>  // 点评跑团日志
 .猫点评 图片 <日志链接>  // 生成点评图片
-.猫点评设置 ...  // 配置API
+.猫点评 测试  // 测试API连接
 
-支持的日志格式:
-- https://log.xiaocui.icu/?key=xxx
-- 其他跑团日志网站
+配置请前往WebUI → 扩展设置 → 猫点评
 
 示例:
 .猫点评 https://log.xiaocui.icu/?key=N1AG#330891
@@ -449,6 +320,27 @@ cmdReview.help = `
 `;
 cmdReview.solve = (ctx, msg, cmdArgs) => {
   const args = cmdArgs.args || [];
+  
+  // 检查是否是测试模式
+  if (args[0] === '测试' || args[0] === 'test') {
+    const config = getConfig();
+    if (!config.token) {
+      seal.replyToSender(ctx, msg, '❌ 请先在WebUI中设置API密钥');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    seal.replyToSender(ctx, msg, '⏳ 正在测试连接...');
+    
+    (async () => {
+      try {
+        const result = await callOpenAI(config, '请回复"连接成功"四个字');
+        seal.replyToSender(ctx, msg, `✅ API连接成功！\n模型: ${config.model}\n响应: ${result}`);
+      } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 连接失败: ${e.message}`);
+      }
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+  }
   
   // 检查是否是图片模式
   let generateImg = false;
@@ -467,7 +359,7 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
   // 检查配置
   const config = getConfig();
   if (!config.token) {
-    seal.replyToSender(ctx, msg, '❌ 请先设置API密钥\n使用 .猫点评设置 token <密钥>');
+    seal.replyToSender(ctx, msg, '❌ 请先在WebUI中设置API密钥');
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -501,15 +393,12 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
       let reply = `🐱【猫掌柜点评】\n\n${comment}`;
       
       if (generateImg) {
-        reply += '\n\n📸 正在生成点评图片...';
-        seal.replyToSender(ctx, msg, reply);
+        seal.replyToSender(ctx, msg, reply + '\n\n📸 正在生成图片...');
         
         const imgUrl = await generateImage(config, comment);
         if (imgUrl) {
           seal.replyToSender(ctx, msg, `[CQ:image,file=${imgUrl}]`);
         } else {
-          // 生成HTML格式的文字版
-          const htmlContent = generateTextImage(comment);
           seal.replyToSender(ctx, msg, '⚠️ 图片生成暂时不可用，以上是文字版点评喵~');
         }
       } else {
@@ -518,7 +407,7 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
       
     } catch (e) {
       console.log('点评失败:', e);
-      seal.replyToSender(ctx, msg, `❌ 点评失败: ${e.message}\n请检查日志链接是否有效，或API配置是否正确。`);
+      seal.replyToSender(ctx, msg, `❌ 点评失败: ${e.message}\n请检查日志链接或WebUI中的API配置`);
     }
   })();
   
@@ -527,5 +416,4 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
 
 // 注册命令
 ext.cmdMap['猫点评'] = cmdReview;
-ext.cmdMap['猫点评设置'] = cmdConfig;
 ext.cmdMap['review'] = cmdReview;
