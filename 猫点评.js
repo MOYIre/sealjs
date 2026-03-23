@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        猫点评
 // @author      铭茗
-// @version     1.6.0
+// @version     1.7.0
 // @description 猫掌柜AI点评跑团日志，生成图片输出
-// @timestamp   1742752800
+// @timestamp   1742754600
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E7%8C%AB%E7%82%B9%E8%AF%84.js
 // ==/UserScript==
 
 let ext = seal.ext.find('猫点评');
 if (!ext) {
-  ext = seal.ext.new('猫点评', '铭茗', '1.6.0');
+  ext = seal.ext.new('猫点评', '铭茗', '1.7.0');
   seal.ext.register(ext);
 }
 
@@ -20,24 +20,10 @@ seal.ext.registerStringConfig(ext, 'token', '', 'API密钥(Token)');
 seal.ext.registerStringConfig(ext, 'model', 'gpt-3.5-turbo', '模型名称');
 
 // ========== 日志解析 ==========
-function parseLogContent(html) {
-  let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-  text = text.replace(/<[^>]+>/g, '\n');
-  text = text.replace(/&nbsp;/g, ' ');
-  text = text.replace(/&lt;/g, '<');
-  text = text.replace(/&gt;/g, '>');
-  text = text.replace(/&amp;/g, '&');
-  text = text.replace(/&quot;/g, '"');
-  text = text.replace(/&#(\d+);/g, (m, n) => String.fromCharCode(n));
-  text = text.replace(/\n\s*\n/g, '\n');
-  return text.trim();
-}
-
 function extractLogInfo(text) {
   const lines = text.split('\n');
   const info = { kp: null, players: [], diceResults: [] };
-  const diceNames = ['骰娘', '海豹', '骰子', 'Dice', 'dice'];
+  const diceNames = ['骰娘', '海豹', '骰子', 'Dice', 'dice', 'SealDice'];
   let speakerCount = {};
   
   for (let line of lines) {
@@ -59,7 +45,10 @@ function extractLogInfo(text) {
     }
   }
   
-  const sorted = Object.entries(speakerCount).sort((a, b) => b[1] - a[1]);
+  // KP通常是发言最多的人（排除骰子）
+  const sorted = Object.entries(speakerCount)
+    .filter(([name]) => !diceNames.some(d => name.toLowerCase().includes(d.toLowerCase())))
+    .sort((a, b) => b[1] - a[1]);
   if (sorted.length > 0) info.kp = sorted[0][0];
   
   return info;
@@ -96,10 +85,10 @@ function createImageUrl(text, kp, players) {
 // ========== 命令定义 ==========
 const cmdReview = seal.ext.newCmdItemInfo();
 cmdReview.name = '猫点评';
-cmdReview.help = '.猫点评 <日志链接>  点评跑团日志\n.猫点评 测试  测试API连接';
+cmdReview.help = '.猫点评 <日志文本>  直接输入日志文本进行点评\n.猫点评 测试  测试API连接\n\n提示: 复制日志文本后发送 ".猫点评 " + 粘贴内容';
 
 cmdReview.solve = (ctx, msg, cmdArgs) => {
-  const args = cmdArgs.args || [];
+  const rawArgs = cmdArgs.rawArgs || '';
   
   const config = {
     baseUrl: seal.ext.getStringConfig(ext, 'baseUrl').replace(/\/$/, ''),
@@ -112,7 +101,7 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  if (args[0] === '测试' || args[0] === 'test') {
+  if (rawArgs === '测试' || rawArgs === 'test') {
     seal.replyToSender(ctx, msg, '⏳ 测试中...');
     (async () => {
       try {
@@ -125,9 +114,9 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  const urlArg = args[0];
-  if (!urlArg || !urlArg.startsWith('http')) {
-    seal.replyToSender(ctx, msg, '用法: .猫点评 <日志链接>');
+  const logText = rawArgs.trim();
+  if (!logText) {
+    seal.replyToSender(ctx, msg, '用法: .猫点评 <日志文本>\n\n请复制跑团日志内容后发送:\n.猫点评 [粘贴日志内容]');
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -135,10 +124,7 @@ cmdReview.solve = (ctx, msg, cmdArgs) => {
   
   (async () => {
     try {
-      const res = await fetch(urlArg);
-      const html = await res.text();
-      const text = parseLogContent(html);
-      const info = extractLogInfo(text);
+      const info = extractLogInfo(logText);
       
       const prompt = '你是猫娘占卜师猫掌柜，用2-3句话点评这个跑团日志，语气可爱带"喵"。\n\n日志摘要:\n- KP: ' + (info.kp || '未知') + '\n- 玩家: ' + info.players.slice(0,5).join(',') + '\n- 骰点: ' + (info.diceResults.slice(-5).join(', ') || '无') + '\n\n只输出点评内容。';
 
