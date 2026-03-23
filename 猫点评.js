@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        猫点评
 // @author      铭茗
-// @version     1.2.0
+// @version     1.3.0
 // @description 猫掌柜AI点评跑团日志，支持OpenAI兼容API
 // @timestamp   1742745600
 // @license     Apache-2
@@ -10,25 +10,30 @@
 
 let ext = seal.ext.find('猫点评');
 if (!ext) {
-  ext = seal.ext.new('猫点评', '铭茗', '1.2.0');
+  ext = seal.ext.new('猫点评', '铭茗', '1.3.0');
   seal.ext.register(ext);
 }
 
 // ========== 配置注册（WebUI支持）==========
 try {
-  seal.ext.registerConfig(ext, 
-    seal.ext.newConfigItem(ext, 'baseUrl', 'https://api.openai.com/v1', 'OpenAI兼容API地址'),
-    seal.ext.newConfigItem(ext, 'token', '', 'API密钥(Token)'),
-    seal.ext.newConfigItem(ext, 'model', 'gpt-3.5-turbo', '模型名称')
-  );
+  // 手动创建配置项并设置类型
+  const configBaseUrl = seal.ext.newConfigItem(ext, 'baseUrl', 'https://api.openai.com/v1', 'OpenAI兼容API地址');
+  configBaseUrl.type = 'string';
+  
+  const configToken = seal.ext.newConfigItem(ext, 'token', '', 'API密钥(Token)');
+  configToken.type = 'string';
+  
+  const configModel = seal.ext.newConfigItem(ext, 'model', 'gpt-3.5-turbo', '模型名称');
+  configModel.type = 'string';
+  
+  seal.ext.registerConfig(ext, configBaseUrl, configToken, configModel);
   console.log('猫点评: 配置注册成功');
 } catch (e) {
-  console.log('猫点评: 配置注册失败，将使用storage存储:', e);
+  console.log('猫点评: 配置注册失败:', e);
 }
 
 // ========== 配置读取 ==========
 function getConfig() {
-  // 尝试从 WebUI 配置读取
   try {
     const token = seal.ext.getStringConfig(ext, 'token');
     if (token) {
