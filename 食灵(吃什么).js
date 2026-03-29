@@ -185,7 +185,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
         const exp = Date.now() + CONFIG.tokenTTL;
         const sig = btoa(uid + exp + 'shiling').slice(0, 16);
         const token = btoa(JSON.stringify({ qq: uid, exp, sig }));
-        seal.replyToSender(ctx, msg, 'Token: ' + token);
+        seal.replyPerson(ctx, msg, 'Token: ' + token);
       } catch (e) {
         seal.replyToSender(ctx, msg, '错误: ' + e.message);
       }
