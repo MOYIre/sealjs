@@ -19,10 +19,14 @@ if (!ext) {
 const CONFIG = {
   // 云端菜单地址（多镜像源，按优先级排列）
   cloudUrls: [
-    'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
-    'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    // 国内镜像源（优先，无缓存问题）
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
-    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw'
+    // jsdelivr CDN（快速但有缓存）
+    'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    // 原始GitHub（备用）
+    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
+    'https://raw.githubusercontent.com/MOYIre/shiling-data/master/menu.json'
   ],
   
   // 缓存时间（毫秒）- 5分钟
