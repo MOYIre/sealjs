@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.0.0
-// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单同步
-// @timestamp   1743283200
+// @version     3.1.0
+// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单同步，优化国内访问
+// @timestamp   1743369600
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E9%A3%9F%E7%81%B5(%E5%90%83%E4%BB%80%E4%B9%88).js
 // ==/UserScript==
@@ -11,14 +11,22 @@
 // ==================== 扩展注册 ====================
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.0.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.1.0');
   seal.ext.register(ext);
 }
 
 // ==================== 配置 ====================
 const CONFIG = {
-  // 云端菜单地址
-  cloudUrl: 'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
+  // 云端菜单地址（多镜像源，按优先级排列）
+  cloudUrls: [
+    // jsdelivr CDN（国内优化）
+    'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    // ghproxy镜像
+    'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
+    // 原始GitHub地址（备用）
+    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw'
+  ],
   
   // 缓存时间（毫秒）- 5分钟
   cacheTTL: 5 * 60 * 1000,
@@ -87,37 +95,42 @@ const DataManager = {
     ext.storageSet('localData', JSON.stringify(data));
   },
   
-  // 从云端获取菜单
+  // 从云端获取菜单（多源重试）
   async fetchCloud() {
-    try {
-      const http = seal.http.new();
-      const res = await http.simpleGet(CONFIG.cloudUrl);
-      if (res && res.body) {
-        const cloudData = JSON.parse(res.body);
-        this.cache = cloudData;
-        this.cacheTime = Date.now();
-        return cloudData;
+    const http = seal.http.new();
+    
+    for (let i = 0; i < CONFIG.cloudUrls.length; i++) {
+      const url = CONFIG.cloudUrls[i];
+      try {
+        console.log(`食灵: 尝试从源 ${i + 1}/${CONFIG.cloudUrls.length} 获取数据`);
+        const res = await http.simpleGet(url);
+        if (res && res.body) {
+          const cloudData = JSON.parse(res.body);
+          this.cache = cloudData;
+          this.cacheTime = Date.now();
+          console.log(`食灵: 成功从源 ${i + 1} 获取数据`);
+          return cloudData;
+        }
+      } catch (e) {
+        console.log(`食灵: 源 ${i + 1} 获取失败: ${e.message || e}`);
       }
-    } catch (e) {
-      console.log('食灵: 云端获取失败，使用缓存或默认数据', e);
     }
+    
+    console.log('食灵: 所有源均获取失败，使用缓存或默认数据');
     return null;
   },
   
   // 获取合并后的菜单（云端 + 本地覆盖）
   async getMenus() {
-    // 检查缓存
     if (this.cache && Date.now() - this.cacheTime < CONFIG.cacheTTL) {
       return this.mergeData(this.cache, this.loadLocal());
     }
     
-    // 尝试从云端获取
     const cloudData = await this.fetchCloud();
     if (cloudData) {
       return this.mergeData(cloudData, this.loadLocal());
     }
     
-    // 使用本地或默认
     const local = this.loadLocal();
     if (Object.keys(local.food || {}).length > 0) {
       return { food: local.food, drink: local.drink, extraPool: local.extraPool || [] };
@@ -137,7 +150,6 @@ const DataManager = {
 
 // ==================== 抽选器 ====================
 const Picker = {
-  // 随机选择（带去重历史）
   pick(menus, type, period) {
     const list = menus[type]?.[period] || [];
     if (list.length === 0) return null;
@@ -145,13 +157,9 @@ const Picker = {
     const local = DataManager.loadLocal();
     const history = local.history?.[type]?.[period] || [];
     
-    // 结合额外池（仅食物）
     let pool = type === 'food' ? [...list, ...(menus.extraPool || [])] : [...list];
-    
-    // 过滤已选过的
     let available = pool.filter(item => !history.includes(item));
     
-    // 如果全部选过了，重置历史
     if (available.length === 0) {
       local.history[type][period] = [];
       available = [...pool];
@@ -159,7 +167,6 @@ const Picker = {
     
     const choice = available[Math.floor(Math.random() * available.length)];
     
-    // 记录历史
     if (!local.history[type]) local.history[type] = {};
     if (!local.history[type][period]) local.history[type][period] = [];
     local.history[type][period].push(choice);
@@ -168,7 +175,6 @@ const Picker = {
     return choice;
   },
   
-  // 生成随机前缀
   getPrefix(periodName) {
     const master = CONFIG.masters[Math.floor(Math.random() * CONFIG.masters.length)];
     return `今日${periodName}${master}推荐: `;
@@ -177,7 +183,6 @@ const Picker = {
 
 // ==================== 命令处理器 ====================
 const CommandHandler = {
-  // 处理推荐
   async handleRecommend(ctx, msg, type, periodKey) {
     const menus = await DataManager.getMenus();
     const periodConfig = CONFIG.periods[type];
@@ -199,7 +204,6 @@ const CommandHandler = {
     }
   },
   
-  // 添加菜品/饮品
   handleAdd(type, periodKey, items) {
     const local = DataManager.loadLocal();
     const periodConfig = CONFIG.periods[type];
@@ -207,7 +211,6 @@ const CommandHandler = {
     const added = [], skipped = [];
     
     if (periodKey && periodConfig.map[periodKey]) {
-      // 添加到指定时段
       const period = periodConfig.map[periodKey];
       if (!local[type]) local[type] = {};
       if (!local[type][period]) local[type][period] = [];
@@ -226,7 +229,6 @@ const CommandHandler = {
         ? `已将 ${added.join('、')} 加入${periodKey}菜单` 
         : `没有新增，已存在: ${skipped.join('、')}`;
     } else {
-      // 添加到通用池（仅食物）
       if (!local.extraPool) local.extraPool = [];
       for (const item of items) {
         const name = item.trim();
@@ -244,7 +246,6 @@ const CommandHandler = {
     }
   },
   
-  // 删除菜品/饮品
   handleRemove(type, periodKey, items) {
     const local = DataManager.loadLocal();
     const periodConfig = CONFIG.periods[type];
@@ -266,7 +267,6 @@ const CommandHandler = {
       }
       DataManager.saveLocal(local);
     } else {
-      // 从通用池删除
       for (const item of items) {
         const name = item.trim().toLowerCase();
         const idx = (local.extraPool || []).findIndex(x => x.toLowerCase() === name);
@@ -285,7 +285,6 @@ const CommandHandler = {
     return msg || '操作完成';
   },
   
-  // 显示菜单
   async handleShowMenu(ctx, msg, type) {
     const menus = await DataManager.getMenus();
     const periodConfig = CONFIG.periods[type];
@@ -306,12 +305,10 @@ const CommandHandler = {
     seal.replyToSender(ctx, msg, lines.join('\n'));
   },
   
-  // 随机菜单
   async handleRandomMenu(ctx, msg, type) {
     const menus = await DataManager.getMenus();
     const periodConfig = CONFIG.periods[type];
     
-    // 重置历史以获取完整随机
     const local = DataManager.loadLocal();
     local.history = { food: {}, drink: {} };
     DataManager.saveLocal(local);
@@ -328,7 +325,6 @@ const CommandHandler = {
     seal.replyToSender(ctx, msg, lines.join('\n'));
   },
   
-  // 重置菜单
   handleReset() {
     DataManager.saveLocal({
       food: {},
@@ -340,7 +336,6 @@ const CommandHandler = {
     return '已重置为云端菜单，本地修改已清空';
   },
   
-  // 刷新缓存
   async handleRefresh() {
     DataManager.cache = null;
     const cloud = await DataManager.fetchCloud();
@@ -352,7 +347,7 @@ const CommandHandler = {
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
 cmd.help = `
-食灵帮助 v3.0
+食灵帮助 v3.1
 
 【推荐】
 .食灵/饭笥 吃什么 - 根据时间推荐
@@ -387,19 +382,16 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  // 吃什么
   if (text === '吃什么') {
     await CommandHandler.handleRecommend(ctx, msg, 'food');
     return res;
   }
   
-  // 喝什么
   if (text === '喝什么') {
     await CommandHandler.handleRecommend(ctx, msg, 'drink');
     return res;
   }
   
-  // 指定时段吃什么
   for (const [key, period] of Object.entries(CONFIG.periods.food.map)) {
     if (text === key + '吃什么') {
       await CommandHandler.handleRecommend(ctx, msg, 'food', key);
@@ -407,7 +399,6 @@ cmd.solve = async (ctx, msg, argv) => {
     }
   }
   
-  // 指定时段喝什么
   for (const [key, period] of Object.entries(CONFIG.periods.drink.map)) {
     if (text === key + '喝什么') {
       await CommandHandler.handleRecommend(ctx, msg, 'drink', key);
@@ -415,7 +406,6 @@ cmd.solve = async (ctx, msg, argv) => {
     }
   }
   
-  // 加菜/删菜
   if (text.startsWith('加菜 ')) {
     const args = text.slice(3).split(/\s+/);
     const periodKey = CONFIG.periods.food.map[args[0]] ? args[0] : null;
@@ -432,7 +422,6 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  // 加饮/删饮
   if (text.startsWith('加饮 ')) {
     const args = text.slice(3).split(/\s+/);
     const periodKey = CONFIG.periods.drink.map[args[0]] ? args[0] : null;
@@ -449,7 +438,6 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  // 查看菜单
   if (text === '菜单') {
     await CommandHandler.handleShowMenu(ctx, msg, 'food');
     return res;
@@ -460,7 +448,6 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  // 随机菜单
   if (text === '随机菜单') {
     await CommandHandler.handleRandomMenu(ctx, msg, 'food');
     return res;
@@ -471,13 +458,11 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  // 刷新
   if (text === '刷新') {
     seal.replyToSender(ctx, msg, await CommandHandler.handleRefresh());
     return res;
   }
   
-  // 重置
   if (text === '重置') {
     seal.replyToSender(ctx, msg, CommandHandler.handleReset());
     return res;
@@ -487,11 +472,9 @@ cmd.solve = async (ctx, msg, argv) => {
   return res;
 };
 
-// 注册命令
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
-// 注册喝什么快捷命令
 const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
 cmdDrink.solve = async (ctx, msg, argv) => {
