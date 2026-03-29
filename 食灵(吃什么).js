@@ -59,19 +59,13 @@ const DataManager = {
   cacheTime: 0,
   
   getPeriod(type) {
+    if (type === 'drink') return null; // 饮品不分时段
     const h = new Date().getHours();
-    if (type === 'food') {
-      // 0-5点：夜宵，5-11点：早餐，11-16点：午餐，16-22点：晚餐，22-24点：夜宵
-      if (h < 5 || h >= 22) return 'midnight';
-      if (h < 11) return 'breakfast';
-      if (h < 16) return 'lunch';
-      return 'dinner';
-    }
-    // drink: 0-5点：夜茶，5-11点：早茶，11-17点：下午茶，17-21点：晚茶，21-24点：夜茶
-    if (h < 5 || h >= 21) return 'night';
-    if (h < 11) return 'morning';
-    if (h < 17) return 'afternoon';
-    return 'evening';
+    // 0-5点：夜宵，5-11点：早餐，11-16点：午餐，16-22点：晚餐，22-24点：夜宵
+    if (h < 5 || h >= 22) return 'midnight';
+    if (h < 11) return 'breakfast';
+    if (h < 16) return 'lunch';
+    return 'dinner';
   },
   
   loadLocal() {
@@ -159,11 +153,30 @@ const CommandHandler = {
   handleRecommend(ctx, msg, type, periodKey) {
     const menus = DataManager.getMenus();
     const periodConfig = CONFIG.periods[type];
+    let choice, periodName;
+    
+    if (type === 'drink') {
+      // 饮品：从所有时段合并后随机
+      const allDrinks = [];
+      for (const p of periodConfig.default) {
+        const list = menus.drink?.[p] || [];
+        allDrinks.push(...list);
+      }
+      if (allDrinks.length === 0) {
+        seal.replyToSender(ctx, msg, '暂无饮品数据');
+        return;
+      }
+      choice = allDrinks[Math.floor(Math.random() * allDrinks.length)];
+      const master = CONFIG.masters[Math.floor(Math.random() * CONFIG.masters.length)];
+      seal.replyToSender(ctx, msg, `今日${master}推荐饮品: ${choice}`);
+      return;
+    }
+    
     const period = periodKey && periodConfig.map[periodKey] 
       ? periodConfig.map[periodKey] 
       : DataManager.getPeriod(type);
-    const choice = Picker.pick(menus, type, period);
-    const periodName = periodConfig.names[period];
+    choice = Picker.pick(menus, type, period);
+    periodName = periodConfig.names[period];
     
     seal.replyToSender(ctx, msg, choice 
       ? Picker.getPrefix(periodName) + choice 
