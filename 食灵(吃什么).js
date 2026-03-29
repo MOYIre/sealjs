@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.8.0
+// @version     3.9.0
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,9 +10,13 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.8.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.9.0');
   seal.ext.register(ext);
 }
+
+// 注册配置项
+seal.ext.registerStringConfig(ext, 'gistToken', '', 'GitHub Token(需gist权限,用于提交审核)');
+seal.ext.registerStringConfig(ext, 'gistId', 'a9f8a81d1ec3498c0d7b7afc24f43794', 'Gist ID');
 
 const CONFIG = {
   cloudUrls: [
@@ -25,10 +29,6 @@ const CONFIG = {
     food: {
       names: { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', midnight: '夜宵' },
       order: ['breakfast', 'lunch', 'dinner', 'midnight']
-    },
-    drink: {
-      names: { morning: '早茶', afternoon: '下午茶', evening: '晚茶', night: '夜茶' },
-      order: ['morning', 'afternoon', 'evening', 'night']
     }
   }
 };
@@ -127,19 +127,75 @@ const Picker = {
   }
 };
 
-// 解析命令参数
+// 提交待审核请求到Gist
+async function submitPending(action, type, period, name) {
+  const token = seal.ext.getStringConfig(ext, 'gistToken');
+  const gistId = seal.ext.getStringConfig(ext, 'gistId');
+  
+  if (!token) {
+    return { ok: false, msg: '未配置GitHub Token，请联系骰主' };
+  }
+  
+  try {
+    // 获取当前数据
+    const getRes = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: { 'Authorization': 'token ' + token }
+    });
+    if (!getRes.ok) throw new Error('获取数据失败');
+    
+    const gist = await getRes.json();
+    const content = JSON.parse(gist.files['menu.json'].content);
+    
+    // 添加待审核
+    if (!content.pendingRequests) content.pendingRequests = [];
+    
+    // 检查重复
+    const exists = content.pendingRequests.some(r => 
+      r.action === action && r.type === type && r.period === period && r.name === name
+    );
+    if (exists) {
+      return { ok: false, msg: '该申请已存在' };
+    }
+    
+    content.pendingRequests.push({
+      action, type, period, name,
+      time: new Date().toISOString()
+    });
+    
+    // 更新Gist
+    const updateRes = await fetch('https://api.github.com/gists/' + gistId, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'token ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        files: {
+          'menu.json': { content: JSON.stringify(content, null, 2) }
+        }
+      })
+    });
+    
+    if (!updateRes.ok) throw new Error('更新失败');
+    
+    // 刷新CDN
+    fetch('https://purge.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json').catch(() => {});
+    
+    return { ok: true, msg: '提交成功，等待审核' };
+  } catch (e) {
+    return { ok: false, msg: '提交失败: ' + e.message };
+  }
+}
+
+// 解析参数
 function parseArgs(text) {
   const parts = text.split(/\s+/);
-  return {
-    action: parts[0] || '',
-    period: parts[1] || '',
-    name: parts.slice(2).join(' ') || ''
-  };
+  return { action: parts[0] || '', p1: parts[1] || '', rest: parts.slice(2).join(' ') || '' };
 }
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 添加菜品(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 添加饮品\n.食灵 删饮 <饮名> - 删除饮品\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 提交新菜\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token\n时段: 早餐/午餐/晚餐/夜宵(可选,不填进通用池)';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -150,7 +206,6 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return res;
   }
   
-  // 吃什么
   if (text === '吃什么') {
     const menus = Data.getMenus();
     const period = Data.getPeriod();
@@ -159,7 +214,6 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  // 喝什么
   if (text === '喝什么') {
     const menus = Data.getMenus();
     const all = [
@@ -173,157 +227,115 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  // 菜单
   if (text === '菜单') {
     const m = Data.getMenus();
     const lines = ['=== 菜单 ==='];
     for (const p of CONFIG.periods.food.order) {
       lines.push(CONFIG.periods.food.names[p] + ': ' + (m.food[p] || []).join('、'));
     }
+    if (m.extraPool?.length) lines.push('通用池: ' + m.extraPool.join('、'));
     seal.replyToSender(ctx, msg, lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  // 饮单
   if (text === '饮单') {
     const m = Data.getMenus();
-    const lines = ['=== 饮单 ==='];
-    for (const p of CONFIG.periods.drink.order) {
-      lines.push(CONFIG.periods.drink.names[p] + ': ' + (m.drink[p] || []).join('、'));
-    }
-    seal.replyToSender(ctx, msg, lines.join('\n'));
+    const all = [...(m.drink.morning||[]), ...(m.drink.afternoon||[]), ...(m.drink.evening||[]), ...(m.drink.night||[])].filter((v,i,a)=>a.indexOf(v)===i);
+    seal.replyToSender(ctx, msg, '=== 饮品 ===\n' + (all.join('、') || '无'));
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  // 登录
   if (text === '登录') {
     seal.replyToSender(ctx, msg, '验证中...');
     (async () => {
       try {
         const data = await Data.fetchCloud();
-        if (!data) {
-          seal.replyToSender(ctx, msg, '获取数据失败');
-          return;
-        }
+        if (!data) { seal.replyToSender(ctx, msg, '获取数据失败'); return; }
         let uid = '';
         try { uid = ctx.player?.userId || ''; } catch {}
-        if (!uid) {
-          seal.replyToSender(ctx, msg, '无法获取用户信息');
-          return;
-        }
+        if (!uid) { seal.replyToSender(ctx, msg, '无法获取用户信息'); return; }
         uid = uid.replace(/^(QQ:?)?/i, '');
-        const admins = data.admins || [];
-        if (!admins.includes(uid)) {
-          seal.replyToSender(ctx, msg, '非管理员');
-          return;
-        }
+        if (!(data.admins || []).includes(uid)) { seal.replyToSender(ctx, msg, '非管理员'); return; }
         const exp = Date.now() + CONFIG.tokenTTL;
         const sig = btoa(uid + exp + 'shiling').slice(0, 16);
-        const token = btoa(JSON.stringify({ qq: uid, exp, sig }));
-        seal.replyPerson(ctx, msg, 'Token: ' + token + '\n管理面板: shiling.xiaocui.icu');
-      } catch (e) {
-        seal.replyToSender(ctx, msg, '错误: ' + e.message);
-      }
+        seal.replyPerson(ctx, msg, 'Token: ' + btoa(JSON.stringify({qq:uid,exp,sig})) + '\n管理面板: shiling.xiaocui.icu');
+      } catch (e) { seal.replyToSender(ctx, msg, '错误: ' + e.message); }
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  // 刷新
   if (text === '刷新') {
     seal.replyToSender(ctx, msg, '刷新中...');
     (async () => {
-      try {
-        Data.cache = null;
-        const data = await Data.fetchCloud();
-        seal.replyToSender(ctx, msg, data ? '已刷新菜单' : '刷新失败');
-      } catch (e) {
-        seal.replyToSender(ctx, msg, '错误: ' + e.message);
-      }
+      Data.cache = null;
+      const data = await Data.fetchCloud();
+      seal.replyToSender(ctx, msg, data ? '已刷新' : '失败');
     })();
-    return seal.ext.newCmdExecuteResult(true);
-  }
-  
-  // 重置
-  if (text === '重置') {
-    Data.saveLocal({ food: {}, drink: {}, extraPool: [], history: {} });
-    Data.cache = null;
-    seal.replyToSender(ctx, msg, '已重置为默认菜单');
     return seal.ext.newCmdExecuteResult(true);
   }
   
   // 加菜/删菜/加饮/删饮
   const args = parseArgs(text);
-  const periodMap = {
-    '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight'
-  };
+  const periodMap = { '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight' };
   
   if (args.action === '加菜') {
-    const period = periodMap[args.period];
-    const name = period ? args.name : (args.period + ' ' + args.name).trim();
-    
+    const period = periodMap[args.p1];
+    const name = period ? args.rest : (args.p1 + ' ' + args.rest).trim();
     if (!name) {
-      seal.replyToSender(ctx, msg, '请指定菜名\n示例: .食灵 加菜 早餐 豆浆油条\n示例: .食灵 加菜 炸鸡(进通用池)');
+      seal.replyToSender(ctx, msg, '请指定菜名\n示例: .食灵 加菜 早餐 豆浆油条\n示例: .食灵 加菜 炸鸡');
       return seal.ext.newCmdExecuteResult(true);
     }
-    
-    const baseUrl = 'https://shiling.xiaocui.icu';
-    const submitUrl = baseUrl + '?action=加菜&type=food&period=' + (period || 'extra') + '&name=' + encodeURIComponent(name);
-    seal.replyToSender(ctx, msg, 
-      '已收到申请: 加菜 ' + (period ? '[' + args.period + '] ' : '[通用池] ') + name + '\n' +
-      '请点击链接提交: ' + submitUrl);
+    seal.replyToSender(ctx, msg, '提交中...');
+    (async () => {
+      const result = await submitPending('加菜', 'food', period || 'extra', name);
+      seal.replyToSender(ctx, msg, result.msg);
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (args.action === '删菜') {
-    const period = periodMap[args.period];
-    
+    const period = periodMap[args.p1];
     if (!period) {
       seal.replyToSender(ctx, msg, '请指定时段\n时段: 早餐/午餐/晚餐/夜宵\n示例: .食灵 删菜 早餐 豆浆油条');
       return seal.ext.newCmdExecuteResult(true);
     }
-    
-    if (!args.name) {
-      seal.replyToSender(ctx, msg, '请指定菜名\n示例: .食灵 删菜 早餐 豆浆油条');
+    if (!args.rest) {
+      seal.replyToSender(ctx, msg, '请指定菜名');
       return seal.ext.newCmdExecuteResult(true);
     }
-    
-    const baseUrl = 'https://shiling.xiaocui.icu';
-    const submitUrl = baseUrl + '?action=删菜&type=food&period=' + period + '&name=' + encodeURIComponent(args.name);
-    seal.replyToSender(ctx, msg, 
-      '已收到申请: 删菜 [' + args.period + '] ' + args.name + '\n' +
-      '请点击链接提交: ' + submitUrl);
+    seal.replyToSender(ctx, msg, '提交中...');
+    (async () => {
+      const result = await submitPending('删菜', 'food', period, args.rest);
+      seal.replyToSender(ctx, msg, result.msg);
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (args.action === '加饮') {
-    const name = (args.period + ' ' + args.name).trim();
-    
+    const name = (args.p1 + ' ' + args.rest).trim();
     if (!name) {
       seal.replyToSender(ctx, msg, '请指定饮名\n示例: .食灵 加饮 奶茶');
       return seal.ext.newCmdExecuteResult(true);
     }
-    
-    const baseUrl = 'https://shiling.xiaocui.icu';
-    const submitUrl = baseUrl + '?action=加饮&type=drink&period=all&name=' + encodeURIComponent(name);
-    seal.replyToSender(ctx, msg, 
-      '已收到申请: 加饮品 ' + name + '\n' +
-      '请点击链接提交: ' + submitUrl);
+    seal.replyToSender(ctx, msg, '提交中...');
+    (async () => {
+      const result = await submitPending('加饮', 'drink', 'all', name);
+      seal.replyToSender(ctx, msg, result.msg);
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (args.action === '删饮') {
-    const name = (args.period + ' ' + args.name).trim();
-    
+    const name = (args.p1 + ' ' + args.rest).trim();
     if (!name) {
       seal.replyToSender(ctx, msg, '请指定饮名\n示例: .食灵 删饮 奶茶');
       return seal.ext.newCmdExecuteResult(true);
     }
-    
-    const baseUrl = 'https://shiling.xiaocui.icu';
-    const submitUrl = baseUrl + '?action=删饮&type=drink&period=all&name=' + encodeURIComponent(name);
-    seal.replyToSender(ctx, msg, 
-      '已收到申请: 删饮品 ' + name + '\n' +
-      '请点击链接提交: ' + submitUrl);
+    seal.replyToSender(ctx, msg, '提交中...');
+    (async () => {
+      const result = await submitPending('删饮', 'drink', 'all', name);
+      seal.replyToSender(ctx, msg, result.msg);
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -334,14 +346,12 @@ cmd.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
-// 快捷命令
 const cmdEat = seal.ext.newCmdItemInfo();
 cmdEat.name = '吃什么';
 cmdEat.solve = (ctx, msg) => {
   const menus = Data.getMenus();
   const period = Data.getPeriod();
-  const choice = Picker.pick(menus, 'food', period);
-  seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (choice || '无'));
+  seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (Picker.pick(menus, 'food', period) || '无'));
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['吃什么'] = cmdEat;
@@ -350,16 +360,10 @@ const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
 cmdDrink.solve = (ctx, msg) => {
   const menus = Data.getMenus();
-  const all = [
-    ...(menus.drink.morning || []),
-    ...(menus.drink.afternoon || []),
-    ...(menus.drink.evening || []),
-    ...(menus.drink.night || [])
-  ];
-  seal.replyToSender(ctx, msg, '今日推荐饮品: ' + (all[Math.floor(Math.random() * all.length)] || '无'));
+  const all = [...(menus.drink.morning||[]), ...(menus.drink.afternoon||[]), ...(menus.drink.evening||[]), ...(menus.drink.night||[])];
+  seal.replyToSender(ctx, msg, '今日推荐饮品: ' + (all[Math.floor(Math.random()*all.length)] || '无'));
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
 
-// 初始化
 (async () => { await Data.fetchCloud(); })();
