@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.2.0
-// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单
+// @version     3.3.0
+// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单同步
 // @timestamp   1743456000
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E9%A3%9F%E7%81%B5(%E5%90%83%E4%BB%80%E4%B9%88).js
@@ -11,34 +11,20 @@
 // ==================== 扩展注册 ====================
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.2.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.3.0');
   seal.ext.register(ext);
 }
 
 // ==================== 配置 ====================
 const CONFIG = {
-  // 云端菜单地址（多镜像源，按优先级排列）
   cloudUrls: [
-    // 国内镜像源（优先，无缓存问题）
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
-    // jsdelivr CDN（快速但有缓存）
     'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
-    'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
-    // 原始GitHub（备用）
-    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
-    'https://raw.githubusercontent.com/MOYIre/shiling-data/master/menu.json'
+    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw'
   ],
-  
-  // 缓存时间（毫秒）5分钟
   cacheTTL: 5 * 60 * 1000,
-  
-  // 登录Token有效期 10分钟
   tokenTTL: 10 * 60 * 1000,
-  
-  // 食灵列表
   masters: ['铭茗', '猫掌柜'],
-  
-  // 时段映射
   periods: {
     food: {
       map: { '早餐': 'breakfast', '早上': 'breakfast', '中午': 'lunch', '午餐': 'lunch', '晚上': 'dinner', '晚餐': 'dinner', '夜宵': 'midnight' },
@@ -69,74 +55,13 @@ const DEFAULT_MENUS = {
   }
 };
 
-// ==================== 工具函数 ====================
-const Utils = {
-  // Base64编码
-  base64Encode(str) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let result = '';
-    let i = 0;
-    while (i < str.length) {
-      const a = str.charCodeAt(i++);
-      const b = i < str.length ? str.charCodeAt(i++) : 0;
-      const c = i < str.length ? str.charCodeAt(i++) : 0;
-      const bitmap = (a << 16) | (b << 8) | c;
-      result += chars[(bitmap >> 18) & 63] + chars[(bitmap >> 12) & 63];
-      result += (i > str.length + 1 ? '=' : chars[(bitmap >> 6) & 63]);
-      result += (i > str.length ? '=' : chars[bitmap & 63]);
-    }
-    return result;
-  },
-  
-  // 生成登录Token
-  generateLoginToken(qq) {
-    const exp = Date.now() + CONFIG.tokenTTL;
-    const sig = this.base64Encode(String(qq) + String(exp) + 'shiling').slice(0, 16);
-    const data = JSON.stringify({ qq, exp, sig });
-    return this.base64Encode(data);
-  },
-  
-  // 获取QQ号
-  getUserId(ctx) {
-    try {
-      // 从消息中获取用户ID
-      const userId = ctx.player?.userId || ctx.message?.sender?.userId;
-      if (userId) {
-        // 去除平台前缀（QQ:12345 -> 12345）
-        return userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  },
-  
-  // 发送私聊消息
-  sendPrivateMessage(userId, message) {
-    try {
-      // 构造私聊消息
-      const ctx = seal.getCtx(userId, 'private');
-      seal.sendMessage(ctx, message);
-      return true;
-    } catch (e) {
-      console.log('食灵: 发送私聊失败', e);
-      return false;
-    }
-  },
-  
-  // 检查是否是私聊
-  isPrivateChat(ctx) {
-    return ctx.group?.groupId === '' || !ctx.group?.groupId;
-  }
-};
-
 // ==================== 数据管理器 ====================
 const DataManager = {
   cache: null,
   cacheTime: 0,
   
-  getPeriod(type) {
-    const h = new Date().getHours();
+  getPeriod: function(type) {
+    var h = new Date().getHours();
     if (type === 'food') {
       return h >= 5 && h < 11 ? 'breakfast' : h < 16 ? 'lunch' : h < 22 ? 'dinner' : 'midnight';
     } else {
@@ -144,87 +69,98 @@ const DataManager = {
     }
   },
   
-  loadLocal() {
+  loadLocal: function() {
     try {
-      const data = ext.storageGet('localData');
+      var data = ext.storageGet('localData');
       return data ? JSON.parse(data) : { food: {}, drink: {}, extraPool: [], history: { food: {}, drink: {} } };
-    } catch {
+    } catch (e) {
       return { food: {}, drink: {}, extraPool: [], history: { food: {}, drink: {} } };
     }
   },
   
-  saveLocal(data) {
+  saveLocal: function(data) {
     ext.storageSet('localData', JSON.stringify(data));
   },
   
-  async fetchCloud() {
-    const http = seal.http.new();
+  fetchCloud: function(callback) {
+    var self = this;
+    var http = seal.http.new();
+    var urls = CONFIG.cloudUrls;
+    var index = 0;
     
-    for (let i = 0; i < CONFIG.cloudUrls.length; i++) {
-      const url = CONFIG.cloudUrls[i];
+    function tryNext() {
+      if (index >= urls.length) {
+        console.log('食灵: 所有源均获取失败');
+        callback(null);
+        return;
+      }
+      
+      var url = urls[index];
+      index++;
+      
+      console.log('食灵: 尝试从源 ' + index + '/' + urls.length + ' 获取数据');
+      
       try {
-        console.log(`食灵: 尝试从源 ${i + 1}/${CONFIG.cloudUrls.length} 获取数据`);
-        const res = await http.simpleGet(url);
-        if (res && res.body) {
-          const cloudData = JSON.parse(res.body);
-          this.cache = cloudData;
-          this.cacheTime = Date.now();
-          console.log(`食灵: 成功从源 ${i + 1} 获取数据`);
-          return cloudData;
-        }
+        http.simpleGet(url, function(res) {
+          if (res && res.body) {
+            try {
+              var cloudData = JSON.parse(res.body);
+              self.cache = cloudData;
+              self.cacheTime = Date.now();
+              console.log('食灵: 成功获取数据');
+              callback(cloudData);
+            } catch (e) {
+              console.log('食灵: JSON解析失败');
+              tryNext();
+            }
+          } else {
+            tryNext();
+          }
+        });
       } catch (e) {
-        console.log(`食灵: 源 ${i + 1} 获取失败: ${e.message || e}`);
+        console.log('食灵: 请求失败 ' + e);
+        tryNext();
       }
     }
     
-    console.log('食灵: 所有源均获取失败，使用缓存或默认数据');
-    return null;
+    tryNext();
   },
   
-  async getMenus() {
+  getMenus: function() {
     if (this.cache && Date.now() - this.cacheTime < CONFIG.cacheTTL) {
       return this.mergeData(this.cache, this.loadLocal());
     }
-    
-    const cloudData = await this.fetchCloud();
-    if (cloudData) {
-      return this.mergeData(cloudData, this.loadLocal());
-    }
-    
-    const local = this.loadLocal();
-    if (Object.keys(local.food || {}).length > 0) {
-      return { food: local.food, drink: local.drink, extraPool: local.extraPool || [] };
-    }
-    return { food: DEFAULT_MENUS.food, drink: DEFAULT_MENUS.drink, extraPool: [] };
+    return this.mergeData(this.cache || {}, this.loadLocal());
   },
   
-  mergeData(cloud, local) {
+  mergeData: function(cloud, local) {
     return {
-      food: { ...DEFAULT_MENUS.food, ...cloud.food, ...local.food },
-      drink: { ...DEFAULT_MENUS.drink, ...cloud.drink, ...local.drink },
-      extraPool: [...(cloud.extraPool || []), ...(local.extraPool || [])]
+      food: Object.assign({}, DEFAULT_MENUS.food, cloud.food || {}, local.food || {}),
+      drink: Object.assign({}, DEFAULT_MENUS.drink, cloud.drink || {}, local.drink || {}),
+      extraPool: (cloud.extraPool || []).concat(local.extraPool || [])
     };
   }
 };
 
 // ==================== 抽选器 ====================
 const Picker = {
-  pick(menus, type, period) {
-    const list = menus[type]?.[period] || [];
+  pick: function(menus, type, period) {
+    var list = menus[type] && menus[type][period] ? menus[type][period] : [];
     if (list.length === 0) return null;
     
-    const local = DataManager.loadLocal();
-    const history = local.history?.[type]?.[period] || [];
+    var local = DataManager.loadLocal();
+    var history = local.history && local.history[type] && local.history[type][period] ? local.history[type][period] : [];
     
-    let pool = type === 'food' ? [...list, ...(menus.extraPool || [])] : [...list];
-    let available = pool.filter(item => !history.includes(item));
+    var pool = type === 'food' ? list.concat(menus.extraPool || []) : list.slice();
+    var available = pool.filter(function(item) { return history.indexOf(item) < 0; });
     
     if (available.length === 0) {
+      if (!local.history[type]) local.history[type] = {};
       local.history[type][period] = [];
-      available = [...pool];
+      available = pool.slice();
     }
     
-    const choice = available[Math.floor(Math.random() * available.length)];
+    var choice = available[Math.floor(Math.random() * available.length)];
     
     if (!local.history[type]) local.history[type] = {};
     if (!local.history[type][period]) local.history[type][period] = [];
@@ -234,137 +170,69 @@ const Picker = {
     return choice;
   },
   
-  getPrefix(periodName) {
-    const master = CONFIG.masters[Math.floor(Math.random() * CONFIG.masters.length)];
-    return `今日${periodName}${master}推荐: `;
+  getPrefix: function(periodName) {
+    var masters = CONFIG.masters;
+    var master = masters[Math.floor(Math.random() * masters.length)];
+    return '今日' + periodName + master + '推荐: ';
   }
 };
 
 // ==================== 命令处理器 ====================
 const CommandHandler = {
-  async handleRecommend(ctx, msg, type, periodKey) {
-    const menus = await DataManager.getMenus();
-    const periodConfig = CONFIG.periods[type];
+  handleRecommend: function(ctx, msg, type, periodKey) {
+    var menus = DataManager.getMenus();
+    var periodConfig = CONFIG.periods[type];
     
-    let period = periodKey && periodConfig.map[periodKey] 
-      ? periodConfig.map[periodKey] 
-      : DataManager.getPeriod(type);
-    
-    const choice = Picker.pick(menus, type, period);
-    const periodName = periodConfig.names[period];
-    
-    seal.replyToSender(ctx, msg, choice 
-      ? Picker.getPrefix(periodName) + choice 
-      : `暂无${periodName}菜单数据`
-    );
-  },
-  
-  handleAdd(type, periodKey, items) {
-    const local = DataManager.loadLocal();
-    const periodConfig = CONFIG.periods[type];
-    
-    const added = [], skipped = [];
-    
+    var period;
     if (periodKey && periodConfig.map[periodKey]) {
-      const period = periodConfig.map[periodKey];
-      if (!local[type]) local[type] = {};
-      if (!local[type][period]) local[type][period] = [];
-      
-      for (const item of items) {
-        const name = item.trim();
-        if (local[type][period].some(x => x.toLowerCase() === name.toLowerCase())) {
-          skipped.push(name);
-        } else {
-          local[type][period].push(name);
-          added.push(name);
-        }
-      }
-      DataManager.saveLocal(local);
-      return added.length 
-        ? `已将 ${added.join('、')} 加入${periodKey}菜单` 
-        : `没有新增，已存在: ${skipped.join('、')}`;
+      period = periodConfig.map[periodKey];
     } else {
-      if (!local.extraPool) local.extraPool = [];
-      for (const item of items) {
-        const name = item.trim();
-        if (local.extraPool.some(x => x.toLowerCase() === name.toLowerCase())) {
-          skipped.push(name);
-        } else {
-          local.extraPool.push(name);
-          added.push(name);
-        }
-      }
-      DataManager.saveLocal(local);
-      return added.length 
-        ? `已将 ${added.join('、')} 加入通用池` 
-        : `没有新增，已存在: ${skipped.join('、')}`;
+      period = DataManager.getPeriod(type);
+    }
+    
+    var choice = Picker.pick(menus, type, period);
+    var periodName = periodConfig.names[period];
+    
+    if (choice) {
+      seal.replyToSender(ctx, msg, Picker.getPrefix(periodName) + choice);
+    } else {
+      seal.replyToSender(ctx, msg, '暂无' + periodName + '菜单数据');
     }
   },
   
-  handleRemove(type, periodKey, items) {
-    const local = DataManager.loadLocal();
-    const periodConfig = CONFIG.periods[type];
+  handleShowMenu: function(ctx, msg, type) {
+    var menus = DataManager.getMenus();
+    var periodConfig = CONFIG.periods[type];
     
-    const removed = [], notFound = [];
+    var lines = ['====== ' + (type === 'food' ? '食灵' : '饮品') + '菜单 ======'];
     
-    if (periodKey && periodConfig.map[periodKey]) {
-      const period = periodConfig.map[periodKey];
-      const list = local[type]?.[period] || [];
-      
-      for (const item of items) {
-        const name = item.trim().toLowerCase();
-        const idx = list.findIndex(x => x.toLowerCase() === name);
-        if (idx >= 0) removed.push(list.splice(idx, 1)[0]);
-        else notFound.push(item);
-      }
-      DataManager.saveLocal(local);
-    } else {
-      for (const item of items) {
-        const name = item.trim().toLowerCase();
-        const idx = (local.extraPool || []).findIndex(x => x.toLowerCase() === name);
-        if (idx >= 0) removed.push(local.extraPool.splice(idx, 1)[0]);
-        else notFound.push(item);
-      }
-      DataManager.saveLocal(local);
+    for (var i = 0; i < periodConfig.default.length; i++) {
+      var period = periodConfig.default[i];
+      var list = menus[type] && menus[type][period] ? menus[type][period] : [];
+      lines.push(periodConfig.names[period] + ':\n  ' + list.join('、'));
     }
     
-    let msg = '';
-    if (removed.length) msg += `已删除: ${removed.join('、')}\n`;
-    if (notFound.length) msg += `未找到: ${notFound.join('、')}`;
-    return msg || '操作完成';
-  },
-  
-  async handleShowMenu(ctx, msg, type) {
-    const menus = await DataManager.getMenus();
-    const periodConfig = CONFIG.periods[type];
-    
-    const lines = [`====== ${type === 'food' ? '食灵' : '饮品'}菜单 ======`];
-    
-    for (const period of periodConfig.default) {
-      const list = menus[type]?.[period] || [];
-      lines.push(`${periodConfig.names[period]}:\n  ${list.join('、')}`);
-    }
-    
-    if (type === 'food' && menus.extraPool?.length) {
-      lines.push(`\n通用池:\n  ${menus.extraPool.join('、')}`);
+    if (type === 'food' && menus.extraPool && menus.extraPool.length) {
+      lines.push('\n通用池:\n  ' + menus.extraPool.join('、'));
     }
     
     lines.push('========================');
     seal.replyToSender(ctx, msg, lines.join('\n'));
   },
   
-  async handleRandomMenu(ctx, msg, type) {
-    const menus = await DataManager.getMenus();
-    const periodConfig = CONFIG.periods[type];
+  handleRandomMenu: function(ctx, msg, type) {
+    var menus = DataManager.getMenus();
+    var periodConfig = CONFIG.periods[type];
     
-    const local = DataManager.loadLocal();
+    var local = DataManager.loadLocal();
     local.history = { food: {}, drink: {} };
     DataManager.saveLocal(local);
     
-    const lines = [`====== 随机${type === 'food' ? '菜单' : '饮品单'} ======`];
+    var lines = ['====== 随机' + (type === 'food' ? '菜单' : '饮品单') + ' ======'];
     
-    for (const period of periodConfig.default) {
-      const choice = Picker.pick(menus, type, period);
+    for (var i = 0; i < periodConfig.default.length; i++) {
+      var period = periodConfig.default[i];
+      var choice = Picker.pick(menus, type, period);
       lines.push(Picker.getPrefix(periodConfig.names[period]) + (choice || '无数据'));
     }
     
@@ -372,94 +240,161 @@ const CommandHandler = {
     seal.replyToSender(ctx, msg, lines.join('\n'));
   },
   
-  handleReset() {
+  handleAdd: function(type, periodKey, items) {
+    var local = DataManager.loadLocal();
+    var periodConfig = CONFIG.periods[type];
+    
+    var added = [], skipped = [];
+    
+    if (periodKey && periodConfig.map[periodKey]) {
+      var period = periodConfig.map[periodKey];
+      if (!local[type]) local[type] = {};
+      if (!local[type][period]) local[type][period] = [];
+      
+      for (var i = 0; i < items.length; i++) {
+        var name = items[i].trim();
+        var exists = false;
+        for (var j = 0; j < local[type][period].length; j++) {
+          if (local[type][period][j].toLowerCase() === name.toLowerCase()) {
+            exists = true;
+            break;
+          }
+        }
+        if (exists) {
+          skipped.push(name);
+        } else {
+          local[type][period].push(name);
+          added.push(name);
+        }
+      }
+      DataManager.saveLocal(local);
+      return added.length ? '已将 ' + added.join('、') + ' 加入' + periodKey + '菜单' : '没有新增，已存在: ' + skipped.join('、');
+    } else {
+      if (!local.extraPool) local.extraPool = [];
+      for (var i = 0; i < items.length; i++) {
+        var name = items[i].trim();
+        if (local.extraPool.indexOf(name) >= 0) {
+          skipped.push(name);
+        } else {
+          local.extraPool.push(name);
+          added.push(name);
+        }
+      }
+      DataManager.saveLocal(local);
+      return added.length ? '已将 ' + added.join('、') + ' 加入通用池' : '没有新增，已存在: ' + skipped.join('、');
+    }
+  },
+  
+  handleRemove: function(type, periodKey, items) {
+    var local = DataManager.loadLocal();
+    var periodConfig = CONFIG.periods[type];
+    
+    var removed = [], notFound = [];
+    
+    if (periodKey && periodConfig.map[periodKey]) {
+      var period = periodConfig.map[periodKey];
+      var list = local[type] && local[type][period] ? local[type][period] : [];
+      
+      for (var i = 0; i < items.length; i++) {
+        var name = items[i].trim().toLowerCase();
+        var found = -1;
+        for (var j = 0; j < list.length; j++) {
+          if (list[j].toLowerCase() === name) {
+            found = j;
+            break;
+          }
+        }
+        if (found >= 0) {
+          removed.push(list.splice(found, 1)[0]);
+        } else {
+          notFound.push(items[i]);
+        }
+      }
+      DataManager.saveLocal(local);
+    } else {
+      for (var i = 0; i < items.length; i++) {
+        var name = items[i].trim().toLowerCase();
+        var found = -1;
+        for (var j = 0; j < (local.extraPool || []).length; j++) {
+          if (local.extraPool[j].toLowerCase() === name) {
+            found = j;
+            break;
+          }
+        }
+        if (found >= 0) {
+          removed.push(local.extraPool.splice(found, 1)[0]);
+        } else {
+          notFound.push(items[i]);
+        }
+      }
+      DataManager.saveLocal(local);
+    }
+    
+    var msg = '';
+    if (removed.length) msg += '已删除: ' + removed.join('、') + '\n';
+    if (notFound.length) msg += '未找到: ' + notFound.join('、');
+    return msg || '操作完成';
+  },
+  
+  handleReset: function() {
     DataManager.saveLocal({ food: {}, drink: {}, extraPool: [], history: { food: {}, drink: {} } });
     DataManager.cache = null;
     return '已重置为云端菜单，本地修改已清空';
   },
   
-  async handleRefresh() {
+  handleRefresh: function(ctx, msg) {
     DataManager.cache = null;
-    const cloud = await DataManager.fetchCloud();
-    return cloud ? '已从云端刷新菜单' : '刷新失败，使用缓存数据';
+    DataManager.fetchCloud(function(cloudData) {
+      seal.replyToSender(ctx, msg, cloudData ? '已从云端刷新菜单' : '刷新失败，使用缓存数据');
+    });
+    return '正在刷新...';
   },
   
-  // 处理登录命令
-  async handleLogin(ctx, msg) {
-    const userId = Utils.getUserId(ctx);
+  handleLogin: function(ctx, msg) {
+    // 获取用户ID
+    var userId = '';
+    try {
+      if (ctx.player && ctx.player.userId) {
+        userId = ctx.player.userId;
+      } else if (ctx.message && ctx.message.sender && ctx.message.sender.userId) {
+        userId = ctx.message.sender.userId;
+      }
+    } catch (e) {}
     
     if (!userId) {
-      seal.replyToSender(ctx, msg, '无法获取用户信息，请稍后重试');
+      seal.replyToSender(ctx, msg, '无法获取用户信息');
       return;
     }
     
-    // 获取云端数据检查管理员权限
-    const cloudData = await DataManager.fetchCloud();
-    const admins = cloudData?.admins || [];
+    // 去除QQ前缀
+    userId = userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
     
-    // 检查是否是管理员
-    if (!admins.includes(userId)) {
+    // 检查管理员权限
+    var admins = DataManager.cache && DataManager.cache.admins ? DataManager.cache.admins : [];
+    if (admins.indexOf(userId) < 0) {
       seal.replyToSender(ctx, msg, '您不是管理员，无法获取登录Token');
       return;
     }
     
     // 生成Token
-    const token = Utils.generateLoginToken(userId);
+    var exp = Date.now() + CONFIG.tokenTTL;
+    var sig = btoa(userId + exp + 'shiling').slice(0, 16);
+    var tokenData = JSON.stringify({ qq: userId, exp: exp, sig: sig });
+    var token = btoa(tokenData);
     
-    // 构造私聊消息
-    const tokenMsg = `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n请前往管理面板输入此Token登录\n管理面板地址: https://shiling.xiaocui.icu`;
-    
-    // 发送私聊（无论当前是群聊还是私聊）
-    const sent = Utils.sendPrivateMessage(userId, tokenMsg);
-    
-    if (sent) {
-      // 如果是群聊，提示已发送私聊
-      if (!Utils.isPrivateChat(ctx)) {
-        seal.replyToSender(ctx, msg, `登录Token已通过私聊发送给 ${userId}，请查看私聊消息`);
-      }
-    } else {
-      // 发送失败，直接在当前对话返回（降级处理）
-      seal.replyToSender(ctx, msg, tokenMsg);
-    }
+    seal.replyToSender(ctx, msg, '【食灵管理面板登录Token】\n\nToken: ' + token + '\n\n有效期: 10分钟\n管理面板: https://shiling.xiaocui.icu');
   }
 };
 
 // ==================== 命令注册 ====================
-const cmd = seal.ext.newCmdItemInfo();
+var cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = `
-食灵帮助 v3.2
+cmd.help = '食灵帮助 v3.3\n\n.食灵/.饭笥 吃什么 - 根据时间推荐\n.食灵/.饭笥 喝什么 - 根据时间推荐饮品\n.食灵 [时段]吃什么 - 指定时段(早餐/中午/晚上/夜宵)\n.食灵 菜单 - 查看菜单\n.食灵 随机菜单 - 随机推荐\n.食灵 加菜 [时段] 菜名 - 添加菜品\n.食灵 删菜 [时段] 菜名 - 删除菜品\n.食灵 刷新 - 刷新菜单\n.食灵 登录 - 获取管理Token\n.食灵 help - 显示帮助';
 
-【推荐】
-.食灵/饭笥 吃什么 - 根据时间推荐
-.食灵/饭笥 喝什么 - 根据时间推荐饮品
-.食灵 [时段]吃什么 - 指定时段(早餐/中午/晚上/夜宵)
-.食灵 [时段]喝什么 - 指定时段(早茶/下午茶/晚茶/夜茶)
-
-【管理】
-.食灵 加菜 [时段] 菜名 - 不指定时段则加入通用池
-.食灵 删菜 [时段] 菜名 - 从菜单删除
-.食灵 加饮 [时段] 饮品 - 添加饮品
-.食灵 删饮 [时段] 饮品 - 删除饮品
-
-【查看】
-.食灵 菜单 - 查看食物菜单
-.食灵 饮单 - 查看饮品菜单
-.食灵 随机菜单 - 随机推荐各时段
-.食灵 随机饮单 - 随机推荐各时段饮品
-
-【登录】
-.食灵 登录 - 获取管理面板登录Token（私聊发送）
-
-【其他】
-.食灵 刷新 - 强制从云端同步
-.食灵 重置 - 清空本地修改
-.食灵 help - 显示本帮助
-`;
-
-cmd.solve = async (ctx, msg, argv) => {
-  const res = seal.ext.newCmdExecuteResult(true);
-  const text = argv.args.join(' ').trim().replace(/^\.?食灵\s*/, '');
+cmd.solve = function(ctx, msg, argv) {
+  var res = seal.ext.newCmdExecuteResult(true);
+  var args = argv.args || [];
+  var text = args.join(' ').trim().replace(/^\.?食灵\s*/, '').replace(/^\.?饭笥\s*/, '');
   
   if (!text || text === 'help') {
     res.showHelp = true;
@@ -467,88 +402,92 @@ cmd.solve = async (ctx, msg, argv) => {
   }
   
   if (text === '吃什么') {
-    await CommandHandler.handleRecommend(ctx, msg, 'food');
+    CommandHandler.handleRecommend(ctx, msg, 'food');
     return res;
   }
   
   if (text === '喝什么') {
-    await CommandHandler.handleRecommend(ctx, msg, 'drink');
+    CommandHandler.handleRecommend(ctx, msg, 'drink');
     return res;
   }
   
   if (text === '登录') {
-    await CommandHandler.handleLogin(ctx, msg);
+    CommandHandler.handleLogin(ctx, msg);
     return res;
   }
   
-  for (const [key] of Object.entries(CONFIG.periods.food.map)) {
+  // 时段吃什么
+  var foodMap = CONFIG.periods.food.map;
+  for (var key in foodMap) {
     if (text === key + '吃什么') {
-      await CommandHandler.handleRecommend(ctx, msg, 'food', key);
+      CommandHandler.handleRecommend(ctx, msg, 'food', key);
       return res;
     }
   }
   
-  for (const [key] of Object.entries(CONFIG.periods.drink.map)) {
+  // 时段喝什么
+  var drinkMap = CONFIG.periods.drink.map;
+  for (var key in drinkMap) {
     if (text === key + '喝什么') {
-      await CommandHandler.handleRecommend(ctx, msg, 'drink', key);
+      CommandHandler.handleRecommend(ctx, msg, 'drink', key);
       return res;
     }
   }
   
-  if (text.startsWith('加菜 ')) {
-    const args = text.slice(3).split(/\s+/);
-    const periodKey = CONFIG.periods.food.map[args[0]] ? args[0] : null;
-    const items = periodKey ? args.slice(1) : args;
-    seal.replyToSender(ctx, msg, CommandHandler.handleAdd('food', periodKey, items));
+  if (text.indexOf('加菜 ') === 0) {
+    var items = text.slice(3).split(/\s+/);
+    var periodKey = foodMap[items[0]] ? items[0] : null;
+    var dishes = periodKey ? items.slice(1) : items;
+    seal.replyToSender(ctx, msg, CommandHandler.handleAdd('food', periodKey, dishes));
     return res;
   }
   
-  if (text.startsWith('删菜 ')) {
-    const args = text.slice(3).split(/\s+/);
-    const periodKey = CONFIG.periods.food.map[args[0]] ? args[0] : null;
-    const items = periodKey ? args.slice(1) : args;
-    seal.replyToSender(ctx, msg, CommandHandler.handleRemove('food', periodKey, items));
+  if (text.indexOf('删菜 ') === 0) {
+    var items = text.slice(3).split(/\s+/);
+    var periodKey = foodMap[items[0]] ? items[0] : null;
+    var dishes = periodKey ? items.slice(1) : items;
+    seal.replyToSender(ctx, msg, CommandHandler.handleRemove('food', periodKey, dishes));
     return res;
   }
   
-  if (text.startsWith('加饮 ')) {
-    const args = text.slice(3).split(/\s+/);
-    const periodKey = CONFIG.periods.drink.map[args[0]] ? args[0] : null;
-    const items = periodKey ? args.slice(1) : args;
-    seal.replyToSender(ctx, msg, CommandHandler.handleAdd('drink', periodKey, items));
+  if (text.indexOf('加饮 ') === 0) {
+    var items = text.slice(3).split(/\s+/);
+    var periodKey = drinkMap[items[0]] ? items[0] : null;
+    var drinks = periodKey ? items.slice(1) : items;
+    seal.replyToSender(ctx, msg, CommandHandler.handleAdd('drink', periodKey, drinks));
     return res;
   }
   
-  if (text.startsWith('删饮 ')) {
-    const args = text.slice(3).split(/\s+/);
-    const periodKey = CONFIG.periods.drink.map[args[0]] ? args[0] : null;
-    const items = periodKey ? args.slice(1) : args;
-    seal.replyToSender(ctx, msg, CommandHandler.handleRemove('drink', periodKey, items));
+  if (text.indexOf('删饮 ') === 0) {
+    var items = text.slice(3).split(/\s+/);
+    var periodKey = drinkMap[items[0]] ? items[0] : null;
+    var drinks = periodKey ? items.slice(1) : items;
+    seal.replyToSender(ctx, msg, CommandHandler.handleRemove('drink', periodKey, drinks));
     return res;
   }
   
   if (text === '菜单') {
-    await CommandHandler.handleShowMenu(ctx, msg, 'food');
+    CommandHandler.handleShowMenu(ctx, msg, 'food');
     return res;
   }
   
   if (text === '饮单') {
-    await CommandHandler.handleShowMenu(ctx, msg, 'drink');
+    CommandHandler.handleShowMenu(ctx, msg, 'drink');
     return res;
   }
   
   if (text === '随机菜单') {
-    await CommandHandler.handleRandomMenu(ctx, msg, 'food');
+    CommandHandler.handleRandomMenu(ctx, msg, 'food');
     return res;
   }
   
   if (text === '随机饮单') {
-    await CommandHandler.handleRandomMenu(ctx, msg, 'drink');
+    CommandHandler.handleRandomMenu(ctx, msg, 'drink');
     return res;
   }
   
   if (text === '刷新') {
-    seal.replyToSender(ctx, msg, await CommandHandler.handleRefresh());
+    seal.replyToSender(ctx, msg, CommandHandler.handleRefresh(ctx, msg));
     return res;
   }
   
@@ -564,19 +503,26 @@ cmd.solve = async (ctx, msg, argv) => {
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
-// 注册 .吃什么 快捷命令
-const cmdEat = seal.ext.newCmdItemInfo();
+// 注册快捷命令
+var cmdEat = seal.ext.newCmdItemInfo();
 cmdEat.name = '吃什么';
-cmdEat.solve = async (ctx, msg, argv) => {
-  await CommandHandler.handleRecommend(ctx, msg, 'food');
+cmdEat.solve = function(ctx, msg, argv) {
+  CommandHandler.handleRecommend(ctx, msg, 'food');
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['吃什么'] = cmdEat;
 
-const cmdDrink = seal.ext.newCmdItemInfo();
+var cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
-cmdDrink.solve = async (ctx, msg, argv) => {
-  await CommandHandler.handleRecommend(ctx, msg, 'drink');
+cmdDrink.solve = function(ctx, msg, argv) {
+  CommandHandler.handleRecommend(ctx, msg, 'drink');
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
+
+// 初始化时获取云端数据
+DataManager.fetchCloud(function(data) {
+  if (data) {
+    console.log('食灵: 初始化完成，已获取云端数据');
+  }
+});
