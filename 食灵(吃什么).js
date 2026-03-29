@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.7.0
+// @version     3.8.0
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.7.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.8.0');
   seal.ext.register(ext);
 }
 
@@ -127,9 +127,19 @@ const Picker = {
   }
 };
 
+// 解析命令参数
+function parseArgs(text) {
+  const parts = text.split(/\s+/);
+  return {
+    action: parts[0] || '',
+    period: parts[1] || '',
+    name: parts.slice(2).join(' ') || ''
+  };
+}
+
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单 - 查看\n.食灵 刷新 - 刷新云端数据\n.食灵 登录 - 获取管理Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 <时段> <菜名> - 提交新菜\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <时段> <饮名> - 提交新饮\n.食灵 删饮 <时段> <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token\n时段: 早餐/午餐/晚餐/夜宵 或 早茶/下午茶/晚茶/夜茶';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -140,6 +150,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return res;
   }
   
+  // 吃什么
   if (text === '吃什么') {
     const menus = Data.getMenus();
     const period = Data.getPeriod();
@@ -148,6 +159,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
+  // 喝什么
   if (text === '喝什么') {
     const menus = Data.getMenus();
     const all = [
@@ -161,6 +173,29 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
+  // 菜单
+  if (text === '菜单') {
+    const m = Data.getMenus();
+    const lines = ['=== 菜单 ==='];
+    for (const p of CONFIG.periods.food.order) {
+      lines.push(CONFIG.periods.food.names[p] + ': ' + (m.food[p] || []).join('、'));
+    }
+    seal.replyToSender(ctx, msg, lines.join('\n'));
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  // 饮单
+  if (text === '饮单') {
+    const m = Data.getMenus();
+    const lines = ['=== 饮单 ==='];
+    for (const p of CONFIG.periods.drink.order) {
+      lines.push(CONFIG.periods.drink.names[p] + ': ' + (m.drink[p] || []).join('、'));
+    }
+    seal.replyToSender(ctx, msg, lines.join('\n'));
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  // 登录
   if (text === '登录') {
     seal.replyToSender(ctx, msg, '验证中...');
     (async () => {
@@ -193,6 +228,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
+  // 刷新
   if (text === '刷新') {
     seal.replyToSender(ctx, msg, '刷新中...');
     (async () => {
@@ -207,30 +243,47 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
   
-  if (text === '菜单') {
-    const m = Data.getMenus();
-    const lines = ['=== 菜单 ==='];
-    for (const p of CONFIG.periods.food.order) {
-      lines.push(CONFIG.periods.food.names[p] + ': ' + (m.food[p] || []).join('、'));
-    }
-    seal.replyToSender(ctx, msg, lines.join('\n'));
-    return seal.ext.newCmdExecuteResult(true);
-  }
-  
-  if (text === '饮单') {
-    const m = Data.getMenus();
-    const lines = ['=== 饮单 ==='];
-    for (const p of CONFIG.periods.drink.order) {
-      lines.push(CONFIG.periods.drink.names[p] + ': ' + (m.drink[p] || []).join('、'));
-    }
-    seal.replyToSender(ctx, msg, lines.join('\n'));
-    return seal.ext.newCmdExecuteResult(true);
-  }
-  
+  // 重置
   if (text === '重置') {
     Data.saveLocal({ food: {}, drink: {}, extraPool: [], history: {} });
     Data.cache = null;
     seal.replyToSender(ctx, msg, '已重置为默认菜单');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  // 加菜/删菜/加饮/删饮
+  const args = parseArgs(text);
+  const periodMap = {
+    '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight',
+    '早茶': 'morning', '下午茶': 'afternoon', '晚茶': 'evening', '夜茶': 'night'
+  };
+  
+  if (['加菜', '删菜', '加饮', '删饮'].includes(args.action)) {
+    const type = (args.action === '加菜' || args.action === '删菜') ? 'food' : 'drink';
+    const period = periodMap[args.period];
+    
+    if (!period) {
+      const tips = type === 'food' 
+        ? '时段: 早餐/午餐/晚餐/夜宵' 
+        : '时段: 早茶/下午茶/晚茶/夜茶';
+      seal.replyToSender(ctx, msg, '请指定正确时段\n' + tips);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    if (!args.name) {
+      seal.replyToSender(ctx, msg, '请指定名称\n示例: .食灵 ' + args.action + ' ' + args.period + ' 炸酱面');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    // 构建提交链接
+    const baseUrl = 'https://shiling.xiaocui.icu';
+    const submitUrl = baseUrl + '?action=' + encodeURIComponent(args.action) + 
+                      '&type=' + type + '&period=' + period + '&name=' + encodeURIComponent(args.name);
+    
+    seal.replyToSender(ctx, msg, 
+      '已收到申请: ' + args.action + ' [' + args.period + '] ' + args.name + '\n' +
+      '请点击链接提交审核: ' + submitUrl + '\n' +
+      '或访问 ' + baseUrl + ' 手动提交');
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -241,6 +294,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
+// 快捷命令
 const cmdEat = seal.ext.newCmdItemInfo();
 cmdEat.name = '吃什么';
 cmdEat.solve = (ctx, msg) => {
