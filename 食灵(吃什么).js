@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.1.0
+// @version     3.2.0
 // @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单同步，优化国内访问
-// @timestamp   1743369600
+// @timestamp   1743456000
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E9%A3%9F%E7%81%B5(%E5%90%83%E4%BB%80%E4%B9%88).js
 // ==/UserScript==
@@ -11,7 +11,7 @@
 // ==================== 扩展注册 ====================
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.1.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.2.0');
   seal.ext.register(ext);
 }
 
@@ -19,17 +19,17 @@ if (!ext) {
 const CONFIG = {
   // 云端菜单地址（多镜像源，按优先级排列）
   cloudUrls: [
-    // jsdelivr CDN（国内优化）
     'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
     'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
-    // ghproxy镜像
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
-    // 原始GitHub地址（备用）
     'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw'
   ],
   
   // 缓存时间（毫秒）- 5分钟
   cacheTTL: 5 * 60 * 1000,
+  
+  // 登录Token有效期（毫秒）- 10分钟
+  tokenTTL: 10 * 60 * 1000,
   
   // 大师列表
   masters: ['铭茗', '猫掌柜'],
@@ -65,12 +65,72 @@ const DEFAULT_MENUS = {
   }
 };
 
+// ==================== 工具函数 ====================
+const Utils = {
+  // Base64编码
+  base64Encode(str) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    let i = 0;
+    while (i < str.length) {
+      const a = str.charCodeAt(i++);
+      const b = i < str.length ? str.charCodeAt(i++) : 0;
+      const c = i < str.length ? str.charCodeAt(i++) : 0;
+      const bitmap = (a << 16) | (b << 8) | c;
+      result += chars[(bitmap >> 18) & 63] + chars[(bitmap >> 12) & 63];
+      result += (i > str.length + 1 ? '=' : chars[(bitmap >> 6) & 63]);
+      result += (i > str.length ? '=' : chars[bitmap & 63]);
+    }
+    return result;
+  },
+  
+  // 生成登录Token
+  generateLoginToken(qq) {
+    const exp = Date.now() + CONFIG.tokenTTL;
+    const sig = this.base64Encode(String(qq) + String(exp) + 'shiling').slice(0, 16);
+    const data = JSON.stringify({ qq, exp, sig });
+    return this.base64Encode(data);
+  },
+  
+  // 获取用户QQ号
+  getUserId(ctx) {
+    try {
+      // 尝试从消息中获取用户ID
+      const userId = ctx.player?.userId || ctx.message?.sender?.userId;
+      if (userId) {
+        // 去除平台前缀（如QQ:12345 -> 12345）
+        return userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+  
+  // 发送私聊消息
+  sendPrivateMessage(userId, message) {
+    try {
+      // 构造私聊消息
+      const ctx = seal.getCtx(userId, 'private');
+      seal.sendMessage(ctx, message);
+      return true;
+    } catch (e) {
+      console.log('食灵: 发送私聊失败', e);
+      return false;
+    }
+  },
+  
+  // 检查是否是私聊
+  isPrivateChat(ctx) {
+    return ctx.group?.groupId === '' || !ctx.group?.groupId;
+  }
+};
+
 // ==================== 数据管理器 ====================
 const DataManager = {
   cache: null,
   cacheTime: 0,
   
-  // 获取当前时段
   getPeriod(type) {
     const h = new Date().getHours();
     if (type === 'food') {
@@ -80,7 +140,6 @@ const DataManager = {
     }
   },
   
-  // 从存储加载本地数据
   loadLocal() {
     try {
       const data = ext.storageGet('localData');
@@ -90,12 +149,10 @@ const DataManager = {
     }
   },
   
-  // 保存本地数据
   saveLocal(data) {
     ext.storageSet('localData', JSON.stringify(data));
   },
   
-  // 从云端获取菜单（多源重试）
   async fetchCloud() {
     const http = seal.http.new();
     
@@ -120,7 +177,6 @@ const DataManager = {
     return null;
   },
   
-  // 获取合并后的菜单（云端 + 本地覆盖）
   async getMenus() {
     if (this.cache && Date.now() - this.cacheTime < CONFIG.cacheTTL) {
       return this.mergeData(this.cache, this.loadLocal());
@@ -138,7 +194,6 @@ const DataManager = {
     return { food: DEFAULT_MENUS.food, drink: DEFAULT_MENUS.drink, extraPool: [] };
   },
   
-  // 合并云端和本地数据
   mergeData(cloud, local) {
     return {
       food: { ...DEFAULT_MENUS.food, ...cloud.food, ...local.food },
@@ -187,21 +242,17 @@ const CommandHandler = {
     const menus = await DataManager.getMenus();
     const periodConfig = CONFIG.periods[type];
     
-    let period;
-    if (periodKey && periodConfig.map[periodKey]) {
-      period = periodConfig.map[periodKey];
-    } else {
-      period = DataManager.getPeriod(type);
-    }
+    let period = periodKey && periodConfig.map[periodKey] 
+      ? periodConfig.map[periodKey] 
+      : DataManager.getPeriod(type);
     
     const choice = Picker.pick(menus, type, period);
     const periodName = periodConfig.names[period];
     
-    if (choice) {
-      seal.replyToSender(ctx, msg, Picker.getPrefix(periodName) + choice);
-    } else {
-      seal.replyToSender(ctx, msg, `暂无${periodName}菜单数据`);
-    }
+    seal.replyToSender(ctx, msg, choice 
+      ? Picker.getPrefix(periodName) + choice 
+      : `暂无${periodName}菜单数据`
+    );
   },
   
   handleAdd(type, periodKey, items) {
@@ -259,22 +310,16 @@ const CommandHandler = {
       for (const item of items) {
         const name = item.trim().toLowerCase();
         const idx = list.findIndex(x => x.toLowerCase() === name);
-        if (idx >= 0) {
-          removed.push(list.splice(idx, 1)[0]);
-        } else {
-          notFound.push(item);
-        }
+        if (idx >= 0) removed.push(list.splice(idx, 1)[0]);
+        else notFound.push(item);
       }
       DataManager.saveLocal(local);
     } else {
       for (const item of items) {
         const name = item.trim().toLowerCase();
         const idx = (local.extraPool || []).findIndex(x => x.toLowerCase() === name);
-        if (idx >= 0) {
-          removed.push(local.extraPool.splice(idx, 1)[0]);
-        } else {
-          notFound.push(item);
-        }
+        if (idx >= 0) removed.push(local.extraPool.splice(idx, 1)[0]);
+        else notFound.push(item);
       }
       DataManager.saveLocal(local);
     }
@@ -293,8 +338,7 @@ const CommandHandler = {
     
     for (const period of periodConfig.default) {
       const list = menus[type]?.[period] || [];
-      const name = periodConfig.names[period];
-      lines.push(`${name}:\n  ${list.join('、')}`);
+      lines.push(`${periodConfig.names[period]}:\n  ${list.join('、')}`);
     }
     
     if (type === 'food' && menus.extraPool?.length) {
@@ -317,8 +361,7 @@ const CommandHandler = {
     
     for (const period of periodConfig.default) {
       const choice = Picker.pick(menus, type, period);
-      const name = periodConfig.names[period];
-      lines.push(Picker.getPrefix(name) + (choice || '无数据'));
+      lines.push(Picker.getPrefix(periodConfig.names[period]) + (choice || '无数据'));
     }
     
     lines.push('======================');
@@ -326,12 +369,7 @@ const CommandHandler = {
   },
   
   handleReset() {
-    DataManager.saveLocal({
-      food: {},
-      drink: {},
-      extraPool: [],
-      history: { food: {}, drink: {} }
-    });
+    DataManager.saveLocal({ food: {}, drink: {}, extraPool: [], history: { food: {}, drink: {} } });
     DataManager.cache = null;
     return '已重置为云端菜单，本地修改已清空';
   },
@@ -340,6 +378,45 @@ const CommandHandler = {
     DataManager.cache = null;
     const cloud = await DataManager.fetchCloud();
     return cloud ? '已从云端刷新菜单' : '刷新失败，使用缓存数据';
+  },
+  
+  // 处理登录命令
+  async handleLogin(ctx, msg) {
+    const userId = Utils.getUserId(ctx);
+    
+    if (!userId) {
+      seal.replyToSender(ctx, msg, '无法获取用户信息，请稍后重试');
+      return;
+    }
+    
+    // 获取云端数据检查管理员权限
+    const cloudData = await DataManager.fetchCloud();
+    const admins = cloudData?.admins || [];
+    
+    // 检查是否是管理员
+    if (!admins.includes(userId)) {
+      seal.replyToSender(ctx, msg, '您不是管理员，无法获取登录Token');
+      return;
+    }
+    
+    // 生成Token
+    const token = Utils.generateLoginToken(userId);
+    
+    // 构造私聊消息
+    const tokenMsg = `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n请前往管理面板输入此Token登录\n管理面板地址: https://moyire.github.io/shiling-admin/`;
+    
+    // 发送私聊（无论当前是群聊还是私聊）
+    const sent = Utils.sendPrivateMessage(userId, tokenMsg);
+    
+    if (sent) {
+      // 如果是群聊，提示已发送私聊
+      if (!Utils.isPrivateChat(ctx)) {
+        seal.replyToSender(ctx, msg, `登录Token已通过私聊发送给 ${userId}，请查看私聊消息`);
+      }
+    } else {
+      // 发送失败，直接在当前对话返回（降级处理）
+      seal.replyToSender(ctx, msg, tokenMsg);
+    }
   }
 };
 
@@ -347,7 +424,7 @@ const CommandHandler = {
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
 cmd.help = `
-食灵帮助 v3.1
+食灵帮助 v3.2
 
 【推荐】
 .食灵/饭笥 吃什么 - 根据时间推荐
@@ -366,6 +443,9 @@ cmd.help = `
 .食灵 饮单 - 查看饮品菜单
 .食灵 随机菜单 - 随机推荐各时段
 .食灵 随机饮单 - 随机推荐各时段饮品
+
+【登录】
+.食灵 登录 - 获取管理面板登录Token（私聊发送）
 
 【其他】
 .食灵 刷新 - 强制从云端同步
@@ -392,14 +472,19 @@ cmd.solve = async (ctx, msg, argv) => {
     return res;
   }
   
-  for (const [key, period] of Object.entries(CONFIG.periods.food.map)) {
+  if (text === '登录') {
+    await CommandHandler.handleLogin(ctx, msg);
+    return res;
+  }
+  
+  for (const [key] of Object.entries(CONFIG.periods.food.map)) {
     if (text === key + '吃什么') {
       await CommandHandler.handleRecommend(ctx, msg, 'food', key);
       return res;
     }
   }
   
-  for (const [key, period] of Object.entries(CONFIG.periods.drink.map)) {
+  for (const [key] of Object.entries(CONFIG.periods.drink.map)) {
     if (text === key + '喝什么') {
       await CommandHandler.handleRecommend(ctx, msg, 'drink', key);
       return res;
