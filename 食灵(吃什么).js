@@ -2,7 +2,7 @@
 // @name       食灵
 // @author      御铭茗
 // @version     3.2.0
-// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单同步，优化国内访问
+// @description 不知道吃什么/喝什么？问问饭笥大人吧～支持云菜单
 // @timestamp   1743456000
 // @license     Apache-2
 // @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E9%A3%9F%E7%81%B5(%E5%90%83%E4%BB%80%E4%B9%88).js
@@ -29,13 +29,13 @@ const CONFIG = {
     'https://raw.githubusercontent.com/MOYIre/shiling-data/master/menu.json'
   ],
   
-  // 缓存时间（毫秒）- 5分钟
+  // 缓存时间（毫秒）5分钟
   cacheTTL: 5 * 60 * 1000,
   
-  // 登录Token有效期（毫秒）- 10分钟
+  // 登录Token有效期 10分钟
   tokenTTL: 10 * 60 * 1000,
   
-  // 大师列表
+  // 食灵列表
   masters: ['铭茗', '猫掌柜'],
   
   // 时段映射
@@ -96,13 +96,13 @@ const Utils = {
     return this.base64Encode(data);
   },
   
-  // 获取用户QQ号
+  // 获取QQ号
   getUserId(ctx) {
     try {
-      // 尝试从消息中获取用户ID
+      // 从消息中获取用户ID
       const userId = ctx.player?.userId || ctx.message?.sender?.userId;
       if (userId) {
-        // 去除平台前缀（如QQ:12345 -> 12345）
+        // 去除平台前缀（QQ:12345 -> 12345）
         return userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
       }
       return null;
