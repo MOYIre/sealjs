@@ -294,27 +294,34 @@ const CommandHandler = {
     return seal.ext.newCmdExecuteResult(true);
   },
   
-  handleLogin(ctx, msg) {
-    let userId = '';
-    try {
-      userId = ctx.player?.userId || ctx.message?.sender?.userId || '';
-    } catch {}
-    if (!userId) {
-      seal.replyToSender(ctx, msg, '无法获取用户信息');
-      return;
-    }
-    userId = userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
-    
-    const admins = DataManager.cache?.admins || [];
-    if (!admins.includes(userId)) {
-      seal.replyToSender(ctx, msg, '您不是管理员，无法获取登录Token');
-      return;
-    }
-    
-    const exp = Date.now() + CONFIG.tokenTTL;
-    const sig = btoa(userId + exp + 'shiling').slice(0, 16);
-    const token = btoa(JSON.stringify({ qq: userId, exp, sig }));
-    seal.replyToSender(ctx, msg, `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n管理面板: https://shiling.xiaocui.icu`);
+handleLogin(ctx, msg) {
+    // 先获取云端数据
+    (async () => {
+      await DataManager.fetchCloud();
+      
+      let userId = '';
+      try {
+        userId = ctx.player?.userId || ctx.message?.sender?.userId || '';
+      } catch {}
+      
+      if (!userId) {
+        seal.replyToSender(ctx, msg, '无法获取用户信息');
+        return;
+      }
+      userId = userId.replace(/^(QQ|qq|QQ:|qq:)/i, '');
+      
+      const admins = DataManager.cache?.admins || [];
+      if (!admins.includes(userId)) {
+        seal.replyToSender(ctx, msg, `您不是管理员，无法获取登录Token
+当前管理员: ${admins.join(', ') || '无'}`);
+        return;
+      }
+      
+      const exp = Date.now() + CONFIG.tokenTTL;
+      const sig = btoa(userId + exp + 'shiling').slice(0, 16);
+      const token = btoa(JSON.stringify({ qq: userId, exp, sig }));
+      seal.replyToSender(ctx, msg, `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n管理面板: https://shiling.xiaocui.icu`);
+    })();
   }
 };
 
