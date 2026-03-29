@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.9.0
+// @version     3.10.0
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,19 +10,16 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.9.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.10.0');
   seal.ext.register(ext);
 }
-
-// 注册配置项
-seal.ext.registerStringConfig(ext, 'gistToken', '', 'GitHub Token(需gist权限,用于提交审核)');
-seal.ext.registerStringConfig(ext, 'gistId', 'a9f8a81d1ec3498c0d7b7afc24f43794', 'Gist ID');
 
 const CONFIG = {
   cloudUrls: [
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
     'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json'
   ],
+  kvApi: 'https://shiling.xiaocui.icu/api/pending',
   tokenTTL: 10 * 60 * 1000,
   masters: ['铭茗', '猫掌柜'],
   periods: {
@@ -127,67 +124,21 @@ const Picker = {
   }
 };
 
-// 提交待审核请求到Gist
+// 提交到KV存储
 async function submitPending(action, type, period, name) {
-  const token = seal.ext.getStringConfig(ext, 'gistToken');
-  const gistId = seal.ext.getStringConfig(ext, 'gistId');
-  
-  if (!token) {
-    return { ok: false, msg: '未配置GitHub Token，请联系骰主' };
-  }
-  
   try {
-    // 获取当前数据
-    const getRes = await fetch('https://api.github.com/gists/' + gistId, {
-      headers: { 'Authorization': 'token ' + token }
+    const res = await fetch(CONFIG.kvApi, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, type, period, name })
     });
-    if (!getRes.ok) throw new Error('获取数据失败');
-    
-    const gist = await getRes.json();
-    const content = JSON.parse(gist.files['menu.json'].content);
-    
-    // 添加待审核
-    if (!content.pendingRequests) content.pendingRequests = [];
-    
-    // 检查重复
-    const exists = content.pendingRequests.some(r => 
-      r.action === action && r.type === type && r.period === period && r.name === name
-    );
-    if (exists) {
-      return { ok: false, msg: '该申请已存在' };
-    }
-    
-    content.pendingRequests.push({
-      action, type, period, name,
-      time: new Date().toISOString()
-    });
-    
-    // 更新Gist
-    const updateRes = await fetch('https://api.github.com/gists/' + gistId, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': 'token ' + token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        files: {
-          'menu.json': { content: JSON.stringify(content, null, 2) }
-        }
-      })
-    });
-    
-    if (!updateRes.ok) throw new Error('更新失败');
-    
-    // 刷新CDN
-    fetch('https://purge.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json').catch(() => {});
-    
-    return { ok: true, msg: '提交成功，等待审核' };
+    const result = await res.json();
+    return result;
   } catch (e) {
-    return { ok: false, msg: '提交失败: ' + e.message };
+    return { error: '网络错误: ' + e.message };
   }
 }
 
-// 解析参数
 function parseArgs(text) {
   const parts = text.split(/\s+/);
   return { action: parts[0] || '', p1: parts[1] || '', rest: parts.slice(2).join(' ') || '' };
@@ -195,7 +146,7 @@ function parseArgs(text) {
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 提交新菜\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token\n时段: 早餐/午餐/晚餐/夜宵(可选,不填进通用池)';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -288,7 +239,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('加菜', 'food', period || 'extra', name);
-      seal.replyToSender(ctx, msg, result.msg);
+      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -306,7 +257,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('删菜', 'food', period, args.rest);
-      seal.replyToSender(ctx, msg, result.msg);
+      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -320,7 +271,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('加饮', 'drink', 'all', name);
-      seal.replyToSender(ctx, msg, result.msg);
+      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -334,7 +285,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('删饮', 'drink', 'all', name);
-      seal.replyToSender(ctx, msg, result.msg);
+      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
