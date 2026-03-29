@@ -139,7 +139,7 @@ function parseArgs(text) {
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 <时段> <菜名> - 提交新菜\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <时段> <饮名> - 提交新饮\n.食灵 删饮 <时段> <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token\n时段: 早餐/午餐/晚餐/夜宵 或 早茶/下午茶/晚茶/夜茶';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 添加菜品(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 添加饮品\n.食灵 删饮 <饮名> - 删除饮品\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -254,36 +254,76 @@ cmd.solve = (ctx, msg, cmdArgs) => {
   // 加菜/删菜/加饮/删饮
   const args = parseArgs(text);
   const periodMap = {
-    '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight',
-    '早茶': 'morning', '下午茶': 'afternoon', '晚茶': 'evening', '夜茶': 'night'
+    '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight'
   };
   
-  if (['加菜', '删菜', '加饮', '删饮'].includes(args.action)) {
-    const type = (args.action === '加菜' || args.action === '删菜') ? 'food' : 'drink';
+  if (args.action === '加菜') {
+    const period = periodMap[args.period];
+    const name = period ? args.name : (args.period + ' ' + args.name).trim();
+    
+    if (!name) {
+      seal.replyToSender(ctx, msg, '请指定菜名\n示例: .食灵 加菜 早餐 豆浆油条\n示例: .食灵 加菜 炸鸡(进通用池)');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    const baseUrl = 'https://shiling.xiaocui.icu';
+    const submitUrl = baseUrl + '?action=加菜&type=food&period=' + (period || 'extra') + '&name=' + encodeURIComponent(name);
+    seal.replyToSender(ctx, msg, 
+      '已收到申请: 加菜 ' + (period ? '[' + args.period + '] ' : '[通用池] ') + name + '\n' +
+      '请点击链接提交: ' + submitUrl);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  if (args.action === '删菜') {
     const period = periodMap[args.period];
     
     if (!period) {
-      const tips = type === 'food' 
-        ? '时段: 早餐/午餐/晚餐/夜宵' 
-        : '时段: 早茶/下午茶/晚茶/夜茶';
-      seal.replyToSender(ctx, msg, '请指定正确时段\n' + tips);
+      seal.replyToSender(ctx, msg, '请指定时段\n时段: 早餐/午餐/晚餐/夜宵\n示例: .食灵 删菜 早餐 豆浆油条');
       return seal.ext.newCmdExecuteResult(true);
     }
     
     if (!args.name) {
-      seal.replyToSender(ctx, msg, '请指定名称\n示例: .食灵 ' + args.action + ' ' + args.period + ' 炸酱面');
+      seal.replyToSender(ctx, msg, '请指定菜名\n示例: .食灵 删菜 早餐 豆浆油条');
       return seal.ext.newCmdExecuteResult(true);
     }
     
-    // 构建提交链接
     const baseUrl = 'https://shiling.xiaocui.icu';
-    const submitUrl = baseUrl + '?action=' + encodeURIComponent(args.action) + 
-                      '&type=' + type + '&period=' + period + '&name=' + encodeURIComponent(args.name);
-    
+    const submitUrl = baseUrl + '?action=删菜&type=food&period=' + period + '&name=' + encodeURIComponent(args.name);
     seal.replyToSender(ctx, msg, 
-      '已收到申请: ' + args.action + ' [' + args.period + '] ' + args.name + '\n' +
-      '请点击链接提交审核: ' + submitUrl + '\n' +
-      '或访问 ' + baseUrl + ' 手动提交');
+      '已收到申请: 删菜 [' + args.period + '] ' + args.name + '\n' +
+      '请点击链接提交: ' + submitUrl);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  if (args.action === '加饮') {
+    const name = (args.period + ' ' + args.name).trim();
+    
+    if (!name) {
+      seal.replyToSender(ctx, msg, '请指定饮名\n示例: .食灵 加饮 奶茶');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    const baseUrl = 'https://shiling.xiaocui.icu';
+    const submitUrl = baseUrl + '?action=加饮&type=drink&period=all&name=' + encodeURIComponent(name);
+    seal.replyToSender(ctx, msg, 
+      '已收到申请: 加饮品 ' + name + '\n' +
+      '请点击链接提交: ' + submitUrl);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
+  if (args.action === '删饮') {
+    const name = (args.period + ' ' + args.name).trim();
+    
+    if (!name) {
+      seal.replyToSender(ctx, msg, '请指定饮名\n示例: .食灵 删饮 奶茶');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    const baseUrl = 'https://shiling.xiaocui.icu';
+    const submitUrl = baseUrl + '?action=删饮&type=drink&period=all&name=' + encodeURIComponent(name);
+    seal.replyToSender(ctx, msg, 
+      '已收到申请: 删饮品 ' + name + '\n' +
+      '请点击链接提交: ' + submitUrl);
     return seal.ext.newCmdExecuteResult(true);
   }
   
