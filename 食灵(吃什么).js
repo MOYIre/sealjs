@@ -563,7 +563,15 @@ cmd.solve = async (ctx, msg, argv) => {
 
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
-ext.cmdMap['吃什么'] = cmd;
+
+// 注册 .吃什么 快捷命令
+const cmdEat = seal.ext.newCmdItemInfo();
+cmdEat.name = '吃什么';
+cmdEat.solve = async (ctx, msg, argv) => {
+  await CommandHandler.handleRecommend(ctx, msg, 'food');
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['吃什么'] = cmdEat;
 
 const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
