@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.6.0
+// @version     3.7.0
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.6.0');
+  ext = seal.ext.new('食灵', '铭茗', '3.7.0');
   seal.ext.register(ext);
 }
 
@@ -19,7 +19,6 @@ const CONFIG = {
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
     'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json'
   ],
-  cacheTTL: 5 * 60 * 1000,
   tokenTTL: 10 * 60 * 1000,
   masters: ['铭茗', '猫掌柜'],
   periods: {
@@ -49,7 +48,6 @@ const DEFAULT_MENUS = {
   }
 };
 
-// 数据管理
 const Data = {
   cache: null,
   cacheTime: 0,
@@ -71,39 +69,12 @@ const Data = {
   
   saveLocal(d) { ext.storageSet('localData', JSON.stringify(d)); },
   
-  fetchCloud(callback) {
-    const http = seal.http.new();
-    let tried = 0;
-    
-    function tryNext(idx) {
-      if (idx >= CONFIG.cloudUrls.length) {
-        if (callback) callback(null);
-        return;
-      }
-      const url = CONFIG.cloudUrls[idx];
-      http.simpleGet(url, (res, err) => {
-        if (!err && res && res.body) {
-          try {
-            Data.cache = JSON.parse(res.body);
-            Data.cacheTime = Date.now();
-            if (callback) callback(Data.cache);
-            return;
-          } catch (e) {}
-        }
-        tryNext(idx + 1);
-      });
-    }
-    tryNext(0);
-  },
-  
-  fetchCloudSync() {
-    // 同步方式获取（阻塞，用于简单场景）
-    const http = seal.http.new();
+  async fetchCloud() {
     for (const url of CONFIG.cloudUrls) {
       try {
-        const res = http.simpleGet(url);
-        if (res && res.body) {
-          this.cache = JSON.parse(res.body);
+        const res = await fetch(url);
+        if (res.ok) {
+          this.cache = await res.json();
           this.cacheTime = Date.now();
           return this.cache;
         }
@@ -125,7 +96,6 @@ const Data = {
   }
 };
 
-// 选择器
 const Picker = {
   pick(menus, type, period) {
     const list = menus[type]?.[period] || [];
@@ -157,7 +127,6 @@ const Picker = {
   }
 };
 
-// 主命令
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
 cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单 - 查看\n.食灵 刷新 - 刷新云端数据\n.食灵 登录 - 获取管理Token';
@@ -194,37 +163,47 @@ cmd.solve = (ctx, msg, cmdArgs) => {
   
   if (text === '登录') {
     seal.replyToSender(ctx, msg, '验证中...');
-    Data.fetchCloud((data) => {
-      if (!data) {
-        seal.replyToSender(ctx, msg, '获取数据失败');
-        return;
+    (async () => {
+      try {
+        const data = await Data.fetchCloud();
+        if (!data) {
+          seal.replyToSender(ctx, msg, '获取数据失败');
+          return;
+        }
+        let uid = '';
+        try { uid = ctx.player?.userId || ''; } catch {}
+        if (!uid) {
+          seal.replyToSender(ctx, msg, '无法获取用户信息');
+          return;
+        }
+        uid = uid.replace(/^(QQ:?)?/i, '');
+        const admins = data.admins || [];
+        if (!admins.includes(uid)) {
+          seal.replyToSender(ctx, msg, '非管理员');
+          return;
+        }
+        const exp = Date.now() + CONFIG.tokenTTL;
+        const sig = btoa(uid + exp + 'shiling').slice(0, 16);
+        const token = btoa(JSON.stringify({ qq: uid, exp, sig }));
+        seal.replyToSender(ctx, msg, 'Token: ' + token);
+      } catch (e) {
+        seal.replyToSender(ctx, msg, '错误: ' + e.message);
       }
-      let uid = '';
-      try { uid = ctx.player?.userId || ''; } catch {}
-      if (!uid) {
-        seal.replyToSender(ctx, msg, '无法获取用户信息');
-        return;
-      }
-      uid = uid.replace(/^(QQ:?)?/i, '');
-      const admins = data.admins || [];
-      if (!admins.includes(uid)) {
-        seal.replyToSender(ctx, msg, '非管理员');
-        return;
-      }
-      const exp = Date.now() + CONFIG.tokenTTL;
-      const sig = btoa(uid + exp + 'shiling').slice(0, 16);
-      const token = btoa(JSON.stringify({ qq: uid, exp, sig }));
-      seal.replyToSender(ctx, msg, 'Token: ' + token);
-    });
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (text === '刷新') {
     seal.replyToSender(ctx, msg, '刷新中...');
-    Data.cache = null;
-    Data.fetchCloud((data) => {
-      seal.replyToSender(ctx, msg, data ? '已刷新菜单' : '刷新失败');
-    });
+    (async () => {
+      try {
+        Data.cache = null;
+        const data = await Data.fetchCloud();
+        seal.replyToSender(ctx, msg, data ? '已刷新菜单' : '刷新失败');
+      } catch (e) {
+        seal.replyToSender(ctx, msg, '错误: ' + e.message);
+      }
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -262,7 +241,6 @@ cmd.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
-// 快捷命令
 const cmdEat = seal.ext.newCmdItemInfo();
 cmdEat.name = '吃什么';
 cmdEat.solve = (ctx, msg) => {
@@ -289,5 +267,5 @@ cmdDrink.solve = (ctx, msg) => {
 };
 ext.cmdMap['喝什么'] = cmdDrink;
 
-// 初始化加载
-Data.fetchCloud(() => {});
+// 初始化
+(async () => { await Data.fetchCloud(); })();
