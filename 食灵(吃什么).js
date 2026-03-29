@@ -563,6 +563,7 @@ cmd.solve = async (ctx, msg, argv) => {
 
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
+ext.cmdMap['吃什么'] = cmd;
 
 const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
