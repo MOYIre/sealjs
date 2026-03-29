@@ -403,7 +403,7 @@ const CommandHandler = {
     const token = Utils.generateLoginToken(userId);
     
     // 构造私聊消息
-    const tokenMsg = `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n请前往管理面板输入此Token登录\n管理面板地址: https://moyire.github.io/shiling-admin/`;
+    const tokenMsg = `【食灵管理面板登录Token】\n\nToken: ${token}\n\n有效期: 10分钟\n请前往管理面板输入此Token登录\n管理面板地址: https://shiling.xiaocui.icu`;
     
     // 发送私聊（无论当前是群聊还是私聊）
     const sent = Utils.sendPrivateMessage(userId, tokenMsg);
