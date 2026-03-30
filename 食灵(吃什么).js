@@ -273,7 +273,11 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('加菜', 'food', period || 'extra', name, qq);
-      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
+      if (result.success) {
+        seal.replyToSender(ctx, msg, '提交成功，等待审核\n查看审核进度: shiling.xiaocui.icu/history.html' + (qq ? '?qq=' + qq : ''));
+      } else {
+        seal.replyToSender(ctx, msg, result.error || '提交失败');
+      }
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -291,7 +295,11 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('删菜', 'food', period, args.rest, qq);
-      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
+      if (result.success) {
+        seal.replyToSender(ctx, msg, '提交成功，等待审核\n查看审核进度: shiling.xiaocui.icu/history.html' + (qq ? '?qq=' + qq : ''));
+      } else {
+        seal.replyToSender(ctx, msg, result.error || '提交失败');
+      }
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -305,7 +313,11 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('加饮', 'drink', 'all', name, qq);
-      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
+      if (result.success) {
+        seal.replyToSender(ctx, msg, '提交成功，等待审核\n查看审核进度: shiling.xiaocui.icu/history.html' + (qq ? '?qq=' + qq : ''));
+      } else {
+        seal.replyToSender(ctx, msg, result.error || '提交失败');
+      }
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
@@ -319,7 +331,11 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
       const result = await submitPending('删饮', 'drink', 'all', name, qq);
-      seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
+      if (result.success) {
+        seal.replyToSender(ctx, msg, '提交成功，等待审核\n查看审核进度: shiling.xiaocui.icu/history.html' + (qq ? '?qq=' + qq : ''));
+      } else {
+        seal.replyToSender(ctx, msg, result.error || '提交失败');
+      }
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
