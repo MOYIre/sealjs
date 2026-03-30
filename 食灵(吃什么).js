@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     3.10.0
+// @version     5.1.2
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,8 +10,20 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '3.10.0');
+  ext = seal.ext.new('食灵', '铭茗', '5.1.2');
   seal.ext.register(ext);
+}
+
+// 注册配置项
+seal.ext.registerTemplateConfig(ext, '食灵名字', ['铭茗', '猫猫'], '随机选择名字拼接，显示在推荐前缀');
+
+// 获取配置
+function getNames() {
+  try {
+    return seal.ext.getTemplateConfig(ext, '食灵名字') || ['铭茗', '猫猫'];
+  } catch {
+    return ['铭茗', '猫猫'];
+  }
 }
 
 const CONFIG = {
@@ -21,7 +33,6 @@ const CONFIG = {
   ],
   kvApi: 'https://shiling.xiaocui.icu/api/pending',
   tokenTTL: 10 * 60 * 1000,
-  masters: ['铭茗', '猫掌柜'],
   periods: {
     food: {
       names: { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', midnight: '夜宵' },
@@ -119,23 +130,45 @@ const Picker = {
   },
   
   getPrefix(name) {
-    const m = CONFIG.masters[Math.floor(Math.random() * CONFIG.masters.length)];
-    return '今日' + name + m + '推荐: ';
+    const names = getNames();
+    // 随机选择1-2个名字拼接
+    const count = Math.random() < 0.3 ? 2 : 1;
+    const shuffled = [...names].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, count).join('');
+    return '今日' + name + selected + '推荐: ';
+  },
+  
+  getDrinkPrefix() {
+    const names = getNames();
+    const count = Math.random() < 0.3 ? 2 : 1;
+    const shuffled = [...names].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, count).join('');
+    return '今日' + selected + '推荐饮品: ';
   }
 };
 
 // 提交到KV存储
-async function submitPending(action, type, period, name) {
+async function submitPending(action, type, period, name, qq) {
   try {
     const res = await fetch(CONFIG.kvApi, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, type, period, name })
+      body: JSON.stringify({ action, type, period, name, qq })
     });
     const result = await res.json();
     return result;
   } catch (e) {
     return { error: '网络错误: ' + e.message };
+  }
+}
+
+// 获取用户QQ号
+function getQQ(ctx) {
+  try {
+    let uid = ctx.player?.userId || '';
+    return uid.replace(/^(QQ:?)?/i, '');
+  } catch {
+    return '';
   }
 }
 
@@ -174,7 +207,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       ...(menus.drink.night || [])
     ];
     const choice = all[Math.floor(Math.random() * all.length)];
-    seal.replyToSender(ctx, msg, '今日推荐饮品: ' + (choice || '无'));
+    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (choice || '无'));
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -228,6 +261,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
   // 加菜/删菜/加饮/删饮
   const args = parseArgs(text);
   const periodMap = { '早餐': 'breakfast', '午餐': 'lunch', '晚餐': 'dinner', '夜宵': 'midnight' };
+  const qq = getQQ(ctx);
   
   if (args.action === '加菜') {
     const period = periodMap[args.p1];
@@ -238,7 +272,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
-      const result = await submitPending('加菜', 'food', period || 'extra', name);
+      const result = await submitPending('加菜', 'food', period || 'extra', name, qq);
       seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
@@ -256,7 +290,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
-      const result = await submitPending('删菜', 'food', period, args.rest);
+      const result = await submitPending('删菜', 'food', period, args.rest, qq);
       seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
@@ -270,7 +304,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
-      const result = await submitPending('加饮', 'drink', 'all', name);
+      const result = await submitPending('加饮', 'drink', 'all', name, qq);
       seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
@@ -284,7 +318,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     seal.replyToSender(ctx, msg, '提交中...');
     (async () => {
-      const result = await submitPending('删饮', 'drink', 'all', name);
+      const result = await submitPending('删饮', 'drink', 'all', name, qq);
       seal.replyToSender(ctx, msg, result.success ? '提交成功，等待审核' : (result.error || '提交失败'));
     })();
     return seal.ext.newCmdExecuteResult(true);
@@ -312,7 +346,7 @@ cmdDrink.name = '喝什么';
 cmdDrink.solve = (ctx, msg) => {
   const menus = Data.getMenus();
   const all = [...(menus.drink.morning||[]), ...(menus.drink.afternoon||[]), ...(menus.drink.evening||[]), ...(menus.drink.night||[])];
-  seal.replyToSender(ctx, msg, '今日推荐饮品: ' + (all[Math.floor(Math.random()*all.length)] || '无'));
+  seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (all[Math.floor(Math.random()*all.length)] || '无'));
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
