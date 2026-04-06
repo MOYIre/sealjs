@@ -27,12 +27,18 @@ function getNames() {
 }
 
 const CONFIG = {
+  // 数据源：ghproxy优先，fastly.jsdelivr备选，GitHub原始源兜底
   cloudUrls: [
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
+    'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
+    'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
+    'https://raw.githubusercontent.com/MOYIre/shiling-data/master/menu.json',
     'https://cdn.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json'
   ],
   kvApi: 'https://shiling.xiaocui.icu/api/pending',
+  announcementApi: 'https://shiling.xiaocui.icu/api/announcement',
   tokenTTL: 10 * 60 * 1000,
+  cacheTTL: 5 * 60 * 1000, // 缓存5分钟过期
   periods: {
     food: {
       names: { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', midnight: '夜宵' },
@@ -59,6 +65,7 @@ const DEFAULT_MENUS = {
 const Data = {
   cache: null,
   cacheTime: 0,
+  fetching: false, // 防止并发刷新
   
   getPeriod() {
     const h = new Date().getHours();
@@ -77,21 +84,42 @@ const Data = {
   
   saveLocal(d) { ext.storageSet('localData', JSON.stringify(d)); },
   
+  // 检查缓存是否需要刷新
+  needRefresh() {
+    if (!this.cache) return true;
+    if (Date.now() - this.cacheTime > CONFIG.cacheTTL) return true;
+    return false;
+  },
+  
   async fetchCloud() {
+    if (this.fetching) return this.cache; // 防止并发
+    this.fetching = true;
+    
     for (const url of CONFIG.cloudUrls) {
       try {
         const res = await fetch(url);
         if (res.ok) {
           this.cache = await res.json();
           this.cacheTime = Date.now();
+          this.fetching = false;
           return this.cache;
         }
       } catch (e) {}
     }
+    this.fetching = false;
     return null;
   },
   
-  getMenus() {
+  // 获取菜单，缓存过期时自动刷新
+  async getMenus() {
+    if (this.needRefresh()) {
+      await this.fetchCloud();
+    }
+    return this.merge(this.cache || {}, this.loadLocal());
+  },
+  
+  // 同步版本（用于简单场景，不刷新）
+  getMenusSync() {
     return this.merge(this.cache || {}, this.loadLocal());
   },
   
@@ -162,6 +190,17 @@ async function submitPending(action, type, period, name, qq) {
   }
 }
 
+// 获取公告
+async function fetchAnnouncement() {
+  try {
+    const res = await fetch(CONFIG.announcementApi);
+    const result = await res.json();
+    return result;
+  } catch (e) {
+    return { error: '网络错误: ' + e.message };
+  }
+}
+
 // 获取用户QQ号
 function getQQ(ctx) {
   try {
@@ -179,53 +218,83 @@ function parseArgs(text) {
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
   
   if (!text || text === 'help') {
+    // 异步获取公告并追加到帮助信息后面
+    (async () => {
+      const result = await fetchAnnouncement();
+      if (result.content) {
+        seal.replyToSender(ctx, msg, '【食灵公告】\n' + result.content);
+      }
+    })();
     const res = seal.ext.newCmdExecuteResult(true);
     res.showHelp = true;
     return res;
   }
   
+  if (text === '公告') {
+    (async () => {
+      const result = await fetchAnnouncement();
+      if (result.error) {
+        seal.replyToSender(ctx, msg, '获取公告失败: ' + result.error);
+      } else if (result.content) {
+        const time = result.updatedAt ? '\n更新时间: ' + new Date(result.updatedAt).toLocaleString('zh-CN') : '';
+        seal.replyToSender(ctx, msg, '【食灵公告】\n' + result.content + time);
+      } else {
+        seal.replyToSender(ctx, msg, '暂无公告');
+      }
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  
   if (text === '吃什么') {
-    const menus = Data.getMenus();
-    const period = Data.getPeriod();
-    const choice = Picker.pick(menus, 'food', period);
-    seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (choice || '无数据'));
+    (async () => {
+      const menus = await Data.getMenus();
+      const period = Data.getPeriod();
+      const choice = Picker.pick(menus, 'food', period);
+      seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (choice || '无数据'));
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (text === '喝什么') {
-    const menus = Data.getMenus();
-    const all = [
-      ...(menus.drink.morning || []),
-      ...(menus.drink.afternoon || []),
-      ...(menus.drink.evening || []),
-      ...(menus.drink.night || [])
-    ];
-    const choice = all[Math.floor(Math.random() * all.length)];
-    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (choice || '无'));
+    (async () => {
+      const menus = await Data.getMenus();
+      const all = [
+        ...(menus.drink.morning || []),
+        ...(menus.drink.afternoon || []),
+        ...(menus.drink.evening || []),
+        ...(menus.drink.night || [])
+      ];
+      const choice = all[Math.floor(Math.random() * all.length)];
+      seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (choice || '无'));
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (text === '菜单') {
-    const m = Data.getMenus();
-    const lines = ['=== 菜单 ==='];
-    for (const p of CONFIG.periods.food.order) {
-      lines.push(CONFIG.periods.food.names[p] + ': ' + (m.food[p] || []).join('、'));
-    }
-    if (m.extraPool?.length) lines.push('通用池: ' + m.extraPool.join('、'));
-    seal.replyToSender(ctx, msg, lines.join('\n'));
+    (async () => {
+      const m = await Data.getMenus();
+      const lines = ['=== 菜单 ==='];
+      for (const p of CONFIG.periods.food.order) {
+        lines.push(CONFIG.periods.food.names[p] + ': ' + (m.food[p] || []).join('、'));
+      }
+      if (m.extraPool?.length) lines.push('通用池: ' + m.extraPool.join('、'));
+      seal.replyToSender(ctx, msg, lines.join('\n'));
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
   if (text === '饮单') {
-    const m = Data.getMenus();
-    const all = [...(m.drink.morning||[]), ...(m.drink.afternoon||[]), ...(m.drink.evening||[]), ...(m.drink.night||[])].filter((v,i,a)=>a.indexOf(v)===i);
-    seal.replyToSender(ctx, msg, '=== 饮品 ===\n' + (all.join('、') || '无'));
+    (async () => {
+      const m = await Data.getMenus();
+      const all = [...(m.drink.morning||[]), ...(m.drink.afternoon||[]), ...(m.drink.evening||[]), ...(m.drink.night||[])].filter((v,i,a)=>a.indexOf(v)===i);
+      seal.replyToSender(ctx, msg, '=== 饮品 ===\n' + (all.join('、') || '无'));
+    })();
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -350,9 +419,11 @@ ext.cmdMap['饭笥'] = cmd;
 const cmdEat = seal.ext.newCmdItemInfo();
 cmdEat.name = '吃什么';
 cmdEat.solve = (ctx, msg) => {
-  const menus = Data.getMenus();
-  const period = Data.getPeriod();
-  seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (Picker.pick(menus, 'food', period) || '无'));
+  (async () => {
+    const menus = await Data.getMenus();
+    const period = Data.getPeriod();
+    seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (Picker.pick(menus, 'food', period) || '无'));
+  })();
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['吃什么'] = cmdEat;
@@ -360,9 +431,11 @@ ext.cmdMap['吃什么'] = cmdEat;
 const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
 cmdDrink.solve = (ctx, msg) => {
-  const menus = Data.getMenus();
-  const all = [...(menus.drink.morning||[]), ...(menus.drink.afternoon||[]), ...(menus.drink.evening||[]), ...(menus.drink.night||[])];
-  seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (all[Math.floor(Math.random()*all.length)] || '无'));
+  (async () => {
+    const menus = await Data.getMenus();
+    const all = [...(menus.drink.morning||[]), ...(menus.drink.afternoon||[]), ...(menus.drink.evening||[]), ...(menus.drink.night||[])];
+    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (all[Math.floor(Math.random()*all.length)] || '无'));
+  })();
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
