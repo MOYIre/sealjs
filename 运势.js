@@ -5,7 +5,7 @@
 // @description 猫掌柜六爻卜卦
 // @timestamp   1742716800
 // @license     Apache-2
-// @updateUrl   https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/运势.js
+// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/运势.js
 // ==/UserScript==
 
 let ext = seal.ext.find('猫掌柜运势')

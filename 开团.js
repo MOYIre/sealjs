@@ -4,7 +4,7 @@
 // @version     2.0.0
 // @description 支持分钟数/指定时刻开团，自定义文本，任务持久化，查看和取消
 // @timestamp   1742716800
-// @updateUrl   https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/开团.js
+// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/开团.js
 // ==/UserScript==
 if (!seal.ext.find("提灯小僧")) {
   const ext = seal.ext.new("提灯小僧", "铭茗", "2.0.0");
