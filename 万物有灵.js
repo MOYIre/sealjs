@@ -333,7 +333,7 @@ cmd.solve = (ctx, msg, argv) => {
         data.pets.push(wildPet);
         save();
         // 扩展功能：记录图鉴和掉落
-        if (global.WanwuYoulingExt) {
+        if (typeof WanwuYoulingExt !== 'undefined') {
           WanwuYoulingExt.recordPokedex(uid, wildPet.species);
           const drop = WanwuYoulingExt.handleDrop(uid);
           if (drop) logs.push(drop);
@@ -469,7 +469,7 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.battles++;
         logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
         // 扩展功能：对战掉落
-        if (global.WanwuYoulingExt && isNPC) {
+        if (typeof WanwuYoulingExt !== 'undefined' && isNPC) {
           const drop = WanwuYoulingExt.handleDrop(uid);
           if (drop) logs.push(drop);
         }
@@ -674,4 +674,7 @@ const WanwuYouling = {
 
 if (typeof global !== 'undefined') {
   global.WanwuYouling = WanwuYouling;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.WanwuYouling = WanwuYouling;
 }
