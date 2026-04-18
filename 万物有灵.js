@@ -290,7 +290,7 @@ cmd.help = `【万物有灵】
 .宠物 休息 <编号> - 恢复精力
 .宠物 改名 <编号> <名字> - 改名
 .宠物 学习 <编号> - 学习技能
-.宠物 对战 <编号> [编号/@人] - 对战
+.宠物 对战 <编号> [编号/@人] - 对战(可PVP)
 .宠物 育种 <编号> <编号> - 育种
 .宠物 进化 <编号> - 进化
 .宠物 出售 <编号> - 卖给机构
@@ -301,8 +301,7 @@ cmd.help = `【万物有灵】
 .宠物 探险状态 - 查看探险状态
 .宠物 打工 <编号> <类型> - 派宠物打工
 .宠物 打工状态 - 查看打工状态
-.宠物 竞技场 - 查看竞技场
-.宠物 挑战 @人 - 挑战玩家`;
+.宠物 竞技场 - 查看竞技场积分`;
 
 cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
@@ -466,10 +465,15 @@ cmd.solve = (ctx, msg, argv) => {
 
     let pet2;
     let isNPC = true;
+    let targetUid = null;
+    let targetData = null;
 
-    if (p2 && p2.startsWith('@')) {
-      const targetUid = p2.slice(1);
-      const targetData = DB.get(targetUid);
+    // 检查是否@了其他玩家
+    const atList = ctx.atInfo || [];
+    if (atList.length > 0) {
+      targetUid = atList[0].userId;
+      if (targetUid === uid) return reply('不能和自己对战');
+      targetData = DB.get(targetUid);
       if (!targetData.pets.length) return reply('对方没有宠物');
       pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
       isNPC = false;
@@ -495,12 +499,22 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.sp++;
         pet1.battles++;
         logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
-        // 对战掉落(NPC对战)
+        
+        // NPC对战掉落
         if (isNPC) {
           const gold = Math.floor(Math.random() * 41) + 10;
           data.money += gold;
           logs.push(`获得 ${gold} 金币`);
+        } else {
+          // PVP竞技场积分
+          const gain = Math.floor(Math.random() * 31) + 20;
+          data.arenaRank = (data.arenaRank || 1000) + gain;
+          data.arenaWins = (data.arenaWins || 0) + 1;
+          targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - gain);
+          DB.save(targetUid, targetData);
+          logs.push(`竞技场积分 +${gain}`);
         }
+        
         const expNeed = pet1.level * 100;
         if (pet1.exp >= expNeed) {
           pet1.exp -= expNeed;
@@ -515,6 +529,15 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.hp = Math.max(0, pet1.hp - 10);
         pet1.battles++;
         logs.push(`${pet1.name} 战败，损失 10 点生命`);
+        
+        // PVP失败扣积分
+        if (!isNPC && targetData) {
+          const loss = Math.floor(Math.random() * 21) + 10;
+          data.arenaRank = Math.max(0, (data.arenaRank || 1000) - loss);
+          targetData.arenaRank = (targetData.arenaRank || 1000) + loss;
+          DB.save(targetUid, targetData);
+          logs.push(`竞技场积分 -${loss}`);
+        }
       }
 
       if (pet1.evolved && pet1.battles >= pet1.maxBattles) {
@@ -733,44 +756,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   // ==================== 竞技场系统 ====================
   if (action === '竞技场') {
-    return reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}\n\n使用 .宠物 挑战 @人 进行挑战`);
-  }
-
-  if (action === '挑战') {
-    const atList = ctx.atInfo || [];
-    if (!atList.length) return reply('请@要挑战的玩家');
-    const targetUid = atList[0].userId;
-    if (targetUid === uid) return reply('不能挑战自己');
-    if (!data.pets.length) return reply('你没有宠物');
-
-    const targetData = DB.get(targetUid);
-    if (!targetData.pets.length) return reply('对方没有宠物');
-
-    const myPet = data.pets.reduce((a, b) => PetFactory.power(a) > PetFactory.power(b) ? a : b);
-    const theirPet = targetData.pets.reduce((a, b) => PetFactory.power(a) > PetFactory.power(b) ? a : b);
-    const myPetCopy = JSON.parse(JSON.stringify(myPet));
-    const theirPetCopy = JSON.parse(JSON.stringify(theirPet));
-    const result = Battle.run(myPetCopy, theirPetCopy);
-
-    const lines = [`【竞技场挑战】`, `${myPet.name} VS ${theirPet.name}`, ''];
-    result.logs.slice(0, 5).forEach(l => lines.push(l));
-    lines.push('');
-
-    if (result.winner === myPetCopy) {
-      const gain = Math.floor(Math.random() * 31) + 20;
-      data.arenaRank = (data.arenaRank || 1000) + gain;
-      data.arenaWins = (data.arenaWins || 0) + 1;
-      targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - gain);
-      lines.push(`胜利！积分 +${gain}`);
-    } else {
-      const loss = Math.floor(Math.random() * 21) + 10;
-      data.arenaRank = Math.max(0, (data.arenaRank || 1000) - loss);
-      targetData.arenaRank = (targetData.arenaRank || 1000) + loss;
-      lines.push(`失败，积分 -${loss}`);
-    }
-    save();
-    DB.save(targetUid, targetData);
-    return reply(lines.join('\n'));
+    return reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}\n\n使用 .宠物 对战 <编号> @人 进行PVP对战`);
   }
 
   return seal.ext.newCmdExecuteResult(true);
