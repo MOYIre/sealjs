@@ -260,6 +260,7 @@ cmd.help = `【万物有灵】
 .宠物 斗殴 - 用肉身和野外灵兽战斗（可捕捉）
 .宠物 列表 - 查看灵兽
 .宠物 信息 <编号> - 灵兽详情
+.宠物 背包 - 查看背包
 .宠物 喂食 <编号> <食物> - 喂食
 .宠物 休息 <编号> - 恢复精力
 .宠物 改名 <编号> <名字> - 改名
@@ -288,6 +289,7 @@ cmd.solve = (ctx, msg, argv) => {
 .宠物 斗殴 - 用肉身和野外灵兽战斗（可捕捉）
 .宠物 列表 - 查看灵兽
 .宠物 信息 <编号> - 灵兽详情
+.宠物 背包 - 查看背包
 .宠物 喂食 <编号> <食物> - 喂食
 .宠物 休息 <编号> - 恢复精力
 .宠物 改名 <编号> <名字> - 改名
@@ -358,13 +360,33 @@ cmd.solve = (ctx, msg, argv) => {
     return reply(PetFactory.info(pet, parseInt(p1) - 1));
   }
 
+  if (action === '背包') {
+    const lines = [`【我的背包】`, `金币: ${data.money}`];
+    const foodItems = Object.entries(data.food).filter(([_, count]) => count > 0);
+    if (foodItems.length === 0) {
+      lines.push('背包空空如也');
+    } else {
+      lines.push('食物:');
+      for (const [name, count] of foodItems) {
+        const f = FOODS[name];
+        const effects = [];
+        if (f.hp) effects.push(`生命+${f.hp}`);
+        if (f.atk) effects.push(`攻击+${f.atk}`);
+        if (f.def) effects.push(`防御+${f.def}`);
+        if (f.energy) effects.push(`精力+${f.energy}`);
+        lines.push(`  ${name} x${count} (${effects.join(', ')})`);
+      }
+    }
+    return reply(lines.join('\n'));
+  }
+
   if (action === '喂食') {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的灵兽编号');
     const foodName = p2;
     if (!FOODS[foodName]) return reply(`未知食物，可用: ${Object.keys(FOODS).join('、')}`);
     const food = data.food[foodName] || 0;
-    if (food <= 0) return reply(`你没有 ${foodName}，发送 .宠物 商店 购买`);
+    if (food <= 0) return reply(`你没有 ${foodName}，发送 .宠物 背包 查看拥有的食物`);
     data.food[foodName]--;
     const f = FOODS[foodName];
     pet.hp = Math.min(pet.maxHp, pet.hp + f.hp);
