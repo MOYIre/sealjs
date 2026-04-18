@@ -61,7 +61,7 @@ const SPECIES = {
   '傀儡': { elements: ['岩石', '超能'], baseMod: { hp: 1.4, atk: 0.9, def: 1.4, energy: 0.6 } },
 };
 
-// ==================== 灵兽名字库 ====================
+// ==================== 宠物名字库 ====================
 const PET_NAMES = {
   '火': ['炎', '焰', '烈', '灼', '赤', '红', '焚', '烬', '煌', '炽'],
   '水': ['沧', '澜', '涟', '漪', '渊', '深', '清', '澈', '蓝', '波'],
@@ -257,9 +257,9 @@ const Battle = {
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '宠物';
 cmd.help = `【万物有灵】
-.宠物 斗殴 - 用肉身和野外灵兽战斗（可捕捉）
-.宠物 列表 - 查看灵兽
-.宠物 信息 <编号> - 灵兽详情
+.宠物 斗殴 - 用肉身和野外宠物战斗（可捕捉）
+.宠物 列表 - 查看宠物
+.宠物 信息 <编号> - 宠物详情
 .宠物 背包 - 查看背包
 .宠物 喂食 <编号> <食物> - 喂食
 .宠物 休息 <编号> - 恢复精力
@@ -286,9 +286,9 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === 'help') {
     reply(`【万物有灵】
-.宠物 斗殴 - 用肉身和野外灵兽战斗（可捕捉）
-.宠物 列表 - 查看灵兽
-.宠物 信息 <编号> - 灵兽详情
+.宠物 斗殴 - 用肉身和野外宠物战斗（可捕捉）
+.宠物 列表 - 查看宠物
+.宠物 信息 <编号> - 宠物详情
 .宠物 背包 - 查看背包
 .宠物 喂食 <编号> <食物> - 喂食
 .宠物 休息 <编号> - 恢复精力
@@ -304,7 +304,7 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '斗殴') {
-    if (data.pets.length >= CONFIG.maxPets) return reply(`灵兽已达上限（${CONFIG.maxPets}只）`);
+    if (data.pets.length >= CONFIG.maxPets) return reply(`宠物已达上限（${CONFIG.maxPets}只）`);
 
     const wildPet = PetFactory.create();
 
@@ -344,8 +344,8 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '列表' || action === '') {
-    if (!data.pets.length) return reply('你还没有灵兽，发送 .宠物 斗殴 去捕捉一只');
-    const lines = [`【我的灵兽】(${data.pets.length}/${CONFIG.maxPets})`, `金币: ${data.money}`];
+    if (!data.pets.length) return reply('你还没有宠物，发送 .宠物 斗殴 去捕捉一只');
+    const lines = [`【我的宠物】(${data.pets.length}/${CONFIG.maxPets})`, `金币: ${data.money}`];
     data.pets.forEach((pet, i) => {
       const e = ELEMENT_MARK[pet.element] || '';
       const r = RARITY_MARK[pet.rarity] || '';
@@ -356,7 +356,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '信息') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
     return reply(PetFactory.info(pet, parseInt(p1) - 1));
   }
 
@@ -382,7 +382,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '喂食') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
     const foodName = p2;
     if (!FOODS[foodName]) return reply(`未知食物，可用: ${Object.keys(FOODS).join('、')}`);
     const food = data.food[foodName] || 0;
@@ -399,7 +399,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '休息') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
     const recover = Math.floor(pet.maxEnergy * 0.5);
     pet.energy = Math.min(pet.maxEnergy, pet.energy + recover);
     save();
@@ -408,16 +408,16 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '改名') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
     if (!p2) return reply('请指定新名字');
     pet.name = p2;
     save();
-    return reply(`已将灵兽改名为 ${p2}`);
+    return reply(`已将宠物改名为 ${p2}`);
   }
 
   if (action === '学习') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
     if (pet.sp < 1) return reply('技能点不足，通过对战获取技能点');
     const skill = PetFactory.learnSkill(pet);
     if (!skill) return reply('没有可学习的技能');
@@ -427,9 +427,9 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '对战') {
     const pet1 = getPet(p1);
-    if (!pet1) return reply('请指定正确的灵兽编号');
-    if (pet1.hp <= 0) return reply('灵兽生命值不足，请先喂食恢复');
-    if (pet1.energy < 20) return reply('灵兽精力不足，请先休息或喂食');
+    if (!pet1) return reply('请指定正确的宠物编号');
+    if (pet1.hp <= 0) return reply('宠物生命值不足，请先喂食恢复');
+    if (pet1.energy < 20) return reply('宠物精力不足，请先休息或喂食');
 
     let pet2;
     let isNPC = true;
@@ -437,7 +437,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (p2 && p2.startsWith('@')) {
       const targetUid = p2.slice(1);
       const targetData = DB.get(targetUid);
-      if (!targetData.pets.length) return reply('对方没有灵兽');
+      if (!targetData.pets.length) return reply('对方没有宠物');
       pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
       isNPC = false;
     } else if (p2) {
@@ -494,10 +494,10 @@ cmd.solve = (ctx, msg, argv) => {
   if (action === '育种') {
     const pet1 = getPet(p1);
     const pet2 = getPet(p2);
-    if (!pet1 || !pet2) return reply('请指定两只正确的灵兽编号');
+    if (!pet1 || !pet2) return reply('请指定两只正确的宠物编号');
     if (pet1.id === pet2.id) return reply('不能和自己育种');
-    if (!pet1.canBreed || !pet2.canBreed) return reply('该灵兽无法育种（进化后失去生育能力）');
-    if (data.pets.length >= CONFIG.maxPets) return reply(`灵兽已达上限（${CONFIG.maxPets}只）`);
+    if (!pet1.canBreed || !pet2.canBreed) return reply('该宠物无法育种（进化后失去生育能力）');
+    if (data.pets.length >= CONFIG.maxPets) return reply(`宠物已达上限（${CONFIG.maxPets}只）`);
 
     const child = PetFactory.create();
     if (Math.random() < 0.5) child.species = pet1.species;
@@ -521,8 +521,8 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '进化') {
     const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的灵兽编号');
-    if (pet.evolved) return reply('该灵兽已经进化过了');
+    if (!pet) return reply('请指定正确的宠物编号');
+    if (pet.evolved) return reply('该宠物已经进化过了');
     if (pet.level < CONFIG.evolveLevel) return reply(`等级不足，需要 Lv.${CONFIG.evolveLevel}`);
 
     const rarityOrder = ['普通', '稀有', '超稀有', '传说'];
@@ -549,17 +549,17 @@ cmd.solve = (ctx, msg, argv) => {
   if (action === '出售') {
     const idx = parseInt(p1) - 1;
     const pet = data.pets[idx];
-    if (!pet) return reply('请指定正确的灵兽编号');
+    if (!pet) return reply('请指定正确的宠物编号');
 
     const price = pet.retired ? 50 : (100 + PetFactory.power(pet) * 2);
     data.money += price;
     data.pets.splice(idx, 1);
     save();
-    return reply(`已将 ${pet.name} 卖给灵兽保护协会，获得 ${price} 金币`);
+    return reply(`已将 ${pet.name} 卖给宠物保护协会，获得 ${price} 金币`);
   }
 
   if (action === '商店') {
-    const lines = ['【灵兽商店】', `你的金币: ${data.money}`, '', '【食物】'];
+    const lines = ['【宠物商店】', `你的金币: ${data.money}`, '', '【食物】'];
     for (const [name, f] of Object.entries(FOODS)) {
       const effects = [];
       if (f.hp) effects.push(`生命+${f.hp}`);
@@ -619,7 +619,7 @@ const WanwuYouling = {
   Utils: {
     addPet: (userId, pet) => {
       const data = DB.get(userId);
-      if (data.pets.length >= CONFIG.maxPets) return { success: false, error: '灵兽已达上限' };
+      if (data.pets.length >= CONFIG.maxPets) return { success: false, error: '宠物已达上限' };
       data.pets.push(pet);
       DB.save(userId, data);
       return { success: true, pet };
@@ -627,7 +627,7 @@ const WanwuYouling = {
     removePet: (userId, petId) => {
       const data = DB.get(userId);
       const idx = data.pets.findIndex(p => p.id === petId);
-      if (idx === -1) return { success: false, error: '灵兽不存在' };
+      if (idx === -1) return { success: false, error: '宠物不存在' };
       const pet = data.pets.splice(idx, 1)[0];
       DB.save(userId, data);
       return { success: true, pet };
