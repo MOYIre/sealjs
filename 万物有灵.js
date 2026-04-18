@@ -5,7 +5,7 @@
 // @description 灵兽养成对战系统
 // @timestamp   1744924800
 // @license     Apache-2
-// @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
+// @updateUrl   https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/万物有灵.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵');
