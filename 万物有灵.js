@@ -91,6 +91,16 @@ const FOODS = {
   '烤肉': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30 },
   '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 20 },
   '药水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40 },
+  '牛奶': { hp: 10, atk: 0, def: 2, energy: 15, cost: 15 },
+  '鸡蛋': { hp: 8, atk: 1, def: 1, energy: 12, cost: 12 },
+  '苹果': { hp: 5, atk: 0, def: 0, energy: 20, cost: 8 },
+  '鱼干': { hp: 12, atk: 1, def: 1, energy: 15, cost: 18 },
+  '蜂蜜': { hp: 15, atk: 0, def: 0, energy: 30, cost: 25 },
+  '蘑菇': { hp: 0, atk: 3, def: 0, energy: 10, cost: 20 },
+  '坚果': { hp: 0, atk: 0, def: 5, energy: 5, cost: 15 },
+  '牛排': { hp: 25, atk: 3, def: 3, energy: 30, cost: 50 },
+  '能量棒': { hp: 0, atk: 0, def: 0, energy: 80, cost: 35 },
+  '治疗药': { hp: 80, atk: 0, def: 0, energy: 0, cost: 60 },
 };
 
 const SKILLS = {
