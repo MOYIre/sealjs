@@ -5,7 +5,7 @@
 // @description 猫掌柜AI点评跑团日志，生成图片输出
 // @timestamp   1742754600
 // @license     Apache-2
-// @updateUrl   https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/猫点评.js
+// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/猫点评.js
 // ==/UserScript==
 
 let ext = seal.ext.find('猫点评');
