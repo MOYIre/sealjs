@@ -44,6 +44,21 @@ const SPECIES = {
   '幽灵': { elements: ['超能'], baseMod: { hp: 0.8, atk: 1.1, def: 0.7, energy: 1.4 } },
   '恶魔': { elements: ['火', '超能'], baseMod: { hp: 1, atk: 1.3, def: 0.9, energy: 1 } },
   '魅魔': { elements: ['超能', '火'], baseMod: { hp: 0.9, atk: 1.1, def: 0.8, energy: 1.3 } },
+  '鱼': { elements: ['水', '电'], baseMod: { hp: 0.9, atk: 1, def: 0.9, energy: 1.1 } },
+  '蟹': { elements: ['水', '岩石'], baseMod: { hp: 1.1, atk: 1.1, def: 1.2, energy: 0.8 } },
+  '蜘蛛': { elements: ['草', '超能'], baseMod: { hp: 0.8, atk: 1.3, def: 0.8, energy: 1 } },
+  '蝎': { elements: ['岩石', '火'], baseMod: { hp: 0.9, atk: 1.3, def: 1, energy: 0.9 } },
+  '蝙蝠': { elements: ['超能', '电'], baseMod: { hp: 0.8, atk: 1.1, def: 0.8, energy: 1.2 } },
+  '鹰': { elements: ['电', '火'], baseMod: { hp: 0.8, atk: 1.3, def: 0.7, energy: 1.2 } },
+  '虎': { elements: ['火', '岩石'], baseMod: { hp: 1.1, atk: 1.3, def: 1, energy: 0.9 } },
+  '狮': { elements: ['火', '岩石'], baseMod: { hp: 1.1, atk: 1.2, def: 1, energy: 0.9 } },
+  '豹': { elements: ['电', '草'], baseMod: { hp: 1, atk: 1.3, def: 0.9, energy: 1 } },
+  '牛': { elements: ['岩石', '火'], baseMod: { hp: 1.3, atk: 1.1, def: 1.2, energy: 0.7 } },
+  '马': { elements: ['电', '火'], baseMod: { hp: 1, atk: 1.1, def: 0.9, energy: 1.1 } },
+  '羊': { elements: ['草', '超能'], baseMod: { hp: 1, atk: 0.8, def: 0.9, energy: 1.1 } },
+  '猪': { elements: ['草', '岩石'], baseMod: { hp: 1.2, atk: 0.9, def: 1, energy: 0.9 } },
+  '骷髅': { elements: ['超能', '岩石'], baseMod: { hp: 0.7, atk: 1.2, def: 0.8, energy: 1.1 } },
+  '傀儡': { elements: ['岩石', '超能'], baseMod: { hp: 1.4, atk: 0.9, def: 1.4, energy: 0.6 } },
 };
 
 // ==================== 灵兽名字库 ====================
