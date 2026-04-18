@@ -214,7 +214,7 @@ const PetFactory = {
 };
 
 // ==================== 玩家肉身属性 ====================
-const PLAYER_BASE = { hp: 100, atk: 25, def: 20, energy: 100 };
+const PLAYER_BASE = { hp: 50, atk: 25, def: 20, energy: 100 };
 
 const Battle = {
   calcDmg(atk, def, skill, atkLv, atkEle, defEle) {
@@ -332,6 +332,12 @@ cmd.solve = (ctx, msg, argv) => {
         wildPet.energy = wildPet.maxEnergy;
         data.pets.push(wildPet);
         save();
+        // 扩展功能：记录图鉴和掉落
+        if (global.WanwuYoulingExt) {
+          WanwuYoulingExt.recordPokedex(uid, wildPet.species);
+          const drop = WanwuYoulingExt.handleDrop(uid);
+          if (drop) logs.push(drop);
+        }
       } else {
         logs.push(`\n[失败] 你被 ${wildPet.name}(${wildPet.species}) 打败了，它逃跑了...`);
       }
@@ -462,6 +468,11 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.sp++;
         pet1.battles++;
         logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
+        // 扩展功能：对战掉落
+        if (global.WanwuYoulingExt && isNPC) {
+          const drop = WanwuYoulingExt.handleDrop(uid);
+          if (drop) logs.push(drop);
+        }
         const expNeed = pet1.level * 100;
         if (pet1.exp >= expNeed) {
           pet1.exp -= expNeed;
