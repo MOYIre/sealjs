@@ -283,7 +283,7 @@ cmd.solve = (ctx, msg, argv) => {
   const save = () => DB.save(uid, data);
   const getPet = (idx) => data.pets[parseInt(idx) - 1];
 
-  if (action === '' || action === 'help') {
+  if (action === 'help') {
     const res = seal.ext.newCmdExecuteResult(true);
     res.showHelp = true;
     return res;
@@ -329,7 +329,7 @@ cmd.solve = (ctx, msg, argv) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  if (action === '列表') {
+  if (action === '列表' || action === '') {
     if (!data.pets.length) return reply('你还没有灵兽，发送 .宠物 斗殴 去捕捉一只');
     const lines = [`【我的灵兽】(${data.pets.length}/${CONFIG.maxPets})`, `金币: ${data.money}`];
     data.pets.forEach((pet, i) => {
