@@ -5,7 +5,7 @@
 // @description COC7联合技能检定：投一个骰子与多个技能比较，支持技能默认值
 // @timestamp 1742716800
 // @license apache2.0
-// @updateUrl https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E8%81%94%E5%90%88%E6%A3%80%E5%AE%9A.js
+// @updateUrl https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/联合检定.js
 // ==/UserScript==
 
 /**
