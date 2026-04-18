@@ -295,13 +295,7 @@ cmd.help = `【万物有灵】
 .宠物 进化 <编号> - 进化
 .宠物 出售 <编号> - 卖给机构
 .宠物 商店 - 查看商店
-.宠物 购买 <物品> [数量] - 购买
-.宠物 图鉴 - 查看图鉴
-.宠物 探险 <编号> <区域> - 派宠物探险
-.宠物 探险状态 - 查看探险状态
-.宠物 打工 <编号> <类型> - 派宠物打工
-.宠物 打工状态 - 查看打工状态
-.宠物 竞技场 - 查看竞技场积分`;
+.宠物 购买 <物品> [数量] - 购买`;
 
 cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
@@ -316,7 +310,10 @@ cmd.solve = (ctx, msg, argv) => {
   const getPet = (idx) => data.pets[parseInt(idx) - 1];
 
   if (action === 'help') {
-    reply(cmd.help);
+    let help = cmd.help;
+    const extHelp = WanwuYouling.getExtHelp();
+    if (extHelp) help += '\n' + extHelp;
+    reply(help);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -646,117 +643,10 @@ cmd.solve = (ctx, msg, argv) => {
     return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
   }
 
-  // ==================== 图鉴系统 ====================
-  if (action === '图鉴') {
-    const entries = Object.entries(data.pokedex);
-    if (!entries.length) return reply('【宠物图鉴】\n尚未发现任何宠物种族');
-    const lines = ['【宠物图鉴】', `已发现: ${entries.length}种`, ''];
-    entries.sort((a, b) => b[1].count - a[1].count).slice(0, 15).forEach(([s, i]) => lines.push(`${s}: 遇到${i.count}次`));
-    if (entries.length > 15) lines.push(`...还有${entries.length - 15}种`);
-    return reply(lines.join('\n'));
-  }
-
-  // ==================== 探险系统 ====================
-  if (action === '探险') {
-    const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的宠物编号');
-    if (pet.energy < 30) return reply('宠物精力不足，需要30点精力');
-    const area = EXPLORE_AREAS.find(a => a.name === p2);
-    if (!area) return reply(`未知区域\n可用: ${EXPLORE_AREAS.map(a => a.name).join('、')}`);
-    
-    const now = Date.now();
-    data.explore = (data.explore || []).filter(e => e.endTime > now);
-    if (data.explore.length >= CONFIG.maxExplore) return reply(`探险队伍已满(最多${CONFIG.maxExplore}只)`);
-    if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return reply('该宠物正在执行任务');
-
-    data.explore.push({ petId: pet.id, endTime: now + CONFIG.exploreTime * 60000, area: area.name });
-    pet.energy -= 30;
-    save();
-    return reply(`${pet.name} 前往 ${area.name} 探险\n预计 ${CONFIG.exploreTime}分钟后返回`);
-  }
-
-  if (action === '探险状态') {
-    const now = Date.now();
-    const lines = ['【探险状态】'];
-    let changed = false;
-
-    for (const e of (data.explore || [])) {
-      if (e.endTime <= now) {
-        const area = EXPLORE_AREAS.find(a => a.name === e.area);
-        if (area) {
-          const pet = data.pets.find(p => p.id === e.petId);
-          if (pet) {
-            let r = `${pet.name} 从 ${area.name} 返回\n`;
-            if (Math.random() < area.danger) { pet.hp = Math.max(1, pet.hp - 20); r += '遭遇危险受伤！\n'; }
-            const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
-            data.money += gold;
-            r += `获得 ${gold} 金币\n`;
-            const food = area.foods[Math.floor(Math.random() * area.foods.length)];
-            data.food[food] = (data.food[food] || 0) + 1;
-            r += `获得 ${food} x1`;
-            lines.push(r);
-            changed = true;
-          }
-        }
-      } else {
-        const remain = Math.ceil((e.endTime - now) / 60000);
-        lines.push(`${e.area}: 剩余${remain}分钟`);
-      }
-    }
-    if (changed) { data.explore = (data.explore || []).filter(e => e.endTime > now); save(); }
-    if (lines.length === 1) lines.push('没有进行中的探险');
-    return reply(lines.join('\n'));
-  }
-
-  // ==================== 打工系统 ====================
-  if (action === '打工') {
-    const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的宠物编号');
-    const work = WORK_TYPES.find(w => w.name === p2);
-    if (!work) return reply(`未知工作\n可用: ${WORK_TYPES.map(w => w.name).join('、')}`);
-    if (pet.energy < work.energy) return reply(`精力不足，需要${work.energy}点`);
-
-    const now = Date.now();
-    data.work = (data.work || []).filter(w => w.endTime > now);
-    if (data.work.length >= CONFIG.maxWork) return reply(`打工位置已满(最多${CONFIG.maxWork}只)`);
-    if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return reply('该宠物正在执行任务');
-
-    data.work.push({ petId: pet.id, endTime: now + CONFIG.workTime * 60000, work: work.name });
-    pet.energy -= work.energy;
-    save();
-    return reply(`${pet.name} 开始${work.name}\n预计 ${CONFIG.workTime}分钟后完成`);
-  }
-
-  if (action === '打工状态') {
-    const now = Date.now();
-    const lines = ['【打工状态】'];
-    let changed = false;
-
-    for (const w of (data.work || [])) {
-      if (w.endTime <= now) {
-        const work = WORK_TYPES.find(wt => wt.name === w.work);
-        if (work) {
-          const pet = data.pets.find(p => p.id === w.petId);
-          if (pet) {
-            const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
-            data.money += gold;
-            lines.push(`${pet.name} 完成${work.name}，获得 ${gold} 金币`);
-            changed = true;
-          }
-        }
-      } else {
-        const remain = Math.ceil((w.endTime - now) / 60000);
-        lines.push(`${w.work}: 剩余${remain}分钟`);
-      }
-    }
-    if (changed) { data.work = (data.work || []).filter(w => w.endTime > now); save(); }
-    if (lines.length === 1) lines.push('没有进行中的打工');
-    return reply(lines.join('\n'));
-  }
-
-  // ==================== 竞技场系统 ====================
-  if (action === '竞技场') {
-    return reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}\n\n使用 .宠物 对战 <编号> @人 进行PVP对战`);
+  // ==================== 扩展命令 ====================
+  if (WanwuYouling._extCommands[action]) {
+    const result = WanwuYouling._extCommands[action].handler(ctx, msg, { uid, data, args, p1, p2, reply, save, getPet, DB, PetFactory, Battle, CONFIG, FOODS, SPECIES, EXPLORE_AREAS, WORK_TYPES });
+    if (result) return result;
   }
 
   return seal.ext.newCmdExecuteResult(true);
@@ -834,6 +724,30 @@ const WanwuYouling = {
   Config: CONFIG,
   Skills: SKILLS,
   Foods: FOODS,
+  ExploreAreas: EXPLORE_AREAS,
+  WorkTypes: WORK_TYPES,
+  
+  // 扩展命令注册表
+  _extCommands: {},
+  
+  // 注册扩展命令
+  registerCommand(name, handler, helpText) {
+    this._extCommands[name] = { handler, helpText };
+  },
+  
+  // 注销扩展命令
+  unregisterCommand(name) {
+    delete this._extCommands[name];
+  },
+  
+  // 获取扩展命令帮助
+  getExtHelp() {
+    const lines = [];
+    for (const [name, cmd] of Object.entries(this._extCommands)) {
+      if (cmd.helpText) lines.push(`.宠物 ${name} - ${cmd.helpText}`);
+    }
+    return lines.join('\n');
+  },
 };
 
 if (typeof global !== 'undefined') {
