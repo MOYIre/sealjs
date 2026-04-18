@@ -5,7 +5,7 @@
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
-// @updateUrl   https://cdn.jsdelivr.net/gh/MOYIre/sealjs@main/%E9%A3%9F%E7%81%B5(%E5%90%83%E4%BB%80%E4%B9%88).js
+// @updateUrl   https://ghproxy.net/https://raw.githubusercontent.com/MOYIre/sealjs/main/食灵(吃什么).js
 // ==/UserScript==
 
 let ext = seal.ext.find('食灵');
