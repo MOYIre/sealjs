@@ -46,7 +46,11 @@ const WORK_TYPES = [
   { name: '护送', gold: [50, 100], energy: 40 },
 ];
 
-function getMain() { return global.WanwuYouling || null; }
+function getMain() {
+  if (typeof WanwuYouling !== 'undefined') return WanwuYouling;
+  if (typeof globalThis !== 'undefined' && globalThis.WanwuYouling) return globalThis.WanwuYouling;
+  return null;
+}
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function formatTime(m) { return m < 60 ? `${m}分钟` : `${Math.floor(m/60)}小时${m%60||''}分钟`; }
 
@@ -264,8 +268,15 @@ cmd.solve = (ctx, msg, argv) => {
 ext.cmdMap['宠物扩展'] = cmd;
 
 // 暴露接口供主插件调用
-global.WanwuYoulingExt = {
+const WanwuYoulingExt = {
   recordPokedex,
   handleDrop,
   DB,
 };
+
+if (typeof global !== 'undefined') {
+  global.WanwuYoulingExt = WanwuYoulingExt;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.WanwuYoulingExt = WanwuYoulingExt;
+}
