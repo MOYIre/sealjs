@@ -72,10 +72,10 @@ const RARITY_MARK = { '普通': '☆', '稀有': '★', '超稀有': '★★', '
 const ELEMENT_MARK = { '火': '[火]', '水': '[水]', '草': '[草]', '电': '[电]', '岩石': '[岩]', '超能': '[灵]' };
 
 const FOODS = {
-  '普通灵食': { hp: 5, atk: 0, def: 0, energy: 10, cost: 10 },
-  '高级灵食': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30 },
-  '能量精华': { hp: 0, atk: 0, def: 0, energy: 50, cost: 20 },
-  '生命露水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40 },
+  '面包': { hp: 5, atk: 0, def: 0, energy: 10, cost: 10 },
+  '烤肉': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30 },
+  '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 20 },
+  '药水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40 },
 };
 
 const SKILLS = {
@@ -97,8 +97,8 @@ const DB = {
   get(userId) {
     try {
       const d = ext.storageGet('u_' + userId);
-      return d ? JSON.parse(d) : { pets: [], money: 100, food: { '普通灵食': 5 } };
-    } catch { return { pets: [], money: 100, food: { '普通灵食': 5 } }; }
+      return d ? JSON.parse(d) : { pets: [], money: 100, food: { '面包': 5 } };
+    } catch { return { pets: [], money: 100, food: { '面包': 5 } }; }
   },
   save(userId, data) { ext.storageSet('u_' + userId, JSON.stringify(data)); },
   genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); },
