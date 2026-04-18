@@ -19,10 +19,6 @@ const CONFIG = {
   evolveLevel: 10,
   evolveBattles: [3, 5],
   baseExpGain: 10,
-  exploreTime: 30,
-  workTime: 60,
-  maxExplore: 2,
-  maxWork: 1,
 };
 
 // ==================== 种族定义 ====================
@@ -122,32 +118,13 @@ const SKILLS = {
   '念力': { power: 70, acc: 90, cost: 15, element: '超能' },
 };
 
-// ==================== 探险与打工 ====================
-const EXPLORE_AREAS = [
-  { name: '森林', gold: [20, 50], foods: ['苹果', '蜂蜜', '蘑菇'], danger: 0.1 },
-  { name: '山脉', gold: [30, 70], foods: ['坚果', '蘑菇'], danger: 0.2 },
-  { name: '湖泊', gold: [25, 60], foods: ['鱼干', '面包'], danger: 0.15 },
-  { name: '洞穴', gold: [50, 100], foods: ['药水', '蘑菇'], danger: 0.3 },
-  { name: '遗迹', gold: [80, 150], foods: ['药水', '牛排'], danger: 0.4 },
-];
-
-const WORK_TYPES = [
-  { name: '看家', gold: [10, 20], energy: 10 },
-  { name: '送货', gold: [20, 40], energy: 20 },
-  { name: '狩猎', gold: [30, 60], energy: 30 },
-  { name: '护送', gold: [50, 100], energy: 40 },
-];
-
 const DB = {
   get(userId) {
     try {
       const d = ext.storageGet('u_' + userId);
-      return d ? JSON.parse(d) : { 
-        pets: [], money: 100, food: { '面包': 5 },
-        pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000
-      };
-    } catch { 
-      return { pets: [], money: 100, food: { '面包': 5 }, pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 }; 
+      return d ? JSON.parse(d) : { pets: [], money: 100, food: { '面包': 5 } };
+    } catch {
+      return { pets: [], money: 100, food: { '面包': 5 } };
     }
   },
   save(userId, data) { ext.storageSet('u_' + userId, JSON.stringify(data)); },
@@ -345,21 +322,6 @@ cmd.solve = (ctx, msg, argv) => {
         wildPet.hp = wildPet.maxHp;
         wildPet.energy = wildPet.maxEnergy;
         data.pets.push(wildPet);
-        // 记录图鉴
-        if (!data.pokedex[wildPet.species]) {
-          data.pokedex[wildPet.species] = { count: 0, firstTime: Date.now() };
-        }
-        data.pokedex[wildPet.species].count++;
-        // 掉落奖励
-        const gold = Math.floor(Math.random() * 41) + 10;
-        data.money += gold;
-        logs.push(`获得 ${gold} 金币`);
-        if (Math.random() < 0.5) {
-          const foods = ['面包', '牛奶', '苹果', '鱼干'];
-          const food = foods[Math.floor(Math.random() * foods.length)];
-          data.food[food] = (data.food[food] || 0) + 1;
-          logs.push(`获得 ${food} x1`);
-        }
         save();
       } else {
         logs.push(`\n[失败] 你被 ${wildPet.name}(${wildPet.species}) 打败了，它逃跑了...`);
@@ -462,15 +424,13 @@ cmd.solve = (ctx, msg, argv) => {
 
     let pet2;
     let isNPC = true;
-    let targetUid = null;
-    let targetData = null;
 
     // 检查是否@了其他玩家
     const atList = ctx.atInfo || [];
     if (atList.length > 0) {
-      targetUid = atList[0].userId;
+      const targetUid = atList[0].userId;
       if (targetUid === uid) return reply('不能和自己对战');
-      targetData = DB.get(targetUid);
+      const targetData = DB.get(targetUid);
       if (!targetData.pets.length) return reply('对方没有宠物');
       pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
       isNPC = false;
@@ -496,22 +456,7 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.sp++;
         pet1.battles++;
         logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
-        
-        // NPC对战掉落
-        if (isNPC) {
-          const gold = Math.floor(Math.random() * 41) + 10;
-          data.money += gold;
-          logs.push(`获得 ${gold} 金币`);
-        } else {
-          // PVP竞技场积分
-          const gain = Math.floor(Math.random() * 31) + 20;
-          data.arenaRank = (data.arenaRank || 1000) + gain;
-          data.arenaWins = (data.arenaWins || 0) + 1;
-          targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - gain);
-          DB.save(targetUid, targetData);
-          logs.push(`竞技场积分 +${gain}`);
-        }
-        
+
         const expNeed = pet1.level * 100;
         if (pet1.exp >= expNeed) {
           pet1.exp -= expNeed;
@@ -526,15 +471,6 @@ cmd.solve = (ctx, msg, argv) => {
         pet1.hp = Math.max(0, pet1.hp - 10);
         pet1.battles++;
         logs.push(`${pet1.name} 战败，损失 10 点生命`);
-        
-        // PVP失败扣积分
-        if (!isNPC && targetData) {
-          const loss = Math.floor(Math.random() * 21) + 10;
-          data.arenaRank = Math.max(0, (data.arenaRank || 1000) - loss);
-          targetData.arenaRank = (targetData.arenaRank || 1000) + loss;
-          DB.save(targetUid, targetData);
-          logs.push(`竞技场积分 -${loss}`);
-        }
       }
 
       if (pet1.evolved && pet1.battles >= pet1.maxBattles) {
@@ -645,7 +581,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   // ==================== 扩展命令 ====================
   if (WanwuYouling._extCommands[action]) {
-    const result = WanwuYouling._extCommands[action].handler(ctx, msg, { uid, data, args, p1, p2, reply, save, getPet, DB, PetFactory, Battle, CONFIG, FOODS, SPECIES, EXPLORE_AREAS, WORK_TYPES });
+    const result = WanwuYouling._extCommands[action].handler(ctx, msg, { uid, data, args, p1, p2, reply, save, getPet, DB, PetFactory, Battle, CONFIG, FOODS, SPECIES });
     if (result) return result;
   }
 
@@ -724,9 +660,7 @@ const WanwuYouling = {
   Config: CONFIG,
   Skills: SKILLS,
   Foods: FOODS,
-  ExploreAreas: EXPLORE_AREAS,
-  WorkTypes: WORK_TYPES,
-  
+
   // 扩展命令注册表
   _extCommands: {},
   
