@@ -284,9 +284,21 @@ cmd.solve = (ctx, msg, argv) => {
   const getPet = (idx) => data.pets[parseInt(idx) - 1];
 
   if (action === 'help') {
-    const res = seal.ext.newCmdExecuteResult(true);
-    res.showHelp = true;
-    return res;
+    reply(`【万物有灵】
+.宠物 斗殴 - 用肉身和野外灵兽战斗（可捕捉）
+.宠物 列表 - 查看灵兽
+.宠物 信息 <编号> - 灵兽详情
+.宠物 喂食 <编号> <食物> - 喂食
+.宠物 休息 <编号> - 恢复精力
+.宠物 改名 <编号> <名字> - 改名
+.宠物 学习 <编号> - 学习技能
+.宠物 对战 <编号> [编号/@人] - 对战
+.宠物 育种 <编号> <编号> - 育种
+.宠物 进化 <编号> - 进化
+.宠物 出售 <编号> - 卖给机构
+.宠物 商店 - 查看商店
+.宠物 购买 <物品> [数量] - 购买`);
+    return seal.ext.newCmdExecuteResult(true);
   }
 
   if (action === '斗殴') {
