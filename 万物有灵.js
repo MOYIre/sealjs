@@ -2,7 +2,7 @@
 // @name        万物有灵
 // @author      铭茗
 // @version     1.0.0
-// @description 灵兽养成对战系统
+// @description 宠物核心
 // @timestamp   1744924800
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
@@ -566,6 +566,7 @@ cmd.solve = (ctx, msg, argv) => {
 };
 
 ext.cmdMap['宠物'] = cmd;
+ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
