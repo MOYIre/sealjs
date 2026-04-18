@@ -14,20 +14,60 @@ if (!ext) {
   seal.ext.register(ext);
 }
 
+// ==================== 扩展配置 ====================
+const EXT_CONFIG = {
+  exploreTime: 30,
+  workTime: 60,
+  maxExplore: 2,
+  maxWork: 1,
+};
+
+const EXPLORE_AREAS = [
+  { name: '森林', gold: [20, 50], foods: ['苹果', '蜂蜜', '蘑菇'], danger: 0.1 },
+  { name: '山脉', gold: [30, 70], foods: ['坚果', '蘑菇'], danger: 0.2 },
+  { name: '湖泊', gold: [25, 60], foods: ['鱼干', '面包'], danger: 0.15 },
+  { name: '洞穴', gold: [50, 100], foods: ['药水', '蘑菇'], danger: 0.3 },
+  { name: '遗迹', gold: [80, 150], foods: ['药水', '牛排'], danger: 0.4 },
+];
+
+const WORK_TYPES = [
+  { name: '看家', gold: [10, 20], energy: 10 },
+  { name: '送货', gold: [20, 40], energy: 20 },
+  { name: '狩猎', gold: [30, 60], energy: 30 },
+  { name: '护送', gold: [50, 100], energy: 40 },
+];
+
+// ==================== 扩展数据存储 ====================
+const EXT_DB = {
+  get(userId) {
+    try {
+      const d = ext.storageGet('e_' + userId);
+      return d ? JSON.parse(d) : { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
+    } catch {
+      return { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
+    }
+  },
+  save(userId, data) {
+    ext.storageSet('e_' + userId, JSON.stringify(data));
+  },
+};
+
+// ==================== 工具函数 ====================
 function getMain() {
   if (typeof WanwuYouling !== 'undefined') return WanwuYouling;
   if (typeof globalThis !== 'undefined' && globalThis.WanwuYouling) return globalThis.WanwuYouling;
   return null;
 }
 
-// 注册扩展命令
+// ==================== 注册扩展命令 ====================
 function registerCommands() {
   const main = getMain();
   if (!main) return;
 
   // 图鉴
   main.registerCommand('图鉴', (ctx, msg, p) => {
-    const entries = Object.entries(p.data.pokedex || {});
+    const extData = EXT_DB.get(p.uid);
+    const entries = Object.entries(extData.pokedex || {});
     if (!entries.length) return p.reply('【宠物图鉴】\n尚未发现任何宠物种族');
     const lines = ['【宠物图鉴】', `已发现: ${entries.length}种`, ''];
     entries.sort((a, b) => b[1].count - a[1].count).slice(0, 15).forEach(([s, i]) => lines.push(`${s}: 遇到${i.count}次`));
@@ -41,30 +81,33 @@ function registerCommands() {
     const pet = p.getPet(p.p1);
     if (!pet) return p.reply('请指定正确的宠物编号');
     if (pet.energy < 30) return p.reply('宠物精力不足，需要30点精力');
-    const area = p.EXPLORE_AREAS.find(a => a.name === p.p2);
-    if (!area) return p.reply(`未知区域\n可用: ${p.EXPLORE_AREAS.map(a => a.name).join('、')}`);
+    const area = EXPLORE_AREAS.find(a => a.name === p.p2);
+    if (!area) return p.reply(`未知区域\n可用: ${EXPLORE_AREAS.map(a => a.name).join('、')}`);
 
+    const extData = EXT_DB.get(p.uid);
     const now = Date.now();
-    p.data.explore = (p.data.explore || []).filter(e => e.endTime > now);
-    if (p.data.explore.length >= p.CONFIG.maxExplore) return p.reply(`探险队伍已满(最多${p.CONFIG.maxExplore}只)`);
-    if ([...(p.data.explore || []), ...(p.data.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
+    extData.explore = (extData.explore || []).filter(e => e.endTime > now);
+    if (extData.explore.length >= EXT_CONFIG.maxExplore) return p.reply(`探险队伍已满(最多${EXT_CONFIG.maxExplore}只)`);
+    if ([...(extData.explore || []), ...(extData.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
 
-    p.data.explore.push({ petId: pet.id, endTime: now + p.CONFIG.exploreTime * 60000, area: area.name });
+    extData.explore.push({ petId: pet.id, endTime: now + EXT_CONFIG.exploreTime * 60000, area: area.name });
     pet.energy -= 30;
     p.save();
-    p.reply(`${pet.name} 前往 ${area.name} 探险\n预计 ${p.CONFIG.exploreTime}分钟后返回`);
+    EXT_DB.save(p.uid, extData);
+    p.reply(`${pet.name} 前往 ${area.name} 探险\n预计 ${EXT_CONFIG.exploreTime}分钟后返回`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物探险');
 
   // 探险状态
   main.registerCommand('探险状态', (ctx, msg, p) => {
+    const extData = EXT_DB.get(p.uid);
     const now = Date.now();
     const lines = ['【探险状态】'];
     let changed = false;
 
-    for (const e of (p.data.explore || [])) {
+    for (const e of (extData.explore || [])) {
       if (e.endTime <= now) {
-        const area = p.EXPLORE_AREAS.find(a => a.name === e.area);
+        const area = EXPLORE_AREAS.find(a => a.name === e.area);
         if (area) {
           const pet = p.data.pets.find(pt => pt.id === e.petId);
           if (pet) {
@@ -85,7 +128,11 @@ function registerCommands() {
         lines.push(`${e.area}: 剩余${remain}分钟`);
       }
     }
-    if (changed) { p.data.explore = (p.data.explore || []).filter(e => e.endTime > now); p.save(); }
+    if (changed) {
+      extData.explore = (extData.explore || []).filter(e => e.endTime > now);
+      EXT_DB.save(p.uid, extData);
+      p.save();
+    }
     if (lines.length === 1) lines.push('没有进行中的探险');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
@@ -95,31 +142,34 @@ function registerCommands() {
   main.registerCommand('打工', (ctx, msg, p) => {
     const pet = p.getPet(p.p1);
     if (!pet) return p.reply('请指定正确的宠物编号');
-    const work = p.WORK_TYPES.find(w => w.name === p.p2);
-    if (!work) return p.reply(`未知工作\n可用: ${p.WORK_TYPES.map(w => w.name).join('、')}`);
+    const work = WORK_TYPES.find(w => w.name === p.p2);
+    if (!work) return p.reply(`未知工作\n可用: ${WORK_TYPES.map(w => w.name).join('、')}`);
     if (pet.energy < work.energy) return p.reply(`精力不足，需要${work.energy}点`);
 
+    const extData = EXT_DB.get(p.uid);
     const now = Date.now();
-    p.data.work = (p.data.work || []).filter(w => w.endTime > now);
-    if (p.data.work.length >= p.CONFIG.maxWork) return p.reply(`打工位置已满(最多${p.CONFIG.maxWork}只)`);
-    if ([...(p.data.explore || []), ...(p.data.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
+    extData.work = (extData.work || []).filter(w => w.endTime > now);
+    if (extData.work.length >= EXT_CONFIG.maxWork) return p.reply(`打工位置已满(最多${EXT_CONFIG.maxWork}只)`);
+    if ([...(extData.explore || []), ...(extData.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
 
-    p.data.work.push({ petId: pet.id, endTime: now + p.CONFIG.workTime * 60000, work: work.name });
+    extData.work.push({ petId: pet.id, endTime: now + EXT_CONFIG.workTime * 60000, work: work.name });
     pet.energy -= work.energy;
     p.save();
-    p.reply(`${pet.name} 开始${work.name}\n预计 ${p.CONFIG.workTime}分钟后完成`);
+    EXT_DB.save(p.uid, extData);
+    p.reply(`${pet.name} 开始${work.name}\n预计 ${EXT_CONFIG.workTime}分钟后完成`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物打工');
 
   // 打工状态
   main.registerCommand('打工状态', (ctx, msg, p) => {
+    const extData = EXT_DB.get(p.uid);
     const now = Date.now();
     const lines = ['【打工状态】'];
     let changed = false;
 
-    for (const w of (p.data.work || [])) {
+    for (const w of (extData.work || [])) {
       if (w.endTime <= now) {
-        const work = p.WORK_TYPES.find(wt => wt.name === w.work);
+        const work = WORK_TYPES.find(wt => wt.name === w.work);
         if (work) {
           const pet = p.data.pets.find(pt => pt.id === w.petId);
           if (pet) {
@@ -134,7 +184,11 @@ function registerCommands() {
         lines.push(`${w.work}: 剩余${remain}分钟`);
       }
     }
-    if (changed) { p.data.work = (p.data.work || []).filter(w => w.endTime > now); p.save(); }
+    if (changed) {
+      extData.work = (extData.work || []).filter(w => w.endTime > now);
+      EXT_DB.save(p.uid, extData);
+      p.save();
+    }
     if (lines.length === 1) lines.push('没有进行中的打工');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
@@ -142,7 +196,8 @@ function registerCommands() {
 
   // 竞技场
   main.registerCommand('竞技场', (ctx, msg, p) => {
-    p.reply(`【竞技场】\n积分: ${p.data.arenaRank || 1000}\n胜场: ${p.data.arenaWins || 0}\n\n使用 .宠物 对战 <编号> @人 进行PVP对战`);
+    const extData = EXT_DB.get(p.uid);
+    p.reply(`【竞技场】\n积分: ${extData.arenaRank || 1000}\n胜场: ${extData.arenaWins || 0}\n\n使用 .宠物 对战 <编号> @人 进行PVP对战`);
     return seal.ext.newCmdExecuteResult(true);
   }, '查看竞技场积分');
 }
@@ -152,5 +207,5 @@ setTimeout(registerCommands, 1000);
 
 // 暴露接口
 if (typeof globalThis !== 'undefined') {
-  globalThis.WanwuYoulingExt = { registerCommands };
+  globalThis.WanwuYoulingExt = { registerCommands, EXT_DB, EXPLORE_AREAS, WORK_TYPES, EXT_CONFIG };
 }
