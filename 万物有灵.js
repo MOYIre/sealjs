@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.9
+// @version     1.3.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776612561
+// @timestamp   1776614094
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.3.0');
   seal.ext.register(ext);
 }
 
@@ -637,7 +637,10 @@ cmd.solve = (ctx, msg, argv) => {
       }
       const targetData = DB.get(targetUid);
       if (!targetData.pets.length) return reply('对方没有宠物');
-      pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
+      const targetPet = targetData.pets[0];
+      if (targetPet.hp <= 0) return reply('对方宠物生命值不足，无法对战');
+      if (targetPet.energy < 20) return reply('对方宠物精力不足，无法对战');
+      pet2 = JSON.parse(JSON.stringify(targetPet));
       isNPC = false;
     } else if (p2) {
       pet2 = getPet(p2);
@@ -833,6 +836,11 @@ cmd.solve = (ctx, msg, argv) => {
     return reply(lines.join('\n'));
   }
 
+  // 未知命令提示
+  if (action) {
+    return reply(`未知命令: ${action}\n使用 .宠物 help 查看帮助`);
+  }
+
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -841,7 +849,7 @@ ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.2.9',
+  version: '1.3.0',
   ext,
 
   DB: {

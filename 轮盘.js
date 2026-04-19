@@ -116,12 +116,20 @@ function getSession(groupId) {
   return gameSessions[groupId];
 }
 
+// 血条显示
+function hpBar(hp, max = 3, len = 5) {
+  const filled = Math.floor((hp / max) * len);
+  return '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, len - filled));
+}
+
 function showStatus(session) {
   const cnt = session.getDeckCount();
   const current = session.getCurrentPlayer();
-  return `═════════ 轮盘对决 ═════════
-${session.players[0].name} ❤️${session.players[0].hp}  vs  ${session.players[1].name} ❤️${session.players[1].hp}
-牌堆: 🗡️${cnt.sword} 💙${cnt.heart} (共${cnt.sword + cnt.heart}张)
+  const p1 = session.players[0];
+  const p2 = session.players[1];
+  return `✦ 轮盘对决 ✧
+${p1.name} ${hpBar(p1.hp)} ${p1.hp}/3  vs  ${p2.name} ${hpBar(p2.hp)} ${p2.hp}/3
+牌堆: ⚔${cnt.sword} ♡${cnt.heart} (共${cnt.sword + cnt.heart}张)
 当前回合: ${current ? current.name : '无'}
 ───────────────────────────`;
 }
@@ -161,28 +169,28 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
     case '开始':
     case '发起': {
       if (session.phase === 'playing') {
-        seal.replyToSender(ctx, msg, '⚠️ 当前有游戏进行中，请等待结束或使用 .轮盘 结束');
+        seal.replyToSender(ctx, msg, '[!] 当前有游戏进行中，请等待结束或使用 .轮盘 结束');
         return seal.ext.newCmdExecuteResult(true);
       }
       if (session.phase === 'waiting') {
-        seal.replyToSender(ctx, msg, '⚠️ 已有等待中的游戏，请使用 .轮盘 加入');
+        seal.replyToSender(ctx, msg, '[!] 已有等待中的游戏，请使用 .轮盘 加入');
         return seal.ext.newCmdExecuteResult(true);
       }
       session.players = [{ id: playerId, name: playerName, hp: 3, isCurrent: false }];
       session.hostId = playerId;
       session.phase = 'waiting';
-      seal.replyToSender(ctx, msg, `🎯 ${playerName} 发起了轮盘对决！\n使用 .轮盘 加入 来应战`);
+      seal.replyToSender(ctx, msg, `✦ 发起对决 ✧\n${playerName} 发起了轮盘对决！\n使用 .轮盘 加入 来应战`);
       return seal.ext.newCmdExecuteResult(true);
     }
 
     case '加入':
     case '应战': {
       if (session.phase !== 'waiting') {
-        seal.replyToSender(ctx, msg, '⚠️ 当前没有等待中的游戏，请先使用 .轮盘 开始');
+        seal.replyToSender(ctx, msg, '[!] 当前没有等待中的游戏，请先使用 .轮盘 开始');
         return seal.ext.newCmdExecuteResult(true);
       }
       if (session.isPlayerInGame(playerId)) {
-        seal.replyToSender(ctx, msg, '⚠️ 你已经在游戏中了');
+        seal.replyToSender(ctx, msg, '[!] 你已经在游戏中了');
         return seal.ext.newCmdExecuteResult(true);
       }
       session.players.push({ id: playerId, name: playerName, hp: 3, isCurrent: false });
@@ -191,9 +199,9 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       const firstIdx = random(0, 1);
       session.players[firstIdx].isCurrent = true;
       session.drawTopCard();
-      seal.replyToSender(ctx, msg, `⚔️ 轮盘对决开始！
+      seal.replyToSender(ctx, msg, `✦ 对决开始 ✧
 ${session.players[0].name} VS ${session.players[1].name}
-新牌堆: 🗡️${swordNum}张 💙${heartNum}张
+新牌堆: ⚔${swordNum}张 ♡${heartNum}张
 先手: ${session.players[firstIdx].name}
 ───────────────────────────
 使用 .出击 对对手使用顶牌
@@ -203,7 +211,7 @@ ${session.players[0].name} VS ${session.players[1].name}
 
     case '挑战': {
       if (session.phase === 'playing') {
-        seal.replyToSender(ctx, msg, '⚠️ 当前有游戏进行中，请等待结束');
+        seal.replyToSender(ctx, msg, '[!] 当前有游戏进行中，请等待结束');
         return seal.ext.newCmdExecuteResult(true);
       }
       const targetId = msg.message?.match(/\[CQ:at,qq=(\d+)\]/)?.[1];
@@ -214,7 +222,7 @@ ${session.players[0].name} VS ${session.players[1].name}
       session.players = [{ id: playerId, name: playerName, hp: 3, isCurrent: false }];
       session.hostId = playerId;
       session.phase = 'waiting';
-      seal.replyToSender(ctx, msg, `🎯 ${playerName} 向你发起轮盘对决挑战！\n被挑战者请使用 .轮盘 加入 应战`);
+      seal.replyToSender(ctx, msg, `✦ 发起挑战 ✧\n${playerName} 向你发起轮盘对决挑战！\n被挑战者请使用 .轮盘 加入 应战`);
       return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -224,7 +232,7 @@ ${session.players[0].name} VS ${session.players[1].name}
         return seal.ext.newCmdExecuteResult(true);
       }
       if (session.phase === 'waiting') {
-        seal.replyToSender(ctx, msg, `等待对手加入...\n发起者: ${session.players[0].name}`);
+        seal.replyToSender(ctx, msg, `✦ 等待中 ✧\n发起者: ${session.players[0].name}\n使用 .轮盘 加入 应战`);
         return seal.ext.newCmdExecuteResult(true);
       }
       seal.replyToSender(ctx, msg, showStatus(session));
@@ -239,12 +247,12 @@ ${session.players[0].name} VS ${session.players[1].name}
         return seal.ext.newCmdExecuteResult(true);
       }
       if (!session.isPlayerInGame(playerId)) {
-        seal.replyToSender(ctx, msg, '⚠️ 只有游戏参与者才能结束游戏');
+        seal.replyToSender(ctx, msg, '[!] 只有游戏参与者才能结束游戏');
         return seal.ext.newCmdExecuteResult(true);
       }
       const opponent = session.getOtherPlayer(playerId);
       gameSessions[groupId] = new GameSession(groupId);
-      seal.replyToSender(ctx, msg, `🏁 游戏结束，${opponent.name} 获胜！`);
+      seal.replyToSender(ctx, msg, `✦ 游戏结束 ✧\n${opponent.name} 获胜！`);
       return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -266,16 +274,16 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   const session = getSession(groupId);
 
   if (session.phase !== 'playing') {
-    seal.replyToSender(ctx, msg, '⚠️ 当前没有进行中的游戏');
+    seal.replyToSender(ctx, msg, '[!] 当前没有进行中的游戏');
     return seal.ext.newCmdExecuteResult(true);
   }
   if (!session.isPlayerInGame(playerId)) {
-    seal.replyToSender(ctx, msg, '⚠️ 你不是游戏参与者');
+    seal.replyToSender(ctx, msg, '[!] 你不是游戏参与者');
     return seal.ext.newCmdExecuteResult(true);
   }
   const current = session.getCurrentPlayer();
   if (current.id !== playerId) {
-    seal.replyToSender(ctx, msg, `⚠️ 现在是 ${current.name} 的回合`);
+    seal.replyToSender(ctx, msg, `[!] 现在是 ${current.name} 的回合`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -285,15 +293,15 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
 
   if (card === '剑') {
     opponent.hp -= 1;
-    result = `🗡️ 揭示顶牌: 剑！\n${opponent.name} 受到伤害，剩余血量: ${opponent.hp}`;
+    result = `✦ 揭示顶牌 ✧ ⚔剑\n${opponent.name} 受到伤害，剩余血量: ${opponent.hp}`;
   } else {
-    result = `💙 揭示顶牌: 心\n${opponent.name} 幸运躲过，无效果`;
+    result = `✦ 揭示顶牌 ✧ ♡心\n${opponent.name} 幸运躲过，无效果`;
   }
 
   const gameOver = session.checkGameOver();
   if (gameOver.ended) {
     gameSessions[groupId] = new GameSession(groupId);
-    seal.replyToSender(ctx, msg, `${result}\n\n🏁 ${gameOver.loser.name} 血量归零！\n🏆 ${gameOver.winner.name} 获胜！`);
+    seal.replyToSender(ctx, msg, `${result}\n\n✦ 游戏结束 ✧\n${gameOver.loser.name} 血量归零！\n${gameOver.winner.name} 获胜！`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -314,16 +322,16 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
   const session = getSession(groupId);
 
   if (session.phase !== 'playing') {
-    seal.replyToSender(ctx, msg, '⚠️ 当前没有进行中的游戏');
+    seal.replyToSender(ctx, msg, '[!] 当前没有进行中的游戏');
     return seal.ext.newCmdExecuteResult(true);
   }
   if (!session.isPlayerInGame(playerId)) {
-    seal.replyToSender(ctx, msg, '⚠️ 你不是游戏参与者');
+    seal.replyToSender(ctx, msg, '[!] 你不是游戏参与者');
     return seal.ext.newCmdExecuteResult(true);
   }
   const current = session.getCurrentPlayer();
   if (current.id !== playerId) {
-    seal.replyToSender(ctx, msg, `⚠️ 现在是 ${current.name} 的回合`);
+    seal.replyToSender(ctx, msg, `[!] 现在是 ${current.name} 的回合`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -333,15 +341,15 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
 
   if (card === '剑') {
     self.hp -= 1;
-    result = `🗡️ 揭示顶牌: 剑！\n${self.name} 对自己造成伤害，剩余血量: ${self.hp}`;
+    result = `✦ 揭示顶牌 ✧ ⚔剑\n${self.name} 对自己造成伤害，剩余血量: ${self.hp}`;
   } else {
-    result = `💙 揭示顶牌: 心\n${self.name} 抽到心，安然无恙`;
+    result = `✦ 揭示顶牌 ✧ ♡心\n${self.name} 抽到心，安然无恙`;
   }
 
   const gameOver = session.checkGameOver();
   if (gameOver.ended) {
     gameSessions[groupId] = new GameSession(groupId);
-    seal.replyToSender(ctx, msg, `${result}\n\n🏁 ${gameOver.loser.name} 血量归零！\n🏆 ${gameOver.winner.name} 获胜！`);
+    seal.replyToSender(ctx, msg, `${result}\n\n✦ 游戏结束 ✧\n${gameOver.loser.name} 血量归零！\n${gameOver.winner.name} 获胜！`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
