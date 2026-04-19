@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展
 // @author      铭茗
-// @version     1.3.0
+// @version     1.3.1
 // @description 宠物扩展功能：图鉴、探险、打工、竞技场
-// @timestamp   1776593883
+// @timestamp   1776607324
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-扩展.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.3.0');
+  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.3.1');
   seal.ext.register(ext);
 }
 
@@ -111,6 +111,7 @@ function init() {
   });
 
   main.on('capture', ({ uid, pet }) => {
+    if (!pet || !pet.species) return;  // 空值检查
     const data = DB.get(uid);
     if (!data.pokedex[pet.species]) data.pokedex[pet.species] = { count: 0, firstTime: Date.now() };
     data.pokedex[pet.species].count++;

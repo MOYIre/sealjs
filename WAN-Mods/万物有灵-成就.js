@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-成就
 // @author      铭茗
-// @version     1.1.0
+// @version     1.1.1
 // @description 成就系统：记录游戏里程碑
-// @timestamp   1776593883
+// @timestamp   1776607324
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-成就.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-成就');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-成就', '铭茗', '1.1.0');
+  ext = seal.ext.new('万物有灵-成就', '铭茗', '1.1.1');
   seal.ext.register(ext);
 }
 
@@ -93,6 +93,7 @@ function init() {
   main.registerMod({ id: MOD_ID, name: '万物有灵-成就', version: '1.0.0', author: '铭茗', description: '成就系统', dependencies: [] });
 
   main.on('capture', ({ uid, pet }) => {
+    if (!pet) return;  // 空值检查
     const data = DB.get(uid);
     data.stats.captureCount++;
     const checks = [];
