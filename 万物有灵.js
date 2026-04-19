@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.3.0
+// @version     1.3.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776614094
+// @timestamp   1776614458
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.3.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.3.1');
   seal.ext.register(ext);
 }
 
@@ -368,8 +368,12 @@ cmd.solve = (ctx, msg, argv) => {
   console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2 }), 'atUserId:', atUserId, 'atInfo:', JSON.stringify(atInfo));
 
   const reply = (text) => seal.replyToSender(ctx, msg, text);
-  const save = () => DB.save(uid, data);
-  const getPet = (idx) => data.pets[parseInt(idx) - 1];
+  const save = () => { try { DB.save(uid, data); } catch (e) { console.log('[万物有灵] 保存失败:', e); } };
+  const getPet = (idx) => {
+    const num = parseInt(idx);
+    if (isNaN(num) || num < 1 || num > data.pets.length) return null;
+    return data.pets[num - 1];
+  };
 
   if (action === 'help') {
     let help = cmd.help;
@@ -515,11 +519,11 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '存入') {
-    const idx = parseInt(p1) - 1;
-    const pet = data.pets[idx];
+    const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
     if (data.pets.length <= 1) return reply('队伍至少要保留1只宠物');
     if (data.storage.length >= CONFIG.maxStorage) return reply(`仓库已满(${CONFIG.maxStorage}只)`);
+    const idx = data.pets.indexOf(pet);
     data.pets.splice(idx, 1);
     data.storage.push(pet);
     save();
@@ -528,11 +532,11 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '取出') {
-    const idx = parseInt(p1) - 1;
-    const pet = data.storage[idx];
-    if (!pet) return reply('请指定正确的仓库编号');
+    const num = parseInt(p1);
+    if (isNaN(num) || num < 1 || num > data.storage.length) return reply('请指定正确的仓库编号');
+    const pet = data.storage[num - 1];
     if (data.pets.length >= CONFIG.maxPets) return reply(`队伍已满(${CONFIG.maxPets}只)，请先存入一只`);
-    data.storage.splice(idx, 1);
+    data.storage.splice(num - 1, 1);
     data.pets.push(pet);
     save();
     WanwuYouling.emit('store', { uid, pet, to: 'team' });
@@ -717,9 +721,6 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '育种') {
-    const idx1 = parseInt(p1);
-    const idx2 = parseInt(p2);
-    if (isNaN(idx1) || isNaN(idx2)) return reply('请指定两只正确的宠物编号');
     const pet1 = getPet(p1);
     const pet2 = getPet(p2);
     if (!pet1 || !pet2) return reply('请指定两只正确的宠物编号');
@@ -778,12 +779,13 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '出售') {
-    const idx = parseInt(p1) - 1;
-    const pet = data.pets[idx];
+    const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
+    if (data.pets.length <= 1) return reply('队伍至少要保留1只宠物');
 
     const price = pet.retired ? 50 : (100 + PetFactory.power(pet) * 2);
     data.money += price;
+    const idx = data.pets.indexOf(pet);
     data.pets.splice(idx, 1);
     save();
     WanwuYouling.emit('sell', { uid, pet, price });
@@ -849,7 +851,7 @@ ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.3.0',
+  version: '1.3.1',
   ext,
 
   DB: {
