@@ -302,7 +302,7 @@ const Battle = {
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '宠物';
 cmd.help = `【万物有灵】
-.宠物 斗殴 - 用肉身和野外宠物战斗（可捕捉）
+.宠物 捉宠 [编号] - 捕捉野外宠物(肉身或指定宠物出战)
 .宠物 列表 - 查看队伍
 .宠物 仓库 - 查看仓库
 .宠物 存入 <编号> - 存入仓库
@@ -341,32 +341,74 @@ cmd.solve = (ctx, msg, argv) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  if (action === '斗殴') {
-    if (data.pets.length >= CONFIG.maxPets) return reply(`宠物已达上限（${CONFIG.maxPets}只）`);
+  if (action === '捉宠' || action === '斗殴') {
+    // 检查总容量
+    if (data.pets.length >= CONFIG.maxPets && data.storage.length >= CONFIG.maxStorage) {
+      return reply(`宠物和仓库都已满，无法捉宠`);
+    }
 
     const wildPet = PetFactory.create();
+    let fighter;
+    let fighterInfo;
+    let isPlayerFight = true;
 
-    const player = {
-      name: '你',
-      hp: PLAYER_BASE.hp,
-      atk: PLAYER_BASE.atk,
-      def: PLAYER_BASE.def,
-      energy: PLAYER_BASE.energy,
-      skills: ['冲撞'],
-      element: null,
-      level: 1,
-      isPlayer: true,
-    };
+    // 判断出战方式
+    if (p1 && p1 !== '肉身') {
+      // 指定宠物出战
+      const pet = getPet(p1);
+      if (!pet) return reply('请指定正确的宠物编号');
+      if (pet.hp <= 0) return reply('宠物生命值不足，请先喂食恢复');
+      if (pet.energy < 20) return reply('宠物精力不足，请先休息');
+      
+      fighter = JSON.parse(JSON.stringify(pet));
+      fighterInfo = `【${pet.name}出战】`;
+      isPlayerFight = false;
+    } else if (data.pets.length > 0 && (!p1 || p1 === '肉身')) {
+      // 有宠物但选择肉身，提示可选
+      fighterInfo = `【肉身出战】(你有${data.pets.length}只宠物，可指定编号让宠物出战)`;
+      fighter = {
+        name: '你',
+        hp: PLAYER_BASE.hp,
+        atk: PLAYER_BASE.atk,
+        def: PLAYER_BASE.def,
+        energy: PLAYER_BASE.energy,
+        skills: ['冲撞'],
+        element: null,
+        level: 1,
+        isPlayer: true,
+      };
+    } else {
+      // 没有宠物，肉身出战
+      fighterInfo = `【肉身出战】`;
+      fighter = {
+        name: '你',
+        hp: PLAYER_BASE.hp,
+        atk: PLAYER_BASE.atk,
+        def: PLAYER_BASE.def,
+        energy: PLAYER_BASE.energy,
+        skills: ['冲撞'],
+        element: null,
+        level: 1,
+        isPlayer: true,
+      };
+    }
 
     try {
-      const result = Battle.run(player, wildPet);
-      const logs = result.logs.slice(0, CONFIG.fightLogLimit);
-      if (result.logs.length > CONFIG.fightLogLimit) logs.push('...\n（战斗太激烈，省略部分回合）');
+      const result = Battle.run(fighter, wildPet);
+      const logs = [fighterInfo, '', `遭遇 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}(${wildPet.species}) Lv.${wildPet.level}`];
+      logs.push(...result.logs.slice(0, CONFIG.fightLogLimit - 3));
+      if (result.logs.length > CONFIG.fightLogLimit - 3) logs.push('...\n（战斗太激烈，省略部分回合）');
 
       if (result.draw) {
-        logs.push(`\n[平局] 你和 ${wildPet.name}(${wildPet.species}) 同归于尽，它逃跑了...`);
-      } else if (result.winner === player) {
-        logs.push(`\n[胜利] 你战胜了 ${wildPet.name}(${wildPet.species})！`);
+        logs.push(`\n[平局] ${fighter.name}和 ${wildPet.name} 同归于尽，它逃跑了...`);
+        if (!isPlayerFight) {
+          const pet = getPet(p1);
+          pet.hp = 0;
+          pet.energy = Math.max(0, pet.energy - 20);
+          save();
+        }
+      } else if (result.winner === fighter) {
+        logs.push(`\n[胜利] ${fighter.name}战胜了 ${wildPet.name}！`);
         logs.push(`[捕捉] 成功捕捉 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}！`);
         wildPet.hp = wildPet.maxHp;
         wildPet.energy = wildPet.maxEnergy;
@@ -377,20 +419,30 @@ cmd.solve = (ctx, msg, argv) => {
         } else if (data.storage.length < CONFIG.maxStorage) {
           data.storage.push(wildPet);
           logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
-        } else {
-          logs.push(`队伍和仓库都已满，只能放生了`);
         }
+        
+        // 宠物出战消耗
+        if (!isPlayerFight) {
+          const pet = getPet(p1);
+          pet.energy = Math.max(0, pet.energy - 20);
+        }
+        
         save();
-        // 触发捕捉事件
         WanwuYouling.emit('capture', { uid, pet: wildPet });
       } else {
-        logs.push(`\n[失败] 你被 ${wildPet.name}(${wildPet.species}) 打败了，它逃跑了...`);
+        logs.push(`\n[失败] ${fighter.name}被 ${wildPet.name} 打败了，它逃跑了...`);
+        if (!isPlayerFight) {
+          const pet = getPet(p1);
+          pet.hp = Math.max(0, pet.hp - 10);
+          pet.energy = Math.max(0, pet.energy - 20);
+          save();
+        }
       }
 
       reply(logs.join('\n'));
     } catch (e) {
-      console.log('[万物有灵] 斗殴错误:', e);
-      reply('战斗过程发生错误，请稍后重试');
+      console.log('[万物有灵] 捉宠错误:', e);
+      reply('捉宠过程发生错误，请稍后重试');
     }
     return seal.ext.newCmdExecuteResult(true);
   }
