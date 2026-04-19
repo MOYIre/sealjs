@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.5.0
+// @version     1.5.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776616060
+// @timestamp   1776616098
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.5.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.1');
   seal.ext.register(ext);
 }
 
@@ -132,7 +132,7 @@ const ITEMS = {
   // 捉宠相关
   '捉宠符咒': { cost: 30, desc: '捉宠必备道具，无符咒只能获得经验', type: 'catch' },
   '幸运符': { cost: 150, desc: '下次捉宠稀有度提升一档', type: 'luck' },
-  '传说之证': { cost: 1000, desc: '下次捉宠必定为传说品质', type: 'luck' },
+  '传说之证': { cost: 100000, desc: '下次捉宠必定为传说品质', type: 'luck' },
 
   // 育种相关
   '计划生育卡': { cost: 200, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
@@ -1128,7 +1128,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.5.0',
+  version: '1.5.1',
   ext,
 
   DB: {
