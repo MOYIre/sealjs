@@ -1,22 +1,23 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.6
+// @version     1.2.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776609932
+// @timestamp   1776610708
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.7');
   seal.ext.register(ext);
 }
 
 const CONFIG = {
   maxPets: 3,
   maxStorage: 15,
+  maxSkills: 4,
   evolveLevel: 10,
   evolveBattles: [3, 5],
   baseExpGain: 10,
@@ -132,20 +133,21 @@ const DB = {
     try {
       const d = ext.storageGet('u_' + userId);
       if (!d) return defaultData;
-      
+
       const data = JSON.parse(d);
-      
-      // 兼容旧数据
+
+      // 兼容旧数据：检查是否原本没有storage字段
+      const hadStorage = 'storage' in data;
       data.pets = data.pets || [];
       data.storage = data.storage || [];
       data.money = data.money || 100;
       data.food = data.food || { '面包': 5 };
-      
-      // 如果没有storage字段且pets超过上限，移入仓库
-      if (!data.storage && data.pets.length > CONFIG.maxPets) {
+
+      // 如果是旧数据格式且pets超过上限，移入仓库
+      if (!hadStorage && data.pets.length > CONFIG.maxPets) {
         data.storage = data.pets.splice(CONFIG.maxPets);
       }
-      
+
       return data;
     } catch (e) {
       console.log('[万物有灵] 数据解析失败:', e);
@@ -247,6 +249,7 @@ const PetFactory = {
 
   // 随机学习一个技能（消耗sp）
   learnRandomSkill(pet) {
+    if (pet.skills.length >= CONFIG.maxSkills) return { success: false, error: '技能已满' };
     if (pet.sp < 1) return { success: false, error: '技能点不足' };
     const candidates = this.getLearnableSkills(pet);
     if (candidates.length === 0) return { success: false, error: '没有可学习的技能' };
@@ -296,8 +299,10 @@ const Battle = {
     const getActionOrder = (a, b) => {
       const spdA = a.spd || 100;
       const spdB = b.spd || 100;
-      if (spdA >= spdB) return [a, b];
-      return [b, a];
+      if (spdA > spdB) return [a, b];
+      if (spdB > spdA) return [b, a];
+      // 速度相同，随机决定
+      return Math.random() < 0.5 ? [a, b] : [b, a];
     };
 
     while ((p1.hp || 0) > 0 && (p2.hp || 0) > 0 && turn <= 15) {
@@ -687,6 +692,16 @@ cmd.solve = (ctx, msg, argv) => {
         WanwuYouling.emit('retire', { uid, pet: pet1 });
       }
 
+      // PVP时同步对手宠物状态
+      if (!isNPC && targetUid) {
+        const targetData = DB.get(targetUid);
+        if (targetData.pets[0]) {
+          targetData.pets[0].hp = Math.max(0, pet2.hp);
+          targetData.pets[0].energy = Math.max(0, targetData.pets[0].energy - CONFIG.battleEnergyCost);
+          DB.save(targetUid, targetData);
+        }
+      }
+
       save();
       // 触发对战事件
       WanwuYouling.emit('battle', { uid, winner: result.winner === p1Copy, draw: result.draw, isNPC, targetUid, pet1, pet2 });
@@ -823,7 +838,7 @@ ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.1.0',
+  version: '1.2.7',
   ext,
 
   DB: {
