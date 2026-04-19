@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.4
+// @version     1.2.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776608950
+// @timestamp   1776609932
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.6');
   seal.ext.register(ext);
 }
 
@@ -349,18 +349,18 @@ cmd.help = `【万物有灵】
 cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
   const data = DB.get(uid);
+
   const rawArgs = argv.rawArgs || '';
   const args = rawArgs.trim().split(/\s+/);
   const action = args[0] || '';
   const p1 = args[1] || '';
   const p2 = args.slice(2).join(' ') || '';
 
-  // 从原始消息中解析@用户（CQ码）
-  const rawMsg = msg.message || msg.Message || '';
-  const atMatch = rawMsg.match(/\[CQ:at,qq=(\d+)\]/);
-  const atUserId = atMatch ? atMatch[1] : null;
+  // 从 argv.atInfo 获取@用户（SealDice已解析好）
+  const atInfo = argv.atInfo || argv.at || [];
+  const atUserId = atInfo.length > 0 ? atInfo[0].userId : null;
 
-  console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2, args }), 'atUserId:', atUserId);
+  console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2 }), 'atUserId:', atUserId, 'atInfo:', JSON.stringify(atInfo));
 
   const reply = (text) => seal.replyToSender(ctx, msg, text);
   const save = () => DB.save(uid, data);
@@ -622,10 +622,10 @@ cmd.solve = (ctx, msg, argv) => {
     let isNPC = true;
     let targetUid = null;
 
-    // 检查是否@了其他玩家
     console.log('[万物有灵] PVP atUserId:', atUserId, 'p1:', p1, 'p2:', p2);
 
     if (atUserId) {
+      // atUserId 格式为 "QQ:3059226574"，直接使用
       targetUid = atUserId;
       if (targetUid === uid) {
         return reply('不能和自己对战');
