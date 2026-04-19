@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-技能书
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 技能书系统：探险打工掉落技能书，学习指定技能
-// @timestamp   1776574167
+// @timestamp   1776593883
 // @license     Apache-2
-// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-技能书.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-技能书.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-技能书');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-技能书', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵-技能书', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 

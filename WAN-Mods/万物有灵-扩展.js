@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展
 // @author      铭茗
-// @version     1.2.0
+// @version     1.3.0
 // @description 宠物扩展功能：图鉴、探险、打工、竞技场
-// @timestamp   1776574167
+// @timestamp   1776593883
 // @license     Apache-2
-// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-扩展.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.2.0');
+  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.3.0');
   seal.ext.register(ext);
 }
 

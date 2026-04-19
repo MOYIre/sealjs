@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-市场
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 交易市场：玩家间买卖宠物
-// @timestamp   1776574167
+// @timestamp   1776593883
 // @license     Apache-2
-// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-市场.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-市场.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-市场');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-市场', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵-市场', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 
