@@ -272,7 +272,8 @@ cmd.help = `【万物有灵】
 .宠物 进化 <编号> - 进化
 .宠物 出售 <编号> - 卖给机构
 .宠物 商店 - 查看商店
-.宠物 购买 <物品> [数量] - 购买`;
+.宠物 购买 <物品> [数量] - 购买
+.宠物 mod - 查看已安装的Mod`;
 
 cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
@@ -603,6 +604,19 @@ cmd.solve = (ctx, msg, argv) => {
     if (result) return result;
   }
 
+  // ==================== Mod管理 ====================
+  if (action === 'mod') {
+    const mods = WanwuYouling.getMods();
+    if (!mods.length) return reply('【Mod管理】\n没有已安装的Mod');
+    const lines = ['【Mod管理】', ''];
+    for (const mod of mods) {
+      const status = mod.enabled ? '✓' : '✗';
+      lines.push(`${status} ${mod.name} v${mod.version} (${mod.author})`);
+      if (mod.description) lines.push(`  ${mod.description}`);
+    }
+    return reply(lines.join('\n'));
+  }
+
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -679,23 +693,101 @@ const WanwuYouling = {
   Skills: SKILLS,
   Foods: FOODS,
 
-  // 扩展命令注册表
-  _extCommands: {},
+  // ==================== Mod系统 ====================
+  _mods: {},           // 已注册的mod
+  _extCommands: {},    // 扩展命令
+  _hooks: {},          // 事件钩子
+  _overrides: {},      // 函数覆写
 
-  // 事件钩子
-  _hooks: {},
-
-  // 注册扩展命令
-  registerCommand(name, handler, helpText) {
-    this._extCommands[name] = { handler, helpText };
+  // 注册Mod
+  registerMod(meta) {
+    if (!meta.id) return false;
+    if (this._mods[meta.id]) {
+      console.log(`[万物有灵] Mod ${meta.id} 已存在，将被替换`);
+    }
+    this._mods[meta.id] = {
+      id: meta.id,
+      name: meta.name || meta.id,
+      version: meta.version || '1.0.0',
+      author: meta.author || '未知',
+      description: meta.description || '',
+      dependencies: meta.dependencies || [],
+      enabled: false,
+      api: {},
+    };
+    return true;
   },
 
-  // 注销扩展命令
+  // 启用Mod
+  enableMod(modId, api = {}) {
+    const mod = this._mods[modId];
+    if (!mod) return { success: false, error: 'Mod不存在' };
+    
+    // 检查依赖
+    for (const dep of mod.dependencies) {
+      const depMod = this._mods[dep];
+      if (!depMod || !depMod.enabled) {
+        return { success: false, error: `缺少依赖: ${dep}` };
+      }
+    }
+    
+    mod.enabled = true;
+    mod.api = api;
+    
+    // 调用onEnable
+    if (api.onEnable) {
+      try { api.onEnable(); } catch (e) { }
+    }
+    
+    return { success: true };
+  },
+
+  // 禁用Mod
+  disableMod(modId) {
+    const mod = this._mods[modId];
+    if (!mod) return false;
+    
+    // 调用onDisable
+    if (mod.api.onDisable) {
+      try { mod.api.onDisable(); } catch (e) { }
+    }
+    
+    // 清理命令
+    for (const [name, cmd] of Object.entries(this._extCommands)) {
+      if (cmd.modId === modId) delete this._extCommands[name];
+    }
+    
+    // 清理钩子
+    for (const event of Object.keys(this._hooks)) {
+      this._hooks[event] = this._hooks[event].filter(h => h.modId !== modId);
+    }
+    
+    mod.enabled = false;
+    mod.api = {};
+    return true;
+  },
+
+  // 获取Mod
+  getMod(modId) {
+    return this._mods[modId];
+  },
+
+  // 获取所有Mod
+  getMods() {
+    return Object.values(this._mods);
+  },
+
+  // 注册命令
+  registerCommand(name, handler, helpText, modId) {
+    this._extCommands[name] = { handler, helpText, modId };
+  },
+
+  // 注销命令
   unregisterCommand(name) {
     delete this._extCommands[name];
   },
 
-  // 获取扩展命令帮助
+  // 获取帮助
   getExtHelp() {
     const lines = [];
     for (const [name, cmd] of Object.entries(this._extCommands)) {
@@ -705,8 +797,9 @@ const WanwuYouling = {
   },
 
   // 订阅事件
-  on(event, handler) {
+  on(event, handler, modId) {
     if (!this._hooks[event]) this._hooks[event] = [];
+    handler.modId = modId;
     this._hooks[event].push(handler);
   },
 
@@ -718,10 +811,32 @@ const WanwuYouling = {
 
   // 触发事件
   emit(event, data) {
-    if (!this._hooks[event]) return;
+    if (!this._hooks[event]) return data;
+    let result = data;
     for (const h of this._hooks[event]) {
-      try { h(data); } catch (e) { }
+      try {
+        const r = h(result);
+        if (r !== undefined) result = r;
+      } catch (e) { }
     }
+    return result;
+  },
+
+  // 覆写函数
+  override(name, fn, modId) {
+    this._overrides[name] = { fn, modId };
+  },
+
+  // 获取覆写
+  getOverride(name) {
+    return this._overrides[name]?.fn;
+  },
+
+  // 调用其他Mod API
+  call(modId, method, ...args) {
+    const mod = this._mods[modId];
+    if (!mod || !mod.enabled || !mod.api[method]) return undefined;
+    return mod.api[method](...args);
   },
 };
 
