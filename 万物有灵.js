@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.1
+// @version     1.2.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776594323
+// @timestamp   1776607324
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.2');
   seal.ext.register(ext);
 }
 
@@ -22,7 +22,7 @@ const CONFIG = {
   baseExpGain: 10,
   // 战斗相关
   battleLogLimit: 8,
-  battleLogPvPLimit: 6,
+  battleLogPvPLimit: 10,
   battleEnergyCost: 20,
   battleHpLoss: 10,
   // 斗殴相关
@@ -615,14 +615,20 @@ cmd.solve = (ctx, msg, argv) => {
     let targetUid = null;
 
     // 检查是否@了其他玩家
-    const atList = ctx.atInfo || [];
-    if (atList.length > 0) {
-      targetUid = atList[0].userId;
-      if (targetUid === uid) return reply('不能和自己对战');
-      const targetData = DB.get(targetUid);
-      if (!targetData.pets.length) return reply('对方没有宠物');
-      pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
-      isNPC = false;
+    const atList = ctx.atInfo || ctx.atList || [];
+    if (atList && atList.length > 0) {
+      const atUser = atList[0];
+      targetUid = atUser.userId || atUser.id || atUser.uid;
+      if (!targetUid) {
+        console.log('[万物有灵] PVP: 无法获取@用户ID', atUser);
+      } else if (targetUid === uid) {
+        return reply('不能和自己对战');
+      } else {
+        const targetData = DB.get(targetUid);
+        if (!targetData.pets.length) return reply('对方没有宠物');
+        pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
+        isNPC = false;
+      }
     } else if (p2) {
       pet2 = getPet(p2);
       if (!pet2) return reply('请指定正确的对手编号');
