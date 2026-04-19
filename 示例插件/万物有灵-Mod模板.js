@@ -14,7 +14,7 @@ if (!ext) {
   seal.ext.register(ext);
 }
 
-const MOD_ID = 'your-mod-id';  // 唯一ID，用于API调用
+const MOD_ID = 'your-mod-id';
 
 // ==================== Mod配置 ====================
 const CONFIG = {
@@ -43,103 +43,63 @@ function getMain() {
   return null;
 }
 
+// ==================== 工具函数 ====================
+// 获取宠物（支持队伍和仓库）编号: 1-3队伍，4-18仓库
+function getPetAnywhere(p, idx) {
+  const num = parseInt(idx);
+  if (isNaN(num) || num < 1) return null;
+  if (num <= 3) return { pet: p.data.pets[num - 1], from: 'team' };
+  const pet = (p.data.storage || [])[num - 4];
+  if (pet) return { pet, from: 'storage' };
+  return null;
+}
+
+// 查找宠物（通过ID）
+function findPetById(p, petId) {
+  let pet = p.data.pets.find(pt => pt.id === petId);
+  if (pet) return { pet, from: 'team' };
+  pet = (p.data.storage || []).find(pt => pt.id === petId);
+  if (pet) return { pet, from: 'storage' };
+  return null;
+}
+
 // ==================== Mod API ====================
 const ModAPI = {
-  // 生命周期 - 启用时调用
-  onEnable() {
-    console.log(`[${MOD_ID}] Mod已启用`);
-  },
-  
-  // 生命周期 - 禁用时调用
-  onDisable() {
-    console.log(`[${MOD_ID}] Mod已禁用`);
-  },
-
+  onEnable() { console.log(`[${MOD_ID}] Mod已启用`); },
+  onDisable() { console.log(`[${MOD_ID}] Mod已禁用`); },
   // 暴露给其他Mod调用的API
-  // 例如：main.call('your-mod-id', 'getSomething', uid)
-  getSomething(uid) {
-    return DB.get(uid).something;
-  },
+  getSomething(uid) { return DB.get(uid).something; },
 };
 
 // ==================== 初始化 ====================
 function init() {
   const main = getMain();
-  if (!main) {
-    console.log(`[${MOD_ID}] 主插件未加载`);
-    return;
-  }
+  if (!main) return;
 
-  // 1. 注册Mod
   main.registerMod({
     id: MOD_ID,
     name: '你的Mod名称',
     version: '1.0.0',
     author: '你的名字',
     description: 'Mod描述',
-    dependencies: [],  // 依赖的其他Mod ID，如 ['wanwu-ext']
+    dependencies: [],
   });
 
-  // 2. 订阅事件
-  // 捕捉宠物
-  main.on('capture', ({ uid, pet }) => {
-    // 你的逻辑
-  }, MOD_ID);
+  // 可用事件: capture, feed, rest, rename, learn, battle, levelup, retire, breed, evolve, sell, buy, store
+  main.on('capture', ({ uid, pet }) => { }, MOD_ID);
+  main.on('battle', ({ uid, winner, isNPC, targetUid, pet1, pet2 }) => { }, MOD_ID);
+  main.on('levelup', ({ uid, pet, oldLevel, newLevel }) => { }, MOD_ID);
+  main.on('evolve', ({ uid, pet, oldRarity, newRarity }) => { }, MOD_ID);
+  main.on('store', ({ uid, pet, to }) => { }, MOD_ID);
 
-  // 对战结束
-  main.on('battle', ({ uid, winner, isNPC, targetUid, pet1, pet2 }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 喂食
-  main.on('feed', ({ uid, pet, food, foodData }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 升级
-  main.on('levelup', ({ uid, pet, oldLevel, newLevel }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 进化
-  main.on('evolve', ({ uid, pet, oldRarity, newRarity }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 育种
-  main.on('breed', ({ uid, parents, child }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 出售
-  main.on('sell', ({ uid, pet, price }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 购买
-  main.on('buy', ({ uid, item, count, cost }) => {
-    // 你的逻辑
-  }, MOD_ID);
-
-  // 3. 注册命令
   main.registerCommand('你的命令', (ctx, msg, p) => {
-    // p.uid - 用户ID
-    // p.data - 用户数据
-    // p.p1, p.p2 - 参数
-    // p.reply('回复内容') - 回复
-    // p.save() - 保存数据
-    // p.getPet(编号) - 获取宠物
-    
+    // p.uid, p.data, p.p1, p.p2, p.reply(), p.save(), p.getPet()
     p.reply('命令执行结果');
     return seal.ext.newCmdExecuteResult(true);
   }, '命令帮助说明', MOD_ID);
 
-  // 4. 启用Mod
-  const result = main.enableMod(MOD_ID, ModAPI);
-  if (!result.success) {
-    console.log(`[${MOD_ID}] 启用失败: ${result.error}`);
-  }
+  main.enableMod(MOD_ID, ModAPI);
 }
 
-// 延迟初始化，等待主插件加载
 setTimeout(init, 1000);
+
