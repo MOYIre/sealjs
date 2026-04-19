@@ -5,7 +5,7 @@
 // @description 宠物扩展功能：图鉴、探险、打工、竞技场
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-扩展.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展');

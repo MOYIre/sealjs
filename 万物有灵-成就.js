@@ -5,7 +5,7 @@
 // @description 成就系统：记录游戏里程碑
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-成就.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-成就.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-成就');

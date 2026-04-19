@@ -5,9 +5,9 @@
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
-
+//如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
   ext = seal.ext.new('万物有灵', '铭茗', '1.1.0');

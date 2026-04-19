@@ -5,7 +5,7 @@
 // @description 宠物装备系统：给宠物穿戴装备提升属性
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-装备.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-装备.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-装备');
