@@ -412,7 +412,7 @@ cmd.solve = (ctx, msg, argv) => {
         logs.push(`\n[平局] ${fighter.name}和 ${wildPet.name} 同归于尽，它逃跑了...`);
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = 0;
+          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
           pet.energy = Math.max(0, pet.energy - 20);
           save();
         }
@@ -429,20 +429,21 @@ cmd.solve = (ctx, msg, argv) => {
           data.storage.push(wildPet);
           logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
         }
-        
-        // 宠物出战消耗
+
+        // 宠物出战消耗：同步战斗后的血量
         if (!isPlayerFight) {
           const pet = getPet(p1);
+          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
           pet.energy = Math.max(0, pet.energy - 20);
         }
-        
+
         save();
         WanwuYouling.emit('capture', { uid, pet: wildPet });
       } else {
         logs.push(`\n[失败] ${fighter.name}被 ${wildPet.name} 打败了，它逃跑了...`);
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = Math.max(0, pet.hp - 10);
+          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
           pet.energy = Math.max(0, pet.energy - 20);
           save();
         }
@@ -618,11 +619,12 @@ cmd.solve = (ctx, msg, argv) => {
       const logs = result.logs.slice(0, CONFIG.battleLogPvPLimit);
       if (result.logs.length > CONFIG.battleLogPvPLimit) logs.push('...\n（战斗太激烈，省略部分回合）');
 
+      // 同步战斗后的血量
+      pet1.hp = Math.max(0, p1Copy.hp);
       pet1.energy = Math.max(0, pet1.energy - CONFIG.battleEnergyCost);
 
       if (result.draw) {
         logs.push('\n[平局] 双方同归于尽！');
-        pet1.hp = Math.max(0, pet1.hp - CONFIG.battleHpLoss);
       } else {
         logs.push(`\n[胜利] ${result.winner.name} 获胜！`);
         if (result.winner === p1Copy) {
@@ -645,9 +647,8 @@ cmd.solve = (ctx, msg, argv) => {
             WanwuYouling.emit('levelup', { uid, pet: pet1, oldLevel, newLevel: pet1.level });
           }
         } else {
-          pet1.hp = Math.max(0, pet1.hp - CONFIG.battleHpLoss);
           pet1.battles++;
-          logs.push(`${pet1.name} 战败，损失 ${CONFIG.battleHpLoss} 点生命`);
+          logs.push(`${pet1.name} 战败`);
         }
       }
 
