@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.0.0
-// @description 宠物核心
-// @timestamp   1744924800
+// @version     1.1.0
+// @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
+// @timestamp   1776574167
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 
@@ -784,7 +784,7 @@ ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.0.0',
+  version: '1.1.0',
   ext,
 
   DB: {

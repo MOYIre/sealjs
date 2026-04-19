@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展
 // @author      铭茗
-// @version     1.1.0
+// @version     1.2.0
 // @description 宠物扩展功能：图鉴、探险、打工、竞技场
-// @timestamp   1744924800
+// @timestamp   1776574167
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-扩展.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.1.0');
+  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.2.0');
   seal.ext.register(ext);
 }
 
@@ -104,7 +104,7 @@ function init() {
   main.registerMod({
     id: MOD_ID,
     name: '万物有灵-扩展',
-    version: '1.1.0',
+    version: '1.2.0',
     author: '铭茗',
     description: '图鉴、探险、打工、竞技场',
     dependencies: [],
