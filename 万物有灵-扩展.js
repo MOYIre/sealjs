@@ -59,11 +59,49 @@ function getMain() {
   return null;
 }
 
-// ==================== 注册扩展命令 ====================
-function registerCommands() {
+// ==================== 初始化 ====================
+function init() {
   const main = getMain();
   if (!main) return;
 
+  // 订阅捕捉事件 - 记录图鉴
+  main.on('capture', ({ uid, pet }) => {
+    const extData = EXT_DB.get(uid);
+    if (!extData.pokedex[pet.species]) {
+      extData.pokedex[pet.species] = { count: 0, firstTime: Date.now() };
+    }
+    extData.pokedex[pet.species].count++;
+    EXT_DB.save(uid, extData);
+  });
+
+  // 订阅对战事件 - PVP积分
+  main.on('battle', ({ uid, winner, isNPC, targetUid }) => {
+    if (isNPC || !targetUid) return;
+    
+    const extData = EXT_DB.get(uid);
+    const targetExtData = EXT_DB.get(targetUid);
+    
+    if (winner) {
+      const gain = Math.floor(Math.random() * 31) + 20;
+      extData.arenaRank = (extData.arenaRank || 1000) + gain;
+      extData.arenaWins = (extData.arenaWins || 0) + 1;
+      targetExtData.arenaRank = Math.max(0, (targetExtData.arenaRank || 1000) - gain);
+    } else {
+      const loss = Math.floor(Math.random() * 21) + 10;
+      extData.arenaRank = Math.max(0, (extData.arenaRank || 1000) - loss);
+      targetExtData.arenaRank = (targetExtData.arenaRank || 1000) + loss;
+    }
+    
+    EXT_DB.save(uid, extData);
+    EXT_DB.save(targetUid, targetExtData);
+  });
+
+  // 注册命令
+  registerCommands(main);
+}
+
+// ==================== 注册扩展命令 ====================
+function registerCommands(main) {
   // 图鉴
   main.registerCommand('图鉴', (ctx, msg, p) => {
     const extData = EXT_DB.get(p.uid);
@@ -202,10 +240,5 @@ function registerCommands() {
   }, '查看竞技场积分');
 }
 
-// 延迟注册，等待主插件加载
-setTimeout(registerCommands, 1000);
-
-// 暴露接口
-if (typeof globalThis !== 'undefined') {
-  globalThis.WanwuYoulingExt = { registerCommands, EXT_DB, EXPLORE_AREAS, WORK_TYPES, EXT_CONFIG };
-}
+// 延迟初始化，等待主插件加载
+setTimeout(init, 1000);
