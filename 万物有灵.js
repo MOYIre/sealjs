@@ -323,6 +323,8 @@ cmd.solve = (ctx, msg, argv) => {
         wildPet.energy = wildPet.maxEnergy;
         data.pets.push(wildPet);
         save();
+        // 触发捕捉事件
+        WanwuYouling.emit('capture', { uid, pet: wildPet });
       } else {
         logs.push(`\n[失败] 你被 ${wildPet.name}(${wildPet.species}) 打败了，它逃跑了...`);
       }
@@ -424,11 +426,12 @@ cmd.solve = (ctx, msg, argv) => {
 
     let pet2;
     let isNPC = true;
+    let targetUid = null;
 
     // 检查是否@了其他玩家
     const atList = ctx.atInfo || [];
     if (atList.length > 0) {
-      const targetUid = atList[0].userId;
+      targetUid = atList[0].userId;
       if (targetUid === uid) return reply('不能和自己对战');
       const targetData = DB.get(targetUid);
       if (!targetData.pets.length) return reply('对方没有宠物');
@@ -479,6 +482,8 @@ cmd.solve = (ctx, msg, argv) => {
       }
 
       save();
+      // 触发对战事件
+      WanwuYouling.emit('battle', { uid, winner: result.winner === p1Copy, isNPC, targetUid, pet1, pet2 });
       reply(logs.join('\n'));
     } catch (e) {
       reply('对战过程发生错误，请稍后重试');
@@ -663,17 +668,20 @@ const WanwuYouling = {
 
   // 扩展命令注册表
   _extCommands: {},
-  
+
+  // 事件钩子
+  _hooks: {},
+
   // 注册扩展命令
   registerCommand(name, handler, helpText) {
     this._extCommands[name] = { handler, helpText };
   },
-  
+
   // 注销扩展命令
   unregisterCommand(name) {
     delete this._extCommands[name];
   },
-  
+
   // 获取扩展命令帮助
   getExtHelp() {
     const lines = [];
@@ -681,6 +689,26 @@ const WanwuYouling = {
       if (cmd.helpText) lines.push(`.宠物 ${name} - ${cmd.helpText}`);
     }
     return lines.join('\n');
+  },
+
+  // 订阅事件
+  on(event, handler) {
+    if (!this._hooks[event]) this._hooks[event] = [];
+    this._hooks[event].push(handler);
+  },
+
+  // 取消订阅
+  off(event, handler) {
+    if (!this._hooks[event]) return;
+    this._hooks[event] = this._hooks[event].filter(h => h !== handler);
+  },
+
+  // 触发事件
+  emit(event, data) {
+    if (!this._hooks[event]) return;
+    for (const h of this._hooks[event]) {
+      try { h(data); } catch (e) { }
+    }
   },
 };
 
