@@ -5,7 +5,7 @@
 // @description 技能书系统：探险打工掉落技能书，学习指定技能
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-技能书.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-技能书.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-技能书');

@@ -5,7 +5,7 @@
 // @description 季节活动：特殊时间开放特殊区域和宠物
 // @timestamp   1776574167
 // @license     Apache-2
-// @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵-季节.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-季节.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-季节');
