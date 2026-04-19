@@ -122,9 +122,17 @@ const DB = {
   get(userId) {
     try {
       const d = ext.storageGet('u_' + userId);
-      return d ? JSON.parse(d) : { pets: [], money: 100, food: { '面包': 5 } };
+      if (d) {
+        // 兼容旧数据：如果没有storage字段，把多余宠物移入仓库
+        if (!d.storage && d.pets && d.pets.length > CONFIG.maxPets) {
+          d.storage = d.pets.splice(CONFIG.maxPets);
+        }
+        d.storage = d.storage || [];
+        return d;
+      }
+      return { pets: [], storage: [], money: 100, food: { '面包': 5 } };
     } catch {
-      return { pets: [], money: 100, food: { '面包': 5 } };
+      return { pets: [], storage: [], money: 100, food: { '面包': 5 } };
     }
   },
   save(userId, data) { ext.storageSet('u_' + userId, JSON.stringify(data)); },
@@ -265,7 +273,10 @@ const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '宠物';
 cmd.help = `【万物有灵】
 .宠物 斗殴 - 用肉身和野外宠物战斗（可捕捉）
-.宠物 列表 - 查看宠物
+.宠物 列表 - 查看队伍
+.宠物 仓库 - 查看仓库
+.宠物 存入 <编号> - 存入仓库
+.宠物 取出 <编号> - 取出到队伍
 .宠物 信息 <编号> - 宠物详情
 .宠物 背包 - 查看背包
 .宠物 喂食 <编号> <食物> - 喂食
@@ -327,7 +338,14 @@ cmd.solve = (ctx, msg, argv) => {
         logs.push(`[捕捉] 成功捕捉 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}！`);
         wildPet.hp = wildPet.maxHp;
         wildPet.energy = wildPet.maxEnergy;
-        data.pets.push(wildPet);
+        
+        if (data.pets.length < CONFIG.maxPets) {
+          data.pets.push(wildPet);
+          logs.push(`已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
+        } else {
+          data.storage.push(wildPet);
+          logs.push(`队伍已满，已存入仓库 (仓库: ${data.storage.length}只)`);
+        }
         save();
         // 触发捕捉事件
         WanwuYouling.emit('capture', { uid, pet: wildPet });
@@ -345,13 +363,52 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '列表' || action === '') {
     if (!data.pets.length) return reply('你还没有宠物，发送 .宠物 斗殴 去捕捉一只');
-    const lines = [`【我的宠物】(${data.pets.length}/${CONFIG.maxPets})`, `金币: ${data.money}`];
+    const lines = [`【队伍】(${data.pets.length}/${CONFIG.maxPets})`, `金币: ${data.money}`];
     data.pets.forEach((pet, i) => {
       const e = ELEMENT_MARK[pet.element] || '';
       const r = RARITY_MARK[pet.rarity] || '';
       lines.push(`${i + 1}. ${r}${e} ${pet.name} (${pet.species}) Lv.${pet.level} 战力:${PetFactory.power(pet)}`);
     });
+    if (data.storage.length) lines.push(`\n仓库: ${data.storage.length}只 (.宠物 仓库 查看)`);
     return reply(lines.join('\n'));
+  }
+
+  if (action === '仓库') {
+    if (!data.storage.length) return reply('【仓库】\n仓库空空如也');
+    const lines = [`【仓库】(${data.storage.length}只)`, ''];
+    data.storage.forEach((pet, i) => {
+      const e = ELEMENT_MARK[pet.element] || '';
+      const r = RARITY_MARK[pet.rarity] || '';
+      const hp = pet.hp > 0 ? `HP:${pet.hp}/${pet.maxHp}` : '已阵亡';
+      lines.push(`${i + 1}. ${r}${e} ${pet.name} (${pet.species}) Lv.${pet.level} ${hp}`);
+    });
+    lines.push('\n.宠物 取出 <编号> - 取出到队伍');
+    lines.push('.宠物 存入 <编号> - 存入仓库');
+    return reply(lines.join('\n'));
+  }
+
+  if (action === '存入') {
+    const idx = parseInt(p1) - 1;
+    const pet = data.pets[idx];
+    if (!pet) return reply('请指定正确的宠物编号');
+    if (data.pets.length <= 1) return reply('队伍至少要保留1只宠物');
+    data.pets.splice(idx, 1);
+    data.storage.push(pet);
+    save();
+    WanwuYouling.emit('store', { uid, pet, to: 'storage' });
+    return reply(`${pet.name} 已存入仓库`);
+  }
+
+  if (action === '取出') {
+    const idx = parseInt(p1) - 1;
+    const pet = data.storage[idx];
+    if (!pet) return reply('请指定正确的仓库编号');
+    if (data.pets.length >= CONFIG.maxPets) return reply(`队伍已满(${CONFIG.maxPets}只)，请先存入一只`);
+    data.storage.splice(idx, 1);
+    data.pets.push(pet);
+    save();
+    WanwuYouling.emit('store', { uid, pet, to: 'team' });
+    return reply(`${pet.name} 已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
   }
 
   if (action === '信息') {
