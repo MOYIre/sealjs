@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-装备
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 宠物装备系统：给宠物穿戴装备提升属性
-// @timestamp   1776574167
+// @timestamp   1776593618
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-装备.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-装备');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-装备', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵-装备', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 
@@ -39,7 +39,9 @@ const EQUIPS = {
   守护项链: { type: 'accessory', def: 8, cost: 200, desc: '增加防御力' },
   生命宝石: { type: 'accessory', hp: 30, cost: 250, desc: '增加生命值' },
   幸运符: { type: 'accessory', luck: 10, cost: 500, desc: '提升暴击几率' },
-  龙心: { type: 'accessory', atk: 15, def: 15, hp: 50, cost: 3000, desc: '传说中的龙心' },
+  风之羽: { type: 'accessory', spd: 15, cost: 400, desc: '提升速度' },
+  疾风靴: { type: 'accessory', spd: 25, cost: 800, desc: '大幅提升速度' },
+  龙心: { type: 'accessory', atk: 15, def: 15, hp: 50, spd: 10, cost: 3000, desc: '传说中的龙心' },
 };
 
 // ==================== 数据存储 ====================
@@ -66,7 +68,7 @@ function getMain() {
 
 function getEquipStats(pet, equipData) {
   const equipped = equipData.equipped[pet.id] || {};
-  let bonus = { atk: 0, def: 0, hp: 0, luck: 0 };
+  let bonus = { atk: 0, def: 0, hp: 0, luck: 0, spd: 0 };
   Object.values(equipped).forEach(name => {
     const eq = EQUIPS[name];
     if (eq) {
@@ -74,6 +76,7 @@ function getEquipStats(pet, equipData) {
       if (eq.def) bonus.def += eq.def;
       if (eq.hp) bonus.hp += eq.hp;
       if (eq.luck) bonus.luck += eq.luck;
+      if (eq.spd) bonus.spd += eq.spd;
     }
   });
   return bonus;
@@ -108,6 +111,7 @@ function init() {
         if (eq.def) effects.push(`防御+${eq.def}`);
         if (eq.hp) effects.push(`生命+${eq.hp}`);
         if (eq.luck) effects.push(`幸运+${eq.luck}`);
+        if (eq.spd) effects.push(`速度+${eq.spd}`);
         lines.push(`  ${name}: ${eq.cost}金 (${effects.join(', ')})`);
       });
       lines.push('');
