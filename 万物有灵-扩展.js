@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵-扩展
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 宠物扩展功能：图鉴、探险、打工、竞技场
 // @timestamp   1744924800
 // @license     Apache-2
@@ -10,13 +10,12 @@
 
 let ext = seal.ext.find('万物有灵-扩展');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵-扩展', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 
 const MOD_ID = 'wanwu-ext';
 
-// ==================== Mod配置 ====================
 const CONFIG = {
   exploreTime: 30,
   workTime: 60,
@@ -39,7 +38,6 @@ const WORK_TYPES = [
   { name: '护送', gold: [50, 100], energy: 40 },
 ];
 
-// ==================== 数据存储 ====================
 const DB = {
   get(userId) {
     try {
@@ -49,82 +47,71 @@ const DB = {
       return { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
     }
   },
-  save(userId, data) {
-    ext.storageSet('e_' + userId, JSON.stringify(data));
-  },
+  save(userId, data) { ext.storageSet('e_' + userId, JSON.stringify(data)); },
 };
 
-// ==================== 获取主插件 ====================
 function getMain() {
   if (typeof WanwuYouling !== 'undefined') return WanwuYouling;
   if (typeof globalThis !== 'undefined' && globalThis.WanwuYouling) return globalThis.WanwuYouling;
   return null;
 }
 
-// ==================== Mod API ====================
-const ModAPI = {
-  // 生命周期
-  onEnable() {
-    console.log(`[万物有灵-扩展] Mod已启用`);
-  },
-  
-  onDisable() {
-    console.log(`[万物有灵-扩展] Mod已禁用`);
-  },
+// 获取宠物（支持队伍和仓库）
+function getPetAnywhere(p, idx) {
+  const num = parseInt(idx);
+  if (isNaN(num) || num < 1) return null;
+  if (num <= 3) {
+    return { pet: p.data.pets[num - 1], from: 'team', idx: num - 1 };
+  }
+  const storageIdx = num - 4;
+  const pet = (p.data.storage || [])[storageIdx];
+  if (pet) return { pet, from: 'storage', idx: storageIdx };
+  return null;
+}
 
-  // 暴露给其他Mod调用的API
-  getPokedex(uid) {
-    return DB.get(uid).pokedex;
-  },
-  
-  getArenaRank(uid) {
-    return DB.get(uid).arenaRank || 1000;
-  },
-  
-  getExploreAreas() {
-    return EXPLORE_AREAS;
-  },
-  
-  getWorkTypes() {
-    return WORK_TYPES;
-  },
-  
-  getConfig() {
-    return CONFIG;
-  },
+// 查找宠物（通过ID）
+function findPetById(p, petId) {
+  let pet = p.data.pets.find(pt => pt.id === petId);
+  if (pet) return { pet, from: 'team' };
+  pet = (p.data.storage || []).find(pt => pt.id === petId);
+  if (pet) return { pet, from: 'storage' };
+  return null;
+}
+
+const ModAPI = {
+  onEnable() { console.log(`[万物有灵-扩展] Mod已启用`); },
+  onDisable() { console.log(`[万物有灵-扩展] Mod已禁用`); },
+  getPokedex(uid) { return DB.get(uid).pokedex; },
+  getArenaRank(uid) { return DB.get(uid).arenaRank || 1000; },
+  getExploreAreas() { return EXPLORE_AREAS; },
+  getWorkTypes() { return WORK_TYPES; },
+  getConfig() { return CONFIG; },
 };
 
-// ==================== 初始化 ====================
 function init() {
   const main = getMain();
   if (!main) return;
 
-  // 注册Mod
   main.registerMod({
     id: MOD_ID,
     name: '万物有灵-扩展',
-    version: '1.0.0',
+    version: '1.1.0',
     author: '铭茗',
     description: '图鉴、探险、打工、竞技场',
     dependencies: [],
   });
 
-  // 订阅事件
   main.on('capture', ({ uid, pet }) => {
     const data = DB.get(uid);
-    if (!data.pokedex[pet.species]) {
-      data.pokedex[pet.species] = { count: 0, firstTime: Date.now() };
-    }
+    if (!data.pokedex[pet.species]) data.pokedex[pet.species] = { count: 0, firstTime: Date.now() };
     data.pokedex[pet.species].count++;
     DB.save(uid, data);
   }, MOD_ID);
 
   main.on('battle', ({ uid, winner, isNPC, targetUid }) => {
     if (isNPC || !targetUid) return;
-    
     const data = DB.get(uid);
     const targetData = DB.get(targetUid);
-    
     if (winner) {
       const gain = Math.floor(Math.random() * 31) + 20;
       data.arenaRank = (data.arenaRank || 1000) + gain;
@@ -135,12 +122,10 @@ function init() {
       data.arenaRank = Math.max(0, (data.arenaRank || 1000) - loss);
       targetData.arenaRank = (targetData.arenaRank || 1000) + loss;
     }
-    
     DB.save(uid, data);
     DB.save(targetUid, targetData);
   }, MOD_ID);
 
-  // 注册命令
   main.registerCommand('图鉴', (ctx, msg, p) => {
     const data = DB.get(p.uid);
     const entries = Object.entries(data.pokedex || {});
@@ -153,8 +138,10 @@ function init() {
   }, '查看图鉴', MOD_ID);
 
   main.registerCommand('探险', (ctx, msg, p) => {
-    const pet = p.getPet(p.p1);
-    if (!pet) return p.reply('请指定正确的宠物编号');
+    const result = getPetAnywhere(p, p.p1);
+    if (!result) return p.reply('请指定正确的宠物编号\n(1-3队伍，4-18仓库)');
+    const pet = result.pet;
+    if (pet.hp <= 0) return p.reply('宠物已阵亡，无法探险');
     if (pet.energy < 30) return p.reply('宠物精力不足，需要30点精力');
     const area = EXPLORE_AREAS.find(a => a.name === p.p2);
     if (!area) return p.reply(`未知区域\n可用: ${EXPLORE_AREAS.map(a => a.name).join('、')}`);
@@ -169,7 +156,7 @@ function init() {
     pet.energy -= 30;
     p.save();
     DB.save(p.uid, data);
-    p.reply(`${pet.name} 前往 ${area.name} 探险\n预计 ${CONFIG.exploreTime}分钟后返回`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${CONFIG.exploreTime}分钟后返回`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物探险', MOD_ID);
 
@@ -183,8 +170,9 @@ function init() {
       if (e.endTime <= now) {
         const area = EXPLORE_AREAS.find(a => a.name === e.area);
         if (area) {
-          const pet = p.data.pets.find(pt => pt.id === e.petId);
-          if (pet) {
+          const found = findPetById(p, e.petId);
+          if (found) {
+            const pet = found.pet;
             let r = `${pet.name} 从 ${area.name} 返回\n`;
             if (Math.random() < area.danger) { pet.hp = Math.max(1, pet.hp - 20); r += '遭遇危险受伤！\n'; }
             const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
@@ -202,19 +190,17 @@ function init() {
         lines.push(`${e.area}: 剩余${remain}分钟`);
       }
     }
-    if (changed) {
-      data.explore = (data.explore || []).filter(e => e.endTime > now);
-      DB.save(p.uid, data);
-      p.save();
-    }
+    if (changed) { data.explore = (data.explore || []).filter(e => e.endTime > now); DB.save(p.uid, data); p.save(); }
     if (lines.length === 1) lines.push('没有进行中的探险');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看探险状态', MOD_ID);
 
   main.registerCommand('打工', (ctx, msg, p) => {
-    const pet = p.getPet(p.p1);
-    if (!pet) return p.reply('请指定正确的宠物编号');
+    const result = getPetAnywhere(p, p.p1);
+    if (!result) return p.reply('请指定正确的宠物编号\n(1-3队伍，4-18仓库)');
+    const pet = result.pet;
+    if (pet.hp <= 0) return p.reply('宠物已阵亡，无法打工');
     const work = WORK_TYPES.find(w => w.name === p.p2);
     if (!work) return p.reply(`未知工作\n可用: ${WORK_TYPES.map(w => w.name).join('、')}`);
     if (pet.energy < work.energy) return p.reply(`精力不足，需要${work.energy}点`);
@@ -229,7 +215,7 @@ function init() {
     pet.energy -= work.energy;
     p.save();
     DB.save(p.uid, data);
-    p.reply(`${pet.name} 开始${work.name}\n预计 ${CONFIG.workTime}分钟后完成`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${CONFIG.workTime}分钟后完成`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物打工', MOD_ID);
 
@@ -243,8 +229,9 @@ function init() {
       if (w.endTime <= now) {
         const work = WORK_TYPES.find(wt => wt.name === w.work);
         if (work) {
-          const pet = p.data.pets.find(pt => pt.id === w.petId);
-          if (pet) {
+          const found = findPetById(p, w.petId);
+          if (found) {
+            const pet = found.pet;
             const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
             p.data.money += gold;
             lines.push(`${pet.name} 完成${work.name}，获得 ${gold} 金币`);
@@ -256,11 +243,7 @@ function init() {
         lines.push(`${w.work}: 剩余${remain}分钟`);
       }
     }
-    if (changed) {
-      data.work = (data.work || []).filter(w => w.endTime > now);
-      DB.save(p.uid, data);
-      p.save();
-    }
+    if (changed) { data.work = (data.work || []).filter(w => w.endTime > now); DB.save(p.uid, data); p.save(); }
     if (lines.length === 1) lines.push('没有进行中的打工');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
@@ -272,9 +255,7 @@ function init() {
     return seal.ext.newCmdExecuteResult(true);
   }, '查看竞技场积分', MOD_ID);
 
-  // 启用Mod
   main.enableMod(MOD_ID, ModAPI);
 }
 
-// 延迟初始化
 setTimeout(init, 1000);
