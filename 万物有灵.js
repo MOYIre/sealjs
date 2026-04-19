@@ -222,36 +222,41 @@ const Battle = {
   calcDmg(atk, def, skill, atkLv, atkEle, defEle) {
     const sk = SKILLS[skill] || SKILLS['冲撞'];
     let dmg = (atk + sk.power) * (1 + atkLv * 0.05) * (100 / (100 + def));
-    if (ELEMENT_ADV[atkEle] === defEle) dmg *= 1.5;
+    if (atkEle && defEle && ELEMENT_ADV[atkEle] === defEle) dmg *= 1.5;
     return Math.floor(dmg);
   },
 
   attack(a, d, logs, isPlayer = false) {
-    const usable = a.skills.filter(s => (SKILLS[s]?.cost || 0) <= a.energy);
-    const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
-    const sk = SKILLS[skill];
-    if (Math.random() * 100 > (sk?.acc || 95)) {
-      logs.push(`${a.name} 使用 ${skill}，但打偏了！`);
-      return;
+    try {
+      const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
+      const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
+      const sk = SKILLS[skill] || SKILLS['冲撞'];
+      if (Math.random() * 100 > (sk.acc || 95)) {
+        logs.push(`${a.name} 使用 ${skill}，但打偏了！`);
+        return;
+      }
+      const dmg = this.calcDmg(a.atk || 10, d.def || 10, skill, a.level || 1, a.element, d.element);
+      d.hp = Math.max(0, (d.hp || 0) - dmg);
+      a.energy = Math.max(0, (a.energy || 0) - (sk.cost || 0));
+      const adv = a.element && d.element && ELEMENT_ADV[a.element] === d.element ? '（克制！）' : '';
+      logs.push(`${a.name} 使用 ${skill}，造成 ${dmg} 伤害${adv}`);
+    } catch (e) {
+      logs.push(`${a.name} 攻击时发生错误`);
+      console.log('[万物有灵] attack错误:', e);
     }
-    const dmg = this.calcDmg(a.atk, d.def, skill, a.level || 1, a.element, d.element);
-    d.hp = Math.max(0, d.hp - dmg);
-    a.energy = Math.max(0, a.energy - (sk?.cost || 0));
-    const adv = ELEMENT_ADV[a.element] === d.element ? '（克制！）' : '';
-    logs.push(`${a.name} 使用 ${skill}，造成 ${dmg} 伤害${adv}`);
   },
 
   run(p1, p2) {
     const logs = [];
     let turn = 1;
-    while (p1.hp > 0 && p2.hp > 0 && turn <= 15) {
+    while ((p1.hp || 0) > 0 && (p2.hp || 0) > 0 && turn <= 15) {
       logs.push(`\n--- 第${turn}回合 ---`);
       this.attack(p1, p2, logs, p1.isPlayer);
-      if (p2.hp <= 0) break;
+      if ((p2.hp || 0) <= 0) break;
       this.attack(p2, p1, logs);
       turn++;
     }
-    return { winner: p1.hp > 0 ? p1 : p2, loser: p1.hp > 0 ? p2 : p1, logs };
+    return { winner: (p1.hp || 0) > 0 ? p1 : p2, loser: (p1.hp || 0) > 0 ? p2 : p1, logs };
   },
 };
 
@@ -332,6 +337,7 @@ cmd.solve = (ctx, msg, argv) => {
 
       reply(logs.join('\n'));
     } catch (e) {
+      console.log('[万物有灵] 斗殴错误:', e);
       reply('战斗过程发生错误，请稍后重试');
     }
     return seal.ext.newCmdExecuteResult(true);
