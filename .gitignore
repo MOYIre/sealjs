@@ -4,3 +4,4 @@ input/
 
 # 忽略 Qwen 配置
 QWEN.md
+debug/
