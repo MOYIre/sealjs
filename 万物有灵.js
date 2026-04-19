@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.3.1
+// @version     1.3.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776614458
+// @timestamp   1776614732
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.3.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.3.2');
   seal.ext.register(ext);
 }
 
@@ -355,17 +355,26 @@ cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
   const data = DB.get(uid);
 
-  const rawArgs = argv.rawArgs || '';
+  // 检查是否是别名命令（如 .宠物对战 而不是 .宠物 对战）
+  const commandName = argv.command || '';
+  let rawArgs = argv.rawArgs || '';
+  let actionFromCmd = '';
+
+  // 如果命令是 "宠物xxx" 格式，提取 xxx 作为 action
+  if (commandName.startsWith('宠物') && commandName !== '宠物') {
+    actionFromCmd = commandName.substring(2); // 提取 "对战"、"捉宠" 等
+  }
+
   const args = rawArgs.trim().split(/\s+/);
-  const action = args[0] || '';
-  const p1 = args[1] || '';
-  const p2 = args.slice(2).join(' ') || '';
+  const action = actionFromCmd || args[0] || '';
+  const p1 = actionFromCmd ? args[0] : args[1] || '';
+  const p2 = actionFromCmd ? args.slice(1).join(' ') : args.slice(2).join(' ') || '';
 
   // 从 argv.atInfo 获取@用户（SealDice已解析好）
   const atInfo = argv.atInfo || argv.at || [];
   const atUserId = atInfo.length > 0 ? atInfo[0].userId : null;
 
-  console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2 }), 'atUserId:', atUserId, 'atInfo:', JSON.stringify(atInfo));
+  console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2, commandName }), 'atUserId:', atUserId, 'atInfo:', JSON.stringify(atInfo));
 
   const reply = (text) => seal.replyToSender(ctx, msg, text);
   const save = () => { try { DB.save(uid, data); } catch (e) { console.log('[万物有灵] 保存失败:', e); } };
@@ -848,10 +857,16 @@ cmd.solve = (ctx, msg, argv) => {
 
 ext.cmdMap['宠物'] = cmd;
 ext.cmdMap['万物有灵'] = cmd;
+// 注册别名命令，解决带CQ码的命令被忽略的问题
+ext.cmdMap['宠物对战'] = cmd;
+ext.cmdMap['宠物捉宠'] = cmd;
+ext.cmdMap['宠物斗殴'] = cmd;
+ext.cmdMap['宠物喂食'] = cmd;
+ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.3.1',
+  version: '1.3.2',
   ext,
 
   DB: {
