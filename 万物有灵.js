@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.5.4
+// @version     1.5.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776617885
+// @timestamp   1776618314
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.5.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.6');
   seal.ext.register(ext);
 }
 
@@ -151,8 +151,7 @@ const ITEMS = {
   '复活药': { cost: 200, desc: '复活一只死亡的宠物', type: 'revive' },
 
   // 其他
-  '改名卡': { cost: 30, desc: '免费给宠物改名', type: 'misc' },
-  '扩容卡': { cost: 300, desc: '仓库容量+5', type: 'misc' },
+  '扩容卡': { cost: 5000, desc: '仓库容量+5', type: 'misc' },
 };
 
 const DB = {
@@ -1074,9 +1073,6 @@ cmd.solve = (ctx, msg, argv) => {
       }
 
       case 'misc': {
-        if (itemName === '改名卡') {
-          return reply('使用 .宠物 改名 <编号> <名字> 时自动消耗改名卡');
-        }
         if (itemName === '扩容卡') {
           data.maxStorage = (data.maxStorage || 15) + 5;
           useItem();
@@ -1135,7 +1131,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.5.4',
+  version: '1.5.6',
   ext,
 
   DB: {
