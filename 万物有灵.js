@@ -128,19 +128,28 @@ const SKILLS = {
 
 const DB = {
   get(userId) {
+    const defaultData = { pets: [], storage: [], money: 100, food: { '面包': 5 } };
     try {
       const d = ext.storageGet('u_' + userId);
-      if (d) {
-        // 兼容旧数据：如果没有storage字段，把多余宠物移入仓库
-        if (!d.storage && d.pets && d.pets.length > CONFIG.maxPets) {
-          d.storage = d.pets.splice(CONFIG.maxPets);
-        }
-        d.storage = d.storage || [];
-        return d;
+      if (!d) return defaultData;
+      
+      const data = JSON.parse(d);
+      
+      // 兼容旧数据
+      data.pets = data.pets || [];
+      data.storage = data.storage || [];
+      data.money = data.money || 100;
+      data.food = data.food || { '面包': 5 };
+      
+      // 如果没有storage字段且pets超过上限，移入仓库
+      if (!data.storage && data.pets.length > CONFIG.maxPets) {
+        data.storage = data.pets.splice(CONFIG.maxPets);
       }
-      return { pets: [], storage: [], money: 100, food: { '面包': 5 } };
-    } catch {
-      return { pets: [], storage: [], money: 100, food: { '面包': 5 } };
+      
+      return data;
+    } catch (e) {
+      console.log('[万物有灵] 数据解析失败:', e);
+      return defaultData;
     }
   },
   save(userId, data) { ext.storageSet('u_' + userId, JSON.stringify(data)); },
