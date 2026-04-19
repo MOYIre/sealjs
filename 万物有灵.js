@@ -20,6 +20,13 @@ const CONFIG = {
   evolveLevel: 10,
   evolveBattles: [3, 5],
   baseExpGain: 10,
+  // 战斗相关
+  battleLogLimit: 8,
+  battleLogPvPLimit: 6,
+  battleEnergyCost: 20,
+  battleHpLoss: 10,
+  // 斗殴相关
+  fightLogLimit: 8,
 };
 
 // ==================== 种族定义 ====================
@@ -265,7 +272,14 @@ const Battle = {
       this.attack(p2, p1, logs);
       turn++;
     }
-    return { winner: (p1.hp || 0) > 0 ? p1 : p2, loser: (p1.hp || 0) > 0 ? p2 : p1, logs };
+    const p1Alive = (p1.hp || 0) > 0;
+    const p2Alive = (p2.hp || 0) > 0;
+    return {
+      winner: p1Alive ? p1 : (p2Alive ? p2 : null),
+      loser: p1Alive ? p2 : (p2Alive ? p1 : null),
+      draw: !p1Alive && !p2Alive,
+      logs,
+    };
   },
 };
 
@@ -331,15 +345,17 @@ cmd.solve = (ctx, msg, argv) => {
 
     try {
       const result = Battle.run(player, wildPet);
-      const logs = result.logs.slice(0, 8);
-      if (result.logs.length > 8) logs.push('...\n（战斗太激烈，省略部分回合）');
+      const logs = result.logs.slice(0, CONFIG.fightLogLimit);
+      if (result.logs.length > CONFIG.fightLogLimit) logs.push('...\n（战斗太激烈，省略部分回合）');
 
-      if (result.winner === player) {
+      if (result.draw) {
+        logs.push(`\n[平局] 你和 ${wildPet.name}(${wildPet.species}) 同归于尽，它逃跑了...`);
+      } else if (result.winner === player) {
         logs.push(`\n[胜利] 你战胜了 ${wildPet.name}(${wildPet.species})！`);
         logs.push(`[捕捉] 成功捕捉 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}！`);
         wildPet.hp = wildPet.maxHp;
         wildPet.energy = wildPet.maxEnergy;
-        
+
         if (data.pets.length < CONFIG.maxPets) {
           data.pets.push(wildPet);
           logs.push(`已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
@@ -473,6 +489,9 @@ cmd.solve = (ctx, msg, argv) => {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
     if (!p2) return reply('请指定新名字');
+    if (p2.length > 10) return reply('名字最长10个字符');
+    if (p2.length < 1) return reply('名字不能为空');
+    if (/[^\u4e00-\u9fa5a-zA-Z0-9]/.test(p2)) return reply('名字只能包含中英文和数字');
     const oldName = pet.name;
     pet.name = p2;
     save();
@@ -521,34 +540,40 @@ cmd.solve = (ctx, msg, argv) => {
     try {
       const p1Copy = JSON.parse(JSON.stringify(pet1));
       const result = Battle.run(p1Copy, pet2);
-      const logs = result.logs.slice(0, 6);
-      if (result.logs.length > 6) logs.push('...\n（战斗太激烈，省略部分回合）');
-      logs.push(`\n[胜利] ${result.winner.name} 获胜！`);
+      const logs = result.logs.slice(0, CONFIG.battleLogPvPLimit);
+      if (result.logs.length > CONFIG.battleLogPvPLimit) logs.push('...\n（战斗太激烈，省略部分回合）');
 
-      pet1.energy = Math.max(0, pet1.energy - 20);
-      if (result.winner === p1Copy) {
-        const exp = CONFIG.baseExpGain + Math.floor(Math.random() * 10);
-        pet1.exp += exp;
-        pet1.sp++;
-        pet1.battles++;
-        logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
+      pet1.energy = Math.max(0, pet1.energy - CONFIG.battleEnergyCost);
 
-        const expNeed = pet1.level * 100;
-        if (pet1.exp >= expNeed) {
-          const oldLevel = pet1.level;
-          pet1.exp -= expNeed;
-          pet1.level++;
-          pet1.maxHp += 5;
-          pet1.hp = Math.min(pet1.hp + 5, pet1.maxHp);
-          pet1.atk += 2;
-          pet1.def += 2;
-          logs.push(`[升级] ${pet1.name} 升级到 Lv.${pet1.level}！`);
-          WanwuYouling.emit('levelup', { uid, pet: pet1, oldLevel, newLevel: pet1.level });
-        }
+      if (result.draw) {
+        logs.push('\n[平局] 双方同归于尽！');
+        pet1.hp = Math.max(0, pet1.hp - CONFIG.battleHpLoss);
       } else {
-        pet1.hp = Math.max(0, pet1.hp - 10);
-        pet1.battles++;
-        logs.push(`${pet1.name} 战败，损失 10 点生命`);
+        logs.push(`\n[胜利] ${result.winner.name} 获胜！`);
+        if (result.winner === p1Copy) {
+          const exp = CONFIG.baseExpGain + Math.floor(Math.random() * 10);
+          pet1.exp += exp;
+          pet1.sp++;
+          pet1.battles++;
+          logs.push(`${pet1.name} 获得 ${exp} 经验和 1 技能点`);
+
+          const expNeed = pet1.level * 100;
+          if (pet1.exp >= expNeed) {
+            const oldLevel = pet1.level;
+            pet1.exp -= expNeed;
+            pet1.level++;
+            pet1.maxHp += 5;
+            pet1.hp = Math.min(pet1.hp + 5, pet1.maxHp);
+            pet1.atk += 2;
+            pet1.def += 2;
+            logs.push(`[升级] ${pet1.name} 升级到 Lv.${pet1.level}！`);
+            WanwuYouling.emit('levelup', { uid, pet: pet1, oldLevel, newLevel: pet1.level });
+          }
+        } else {
+          pet1.hp = Math.max(0, pet1.hp - CONFIG.battleHpLoss);
+          pet1.battles++;
+          logs.push(`${pet1.name} 战败，损失 ${CONFIG.battleHpLoss} 点生命`);
+        }
       }
 
       if (pet1.evolved && pet1.battles >= pet1.maxBattles) {
@@ -559,9 +584,10 @@ cmd.solve = (ctx, msg, argv) => {
 
       save();
       // 触发对战事件
-      WanwuYouling.emit('battle', { uid, winner: result.winner === p1Copy, isNPC, targetUid, pet1, pet2 });
+      WanwuYouling.emit('battle', { uid, winner: result.winner === p1Copy, draw: result.draw, isNPC, targetUid, pet1, pet2 });
       reply(logs.join('\n'));
     } catch (e) {
+      console.log('[万物有灵] 对战错误:', e);
       reply('对战过程发生错误，请稍后重试');
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -803,9 +829,9 @@ const WanwuYouling = {
     
     // 调用onEnable
     if (api.onEnable) {
-      try { api.onEnable(); } catch (e) { }
+      try { api.onEnable(); } catch (e) { console.log(`[万物有灵] Mod ${modId} onEnable错误:`, e); }
     }
-    
+
     return { success: true };
   },
 
@@ -813,10 +839,10 @@ const WanwuYouling = {
   disableMod(modId) {
     const mod = this._mods[modId];
     if (!mod) return false;
-    
+
     // 调用onDisable
     if (mod.api.onDisable) {
-      try { mod.api.onDisable(); } catch (e) { }
+      try { mod.api.onDisable(); } catch (e) { console.log(`[万物有灵] Mod ${modId} onDisable错误:`, e); }
     }
     
     // 清理命令
@@ -884,7 +910,9 @@ const WanwuYouling = {
       try {
         const r = h(result);
         if (r !== undefined) result = r;
-      } catch (e) { }
+      } catch (e) {
+        console.log(`[万物有灵] 事件${event}处理错误:`, e);
+      }
     }
     return result;
   },

@@ -48,9 +48,13 @@ function getMain() {
 function getPetAnywhere(p, idx) {
   const num = parseInt(idx);
   if (isNaN(num) || num < 1) return null;
-  if (num <= 3) return { pet: p.data.pets[num - 1], from: 'team' };
-  const pet = (p.data.storage || [])[num - 4];
-  if (pet) return { pet, from: 'storage' };
+  if (num <= 3) {
+    const pet = p.data.pets[num - 1];
+    if (pet) return { pet, from: 'team', idx: num - 1 };
+  }
+  const storageIdx = num - 4;
+  const pet = (p.data.storage || [])[storageIdx];
+  if (pet) return { pet, from: 'storage', idx: storageIdx };
   return null;
 }
 
@@ -101,5 +105,13 @@ function init() {
   main.enableMod(MOD_ID, ModAPI);
 }
 
-setTimeout(init, 1000);
+// 轮询等待主插件加载
+function waitForMain(callback, maxAttempts = 10) {
+  const main = getMain();
+  if (main) { callback(main); return; }
+  if (maxAttempts <= 0) { console.log('[你的Mod名] 主插件未找到'); return; }
+  setTimeout(() => waitForMain(callback, maxAttempts - 1), 500);
+}
+
+waitForMain(init);
 

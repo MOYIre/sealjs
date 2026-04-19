@@ -40,11 +40,19 @@ const WORK_TYPES = [
 
 const DB = {
   get(userId) {
+    const defaultData = { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
     try {
       const d = ext.storageGet('e_' + userId);
-      return d ? JSON.parse(d) : { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
-    } catch {
-      return { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
+      if (!d) return defaultData;
+      const data = JSON.parse(d);
+      // 自动清理过期任务
+      const now = Date.now();
+      if (data.explore) data.explore = data.explore.filter(e => e.endTime > now);
+      if (data.work) data.work = data.work.filter(w => w.endTime > now);
+      return data;
+    } catch (e) {
+      console.log('[万物有灵-扩展] 数据解析失败，使用默认数据:', e);
+      return defaultData;
     }
   },
   save(userId, data) { ext.storageSet('e_' + userId, JSON.stringify(data)); },
@@ -61,7 +69,8 @@ function getPetAnywhere(p, idx) {
   const num = parseInt(idx);
   if (isNaN(num) || num < 1) return null;
   if (num <= 3) {
-    return { pet: p.data.pets[num - 1], from: 'team', idx: num - 1 };
+    const pet = p.data.pets[num - 1];
+    if (pet) return { pet, from: 'team', idx: num - 1 };
   }
   const storageIdx = num - 4;
   const pet = (p.data.storage || [])[storageIdx];
@@ -108,22 +117,31 @@ function init() {
     DB.save(uid, data);
   }, MOD_ID);
 
-  main.on('battle', ({ uid, winner, isNPC, targetUid }) => {
-    if (isNPC || !targetUid) return;
+  main.on('battle', ({ uid, winner, draw, isNPC, targetUid }) => {
+    if (draw || isNPC || !targetUid) return;
     const data = DB.get(uid);
     const targetData = DB.get(targetUid);
+    
+    // 先计算积分变化
+    let rankChange;
     if (winner) {
-      const gain = Math.floor(Math.random() * 31) + 20;
-      data.arenaRank = (data.arenaRank || 1000) + gain;
+      rankChange = Math.floor(Math.random() * 31) + 20;
+      data.arenaRank = (data.arenaRank || 1000) + rankChange;
       data.arenaWins = (data.arenaWins || 0) + 1;
-      targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - gain);
+      targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - rankChange);
     } else {
-      const loss = Math.floor(Math.random() * 21) + 10;
-      data.arenaRank = Math.max(0, (data.arenaRank || 1000) - loss);
-      targetData.arenaRank = (targetData.arenaRank || 1000) + loss;
+      rankChange = Math.floor(Math.random() * 21) + 10;
+      data.arenaRank = Math.max(0, (data.arenaRank || 1000) - rankChange);
+      targetData.arenaRank = (targetData.arenaRank || 1000) + rankChange;
     }
-    DB.save(uid, data);
-    DB.save(targetUid, targetData);
+    
+    // 统一保存
+    try {
+      DB.save(uid, data);
+      DB.save(targetUid, targetData);
+    } catch (e) {
+      console.log('[万物有灵-扩展] 竞技场积分保存失败:', e);
+    }
   }, MOD_ID);
 
   main.registerCommand('图鉴', (ctx, msg, p) => {
@@ -258,4 +276,18 @@ function init() {
   main.enableMod(MOD_ID, ModAPI);
 }
 
-setTimeout(init, 1000);
+// 轮询等待主插件加载
+function waitForMain(callback, maxAttempts = 10) {
+  const main = getMain();
+  if (main) {
+    callback(main);
+    return;
+  }
+  if (maxAttempts <= 0) {
+    console.log('[万物有灵-扩展] 主插件未找到，初始化失败');
+    return;
+  }
+  setTimeout(() => waitForMain(callback, maxAttempts - 1), 500);
+}
+
+waitForMain(init);
