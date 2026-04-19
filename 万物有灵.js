@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.3
+// @version     1.2.4
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776607324
+// @timestamp   1776608950
 // @license     Apache-2
 // @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.3');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.4');
   seal.ext.register(ext);
 }
 
@@ -349,12 +349,18 @@ cmd.help = `【万物有灵】
 cmd.solve = (ctx, msg, argv) => {
   const uid = msg.sender.userId;
   const data = DB.get(uid);
-  const args = (argv.rawArgs || '').trim().split(/\s+/);
+  const rawArgs = argv.rawArgs || '';
+  const args = rawArgs.trim().split(/\s+/);
   const action = args[0] || '';
   const p1 = args[1] || '';
   const p2 = args.slice(2).join(' ') || '';
 
-  console.log('[万物有灵] 命令解析:', { action, p1, p2, args });
+  // 从原始消息中解析@用户（CQ码）
+  const rawMsg = msg.message || msg.Message || '';
+  const atMatch = rawMsg.match(/\[CQ:at,qq=(\d+)\]/);
+  const atUserId = atMatch ? atMatch[1] : null;
+
+  console.log('[万物有灵] 命令解析:', JSON.stringify({ action, p1, p2, args }), 'atUserId:', atUserId);
 
   const reply = (text) => seal.replyToSender(ctx, msg, text);
   const save = () => DB.save(uid, data);
@@ -617,21 +623,17 @@ cmd.solve = (ctx, msg, argv) => {
     let targetUid = null;
 
     // 检查是否@了其他玩家
-    const atList = ctx.atInfo || ctx.atList || [];
-    console.log('[万物有灵] PVP atList:', JSON.stringify(atList), 'p1:', p1, 'p2:', p2);
-    if (atList && atList.length > 0) {
-      const atUser = atList[0];
-      targetUid = atUser.userId || atUser.id || atUser.uid;
-      if (!targetUid) {
-        console.log('[万物有灵] PVP: 无法获取@用户ID', atUser);
-      } else if (targetUid === uid) {
+    console.log('[万物有灵] PVP atUserId:', atUserId, 'p1:', p1, 'p2:', p2);
+
+    if (atUserId) {
+      targetUid = atUserId;
+      if (targetUid === uid) {
         return reply('不能和自己对战');
-      } else {
-        const targetData = DB.get(targetUid);
-        if (!targetData.pets.length) return reply('对方没有宠物');
-        pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
-        isNPC = false;
       }
+      const targetData = DB.get(targetUid);
+      if (!targetData.pets.length) return reply('对方没有宠物');
+      pet2 = JSON.parse(JSON.stringify(targetData.pets[0]));
+      isNPC = false;
     } else if (p2) {
       pet2 = getPet(p2);
       if (!pet2) return reply('请指定正确的对手编号');
