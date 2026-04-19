@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-成就
 // @author      铭茗
-// @version     1.0.0
+// @version     1.1.0
 // @description 成就系统：记录游戏里程碑
-// @timestamp   1776574167
+// @timestamp   1776593883
 // @license     Apache-2
-// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-成就.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-成就.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-成就');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-成就', '铭茗', '1.0.0');
+  ext = seal.ext.new('万物有灵-成就', '铭茗', '1.1.0');
   seal.ext.register(ext);
 }
 

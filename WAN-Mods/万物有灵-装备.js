@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-装备
 // @author      铭茗
-// @version     1.1.0
+// @version     1.2.0
 // @description 宠物装备系统：给宠物穿戴装备提升属性
-// @timestamp   1776593618
+// @timestamp   1776593883
 // @license     Apache-2
-// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/万物有灵-装备.js
+// @updateUrl   https://gitcode.com/MOYIre/sealjs/raw/main/WAN-Mods/万物有灵-装备.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-装备');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-装备', '铭茗', '1.1.0');
+  ext = seal.ext.new('万物有灵-装备', '铭茗', '1.2.0');
   seal.ext.register(ext);
 }
 
