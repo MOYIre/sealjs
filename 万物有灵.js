@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.3.2
+// @version     1.4.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776614732
+// @timestamp   1776615725
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.3.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.4.0');
   seal.ext.register(ext);
 }
 
@@ -127,9 +127,36 @@ const SKILLS = {
   '念力': { power: 70, acc: 90, cost: 15, element: '超能' },
 };
 
+// ==================== 道具定义 ====================
+const ITEMS = {
+  // 育种相关
+  '计划生育卡': { cost: 200, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
+  '多胞胎药水': { cost: 150, desc: '下次育种必定生出双胞胎', type: 'breed' },
+
+  // 加速相关
+  '加速卡': { cost: 100, desc: '立即完成一个打工或探险任务', type: 'speed' },
+  '全速卡': { cost: 250, desc: '立即完成所有打工和探险任务', type: 'speed' },
+
+  // 属性相关
+  '洗点药水': { cost: 80, desc: '重置一只宠物的技能点', type: 'skill' },
+  '经验药水': { cost: 50, desc: '宠物获得100经验', type: 'exp' },
+  '大经验药水': { cost: 120, desc: '宠物获得300经验', type: 'exp' },
+
+  // 幸运相关
+  '幸运符': { cost: 150, desc: '下次捉宠稀有度提升一档', type: 'luck' },
+  '传说之证': { cost: 500, desc: '下次捉宠必定为传说品质', type: 'luck' },
+
+  // 复活相关
+  '复活药': { cost: 200, desc: '复活一只死亡的宠物', type: 'revive' },
+
+  // 其他
+  '改名卡': { cost: 30, desc: '免费给宠物改名', type: 'misc' },
+  '扩容卡': { cost: 300, desc: '仓库容量+5', type: 'misc' },
+};
+
 const DB = {
   get(userId) {
-    const defaultData = { pets: [], storage: [], money: 100, food: { '面包': 5 } };
+    const defaultData = { pets: [], storage: [], money: 100, food: { '面包': 5 }, items: {}, maxStorage: 15 };
     try {
       const d = ext.storageGet('u_' + userId);
       if (!d) return defaultData;
@@ -142,6 +169,8 @@ const DB = {
       data.storage = data.storage || [];
       data.money = data.money || 100;
       data.food = data.food || { '面包': 5 };
+      data.items = data.items || {};
+      data.maxStorage = data.maxStorage || 15;
 
       // 如果是旧数据格式且pets超过上限，移入仓库
       if (!hadStorage && data.pets.length > CONFIG.maxPets) {
@@ -159,14 +188,30 @@ const DB = {
 };
 
 const PetFactory = {
-  randomRarity() {
+  randomRarity(boost = 0, forceLegend = false) {
+    if (forceLegend) return '传说';
+
     const rand = Math.random() * 100;
     let threshold = 0;
+    let result = '普通';
+
     for (const [rarity, weight] of Object.entries(RARITY_WEIGHTS)) {
       threshold += weight;
-      if (rand < threshold) return rarity;
+      if (rand < threshold) {
+        result = rarity;
+        break;
+      }
     }
-    return '普通';
+
+    // 应用稀有度提升
+    if (boost > 0) {
+      const rarityOrder = ['普通', '稀有', '超稀有', '传说'];
+      const idx = rarityOrder.indexOf(result);
+      const newIdx = Math.min(idx + boost, rarityOrder.length - 1);
+      result = rarityOrder[newIdx];
+    }
+
+    return result;
   },
 
   generateName(element) {
@@ -176,8 +221,8 @@ const PetFactory = {
     return prefix + (Math.random() > 0.5 ? suffix : '');
   },
 
-  create(customName = null) {
-    const rarity = this.randomRarity();
+  create(rarityBoost = 0, forceLegend = false, customName = null) {
+    const rarity = this.randomRarity(rarityBoost, forceLegend);
     const speciesKeys = Object.keys(SPECIES);
     const species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
     const speciesData = SPECIES[species];
@@ -394,11 +439,25 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '捉宠' || action === '斗殴') {
     // 检查总容量
-    if (data.pets.length >= CONFIG.maxPets && data.storage.length >= CONFIG.maxStorage) {
+    if (data.pets.length >= CONFIG.maxPets && data.storage.length >= data.maxStorage) {
       return reply(`宠物和仓库都已满，无法捉宠`);
     }
 
-    const wildPet = PetFactory.create();
+    // 检查幸运道具
+    let rarityBoost = 0; // 稀有度提升档数
+    let forceLegend = false; // 强制传说
+
+    if (data.items['传说之证'] > 0) {
+      forceLegend = true;
+      data.items['传说之证']--;
+      if (data.items['传说之证'] <= 0) delete data.items['传说之证'];
+    } else if (data.items['幸运符'] > 0) {
+      rarityBoost = 1;
+      data.items['幸运符']--;
+      if (data.items['幸运符'] <= 0) delete data.items['幸运符'];
+    }
+
+    const wildPet = PetFactory.create(rarityBoost, forceLegend);
     let fighter;
     let fighterInfo;
     let isPlayerFight = true;
@@ -734,28 +793,71 @@ cmd.solve = (ctx, msg, argv) => {
     const pet2 = getPet(p2);
     if (!pet1 || !pet2) return reply('请指定两只正确的宠物编号');
     if (pet1.id === pet2.id) return reply('不能和自己育种');
-    if (!pet1.canBreed || !pet2.canBreed) return reply('该宠物无法育种（进化后失去生育能力）');
-    if (data.pets.length >= CONFIG.maxPets) return reply(`宠物已达上限（${CONFIG.maxPets}只）`);
 
-    const child = PetFactory.create();
-    if (Math.random() < 0.5) child.species = pet1.species;
-    else child.species = pet2.species;
+    // 检查育种次数
+    const breedCount1 = pet1.breedCount || 0;
+    const breedCount2 = pet2.breedCount || 0;
 
-    if (Math.random() < 0.1) {
-      const speciesKeys = Object.keys(SPECIES);
-      child.species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
+    // 进化后无法育种
+    if (pet1.evolved || pet2.evolved) return reply('进化后的宠物无法育种');
+
+    // 检查是否需要计划生育卡
+    let needCard1 = breedCount1 >= 1;
+    let needCard2 = breedCount2 >= 1;
+
+    if (needCard1 && !data.items['计划生育卡']) return reply(`${pet1.name}已育种${breedCount1}次，需要计划生育卡`);
+    if (needCard2 && !data.items['计划生育卡']) return reply(`${pet2.name}已育种${breedCount2}次，需要计划生育卡`);
+
+    // 检查是否有空间
+    const hasTwinPotion = data.items['多胞胎药水'] > 0;
+    const isTwin = hasTwinPotion || Math.random() < 0.08; // 8%多胞胎概率
+    const babyCount = isTwin ? 2 : 1;
+
+    if (data.pets.length + babyCount > CONFIG.maxPets && data.storage.length + babyCount > data.maxStorage) {
+      return reply(`宠物和仓库空间不足，无法容纳${babyCount}只幼崽`);
     }
 
-    const parentElements = [pet1.element, pet2.element];
-    child.element = parentElements[Math.floor(Math.random() * 2)];
-    child.name = PetFactory.generateName(child.element);
+    // 消耗道具
+    if (needCard1 || needCard2) {
+      data.items['计划生育卡']--;
+      if (data.items['计划生育卡'] <= 0) delete data.items['计划生育卡'];
+    }
+    if (hasTwinPotion) {
+      data.items['多胞胎药水']--;
+      if (data.items['多胞胎药水'] <= 0) delete data.items['多胞胎药水'];
+    }
 
-    data.pets.push(child);
-    pet1.canBreed = false;
-    pet2.canBreed = false;
+    // 更新育种次数
+    pet1.breedCount = breedCount1 + 1;
+    pet2.breedCount = breedCount2 + 1;
+
+    const babies = [];
+    for (let i = 0; i < babyCount; i++) {
+      const child = PetFactory.create();
+      if (Math.random() < 0.5) child.species = pet1.species;
+      else child.species = pet2.species;
+      if (Math.random() < 0.1) {
+        const speciesKeys = Object.keys(SPECIES);
+        child.species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
+      }
+      const parentElements = [pet1.element, pet2.element];
+      child.element = parentElements[Math.floor(Math.random() * 2)];
+      child.name = PetFactory.generateName(child.element);
+      babies.push(child);
+
+      if (data.pets.length < CONFIG.maxPets) data.pets.push(child);
+      else data.storage.push(child);
+    }
+
     save();
-    WanwuYouling.emit('breed', { uid, parents: [pet1, pet2], child });
-    return reply(`[育种] 育种成功！获得了 ${RARITY_MARK[child.rarity]}${ELEMENT_MARK[child.element]} ${child.name}(${child.species})\n${PetFactory.info(child)}`);
+    WanwuYouling.emit('breed', { uid, parents: [pet1, pet2], babies });
+
+    const lines = ['[育种] 育种成功！'];
+    if (isTwin) lines.push('[多胞胎] 恭喜！生出了双胞胎！');
+    babies.forEach((child, i) => {
+      lines.push(`获得 ${RARITY_MARK[child.rarity]}${ELEMENT_MARK[child.element]} ${child.name}(${child.species})`);
+    });
+    return reply(lines.join('\n'));
   }
 
   if (action === '进化') {
@@ -811,21 +913,140 @@ cmd.solve = (ctx, msg, argv) => {
       if (f.energy) effects.push(`精力+${f.energy}`);
       lines.push(`${name}: ${f.cost}金币 (${effects.join(', ')})`);
     }
-    lines.push('', '使用 .宠物 购买 <物品> [数量] 购买');
+    lines.push('', '【道具】');
+    for (const [name, item] of Object.entries(ITEMS)) {
+      lines.push(`${name}: ${item.cost}金币 (${item.desc})`);
+    }
+    lines.push('', '使用 .宠物 购买 <物品/道具> [数量] 购买');
+    lines.push('使用 .宠物 道具 查看拥有的道具');
+    lines.push('使用 .宠物 使用 <道具> [宠物编号] 使用道具');
     return reply(lines.join('\n'));
   }
 
   if (action === '购买') {
     const item = p1;
     const count = parseInt(p2) || 1;
-    if (!FOODS[item]) return reply('未知物品');
-    const cost = FOODS[item].cost * count;
-    if (data.money < cost) return reply(`金币不足，需要 ${cost} 金币`);
-    data.money -= cost;
-    data.food[item] = (data.food[item] || 0) + count;
-    save();
-    WanwuYouling.emit('buy', { uid, item, count, cost });
-    return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
+
+    // 检查是食物还是道具
+    if (FOODS[item]) {
+      const cost = FOODS[item].cost * count;
+      if (data.money < cost) return reply(`金币不足，需要 ${cost} 金币`);
+      data.money -= cost;
+      data.food[item] = (data.food[item] || 0) + count;
+      save();
+      WanwuYouling.emit('buy', { uid, item, count, cost, type: 'food' });
+      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
+    } else if (ITEMS[item]) {
+      const cost = ITEMS[item].cost * count;
+      if (data.money < cost) return reply(`金币不足，需要 ${cost} 金币`);
+      data.money -= cost;
+      data.items[item] = (data.items[item] || 0) + count;
+      save();
+      WanwuYouling.emit('buy', { uid, item, count, cost, type: 'item' });
+      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
+    }
+    return reply('未知物品，发送 .宠物商店 查看可购买的物品');
+  }
+
+  if (action === '道具') {
+    const lines = ['【我的道具】'];
+    const itemEntries = Object.entries(data.items);
+    if (!itemEntries.length) {
+      lines.push('暂无道具，发送 .宠物商店 购买');
+    } else {
+      for (const [name, count] of itemEntries) {
+        const item = ITEMS[name];
+        lines.push(`${name} x${count} - ${item ? item.desc : '未知道具'}`);
+      }
+    }
+    return reply(lines.join('\n'));
+  }
+
+  if (action === '使用') {
+    const itemName = p1;
+    const petIdx = p2;
+    const item = ITEMS[itemName];
+
+    if (!item) return reply('未知道具，发送 .宠物 道具 查看拥有的道具');
+    if (!data.items[itemName]) return reply(`你没有 ${itemName}`);
+
+    const useItem = () => {
+      data.items[itemName]--;
+      if (data.items[itemName] <= 0) delete data.items[itemName];
+    };
+
+    switch (item.type) {
+      case 'exp': {
+        const pet = getPet(petIdx);
+        if (!pet) return reply('请指定正确的宠物编号');
+        const exp = itemName === '大经验药水' ? 300 : 100;
+        pet.exp += exp;
+        const expNeed = pet.level * 100;
+        let leveledUp = false;
+        while (pet.exp >= expNeed) {
+          pet.exp -= expNeed;
+          pet.level++;
+          pet.maxHp += 5;
+          pet.hp = Math.min(pet.hp + 5, pet.maxHp);
+          pet.atk += 2;
+          pet.def += 2;
+          leveledUp = true;
+        }
+        useItem();
+        save();
+        WanwuYouling.emit('useItem', { uid, item: itemName, pet });
+        const msg = leveledUp
+          ? `${pet.name} 获得 ${exp} 经验并升级到 Lv.${pet.level}！`
+          : `${pet.name} 获得 ${exp} 经验 (${pet.exp}/${pet.level * 100})`;
+        return reply(msg);
+      }
+
+      case 'skill': {
+        const pet = getPet(petIdx);
+        if (!pet) return reply('请指定正确的宠物编号');
+        const oldSp = pet.sp || 0;
+        pet.sp = oldSp + (pet.skills ? pet.skills.length : 1);
+        pet.skills = ['冲撞'];
+        useItem();
+        save();
+        WanwuYouling.emit('useItem', { uid, item: itemName, pet });
+        return reply(`${pet.name} 的技能已重置，恢复了 ${pet.sp - oldSp} 技能点`);
+      }
+
+      case 'revive': {
+        const pet = getPet(petIdx);
+        if (!pet) return reply('请指定正确的宠物编号');
+        if (pet.hp > 0) return reply(`${pet.name} 还活着，不需要复活`);
+        pet.hp = pet.maxHp;
+        pet.energy = pet.maxEnergy;
+        useItem();
+        save();
+        WanwuYouling.emit('useItem', { uid, item: itemName, pet });
+        return reply(`${pet.name} 已复活！生命和精力已恢复`);
+      }
+
+      case 'misc': {
+        if (itemName === '改名卡') {
+          return reply('使用 .宠物 改名 <编号> <名字> 时自动消耗改名卡');
+        }
+        if (itemName === '扩容卡') {
+          data.maxStorage = (data.maxStorage || 15) + 5;
+          useItem();
+          save();
+          WanwuYouling.emit('useItem', { uid, item: itemName });
+          return reply(`仓库容量已扩展！当前容量: ${data.maxStorage}`);
+        }
+        return reply(`${itemName} 无法直接使用`);
+      }
+
+      case 'luck':
+      case 'breed':
+      case 'speed':
+        return reply(`${itemName} 在对应操作时自动使用`);
+
+      default:
+        return reply(`${itemName} 无法直接使用`);
+    }
   }
 
   // ==================== 扩展命令 ====================
@@ -866,7 +1087,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.3.2',
+  version: '1.4.0',
   ext,
 
   DB: {
