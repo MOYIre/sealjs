@@ -218,16 +218,31 @@ const PetFactory = {
     return text;
   },
 
-  learnSkill(pet) {
-    const candidates = Object.entries(SKILLS)
-      .filter(([name, sk]) => sk.element === pet.element && !pet.skills.includes(name));
-    if (candidates.length > 0 && pet.sp >= 1) {
-      const [name] = candidates[Math.floor(Math.random() * candidates.length)];
-      pet.skills.push(name);
-      pet.sp--;
-      return name;
-    }
-    return null;
+  // 获取可学习的技能列表
+  getLearnableSkills(pet) {
+    return Object.entries(SKILLS)
+      .filter(([name, sk]) => sk.element === pet.element && !pet.skills.includes(name))
+      .map(([name]) => name);
+  },
+
+  // 学习技能（不检查sp，由调用方负责）
+  learnSkill(pet, skillName) {
+    if (pet.skills.includes(skillName)) return { success: false, error: '已学会该技能' };
+    const sk = SKILLS[skillName];
+    if (!sk || sk.element !== pet.element) return { success: false, error: '无法学习该技能' };
+    pet.skills.push(skillName);
+    return { success: true, skill: skillName };
+  },
+
+  // 随机学习一个技能（消耗sp）
+  learnRandomSkill(pet) {
+    if (pet.sp < 1) return { success: false, error: '技能点不足' };
+    const candidates = this.getLearnableSkills(pet);
+    if (candidates.length === 0) return { success: false, error: '没有可学习的技能' };
+    const skill = candidates[Math.floor(Math.random() * candidates.length)];
+    pet.skills.push(skill);
+    pet.sp--;
+    return { success: true, skill };
   },
 };
 
@@ -502,12 +517,11 @@ cmd.solve = (ctx, msg, argv) => {
   if (action === '学习') {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
-    if (pet.sp < 1) return reply('技能点不足，通过对战获取技能点');
-    const skill = PetFactory.learnSkill(pet);
-    if (!skill) return reply('没有可学习的技能');
+    const result = PetFactory.learnRandomSkill(pet);
+    if (!result.success) return reply(result.error);
     save();
-    WanwuYouling.emit('learn', { uid, pet, skill });
-    return reply(`${pet.name} 学会了 ${skill}！`);
+    WanwuYouling.emit('learn', { uid, pet, skill: result.skill });
+    return reply(`${pet.name} 学会了 ${result.skill}！`);
   }
 
   if (action === '对战') {
@@ -735,6 +749,9 @@ const WanwuYouling = {
     generateName: (element) => PetFactory.generateName(element),
     power: (pet) => PetFactory.power(pet),
     info: (pet, idx) => PetFactory.info(pet, idx),
+    getLearnableSkills: (pet) => PetFactory.getLearnableSkills(pet),
+    learnSkill: (pet, skillName) => PetFactory.learnSkill(pet, skillName),
+    learnRandomSkill: (pet) => PetFactory.learnRandomSkill(pet),
   },
 
   Battle: {
