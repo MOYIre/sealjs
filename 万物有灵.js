@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.5.3
+// @version     1.5.4
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776616514
+// @timestamp   1776617885
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.5.3');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.4');
   seal.ext.register(ext);
 }
 
@@ -882,8 +882,14 @@ cmd.solve = (ctx, msg, argv) => {
         const speciesKeys = Object.keys(SPECIES);
         child.species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
       }
+
+      // 确保子代元素在其种族的可用元素列表中
+      const speciesData = SPECIES[child.species];
       const parentElements = [pet1.element, pet2.element];
-      child.element = parentElements[Math.floor(Math.random() * 2)];
+      const validElements = speciesData.elements.filter(e => parentElements.includes(e));
+      child.element = validElements.length > 0
+        ? validElements[Math.floor(Math.random() * validElements.length)]
+        : speciesData.elements[Math.floor(Math.random() * speciesData.elements.length)];
       child.name = PetFactory.generateName(child.element);
       babies.push(child);
 
@@ -967,7 +973,7 @@ cmd.solve = (ctx, msg, argv) => {
 
   if (action === '购买') {
     const item = p1;
-    const count = parseInt(p2) || 1;
+    const count = Math.max(1, parseInt(p2) || 1);
 
     // 检查是食物还是道具
     if (FOODS[item]) {
@@ -1129,7 +1135,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.5.3',
+  version: '1.5.4',
   ext,
 
   DB: {
@@ -1142,7 +1148,7 @@ const WanwuYouling = {
   Rarities: Object.keys(RARITY_WEIGHTS),
 
   PetFactory: {
-    create: (customName) => PetFactory.create(customName),
+    create: (rarityBoost = 0, forceLegend = false, customName = null) => PetFactory.create(rarityBoost, forceLegend, customName),
     generateName: (element) => PetFactory.generateName(element),
     power: (pet) => PetFactory.power(pet),
     info: (pet, idx) => PetFactory.info(pet, idx),
