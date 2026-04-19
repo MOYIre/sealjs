@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.5.6
+// @version     1.5.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776618314
+// @timestamp   1776618461
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.5.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.7');
   seal.ext.register(ext);
 }
 
@@ -130,25 +130,25 @@ const SKILLS = {
 // ==================== 道具定义 ====================
 const ITEMS = {
   // 捉宠相关
-  '捉宠符咒': { cost: 30, desc: '捉宠必备道具，无符咒只能获得经验', type: 'catch' },
+  '捉宠符咒': { cost: 50, desc: '捉宠必备道具，无符咒只能获得经验', type: 'catch' },
   '幸运符': { cost: 10000, desc: '下次捉宠稀有度提升一档', type: 'luck' },
   '传说之证': { cost: 100000, desc: '下次捉宠必定为传说品质', type: 'luck' },
 
   // 育种相关
-  '计划生育卡': { cost: 200, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
-  '多胞胎药水': { cost: 150, desc: '下次育种必定生出双胞胎', type: 'breed' },
+  '计划生育卡': { cost: 1000, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
+  '多胞胎药水': { cost: 800, desc: '下次育种必定生出双胞胎', type: 'breed' },
 
   // 加速相关
-  '加速卡': { cost: 100, desc: '立即完成一个打工或探险任务', type: 'speed' },
-  '全速卡': { cost: 250, desc: '立即完成所有打工和探险任务', type: 'speed' },
+  '加速卡': { cost: 500, desc: '立即完成一个打工或探险任务', type: 'speed' },
+  '全速卡': { cost: 1200, desc: '立即完成所有打工和探险任务', type: 'speed' },
 
   // 属性相关
-  '洗点药水': { cost: 80, desc: '重置一只宠物的技能点', type: 'skill' },
-  '经验药水': { cost: 50, desc: '宠物获得100经验', type: 'exp' },
-  '大经验药水': { cost: 120, desc: '宠物获得300经验', type: 'exp' },
+  '洗点药水': { cost: 300, desc: '重置一只宠物的技能点', type: 'skill' },
+  '经验药水': { cost: 200, desc: '宠物获得100经验', type: 'exp' },
+  '大经验药水': { cost: 500, desc: '宠物获得300经验', type: 'exp' },
 
   // 复活相关
-  '复活药': { cost: 200, desc: '复活一只死亡的宠物', type: 'revive' },
+  '复活药': { cost: 1000, desc: '复活一只死亡的宠物', type: 'revive' },
 
   // 其他
   '扩容卡': { cost: 5000, desc: '仓库容量+5', type: 'misc' },
@@ -1131,7 +1131,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.5.6',
+  version: '1.5.7',
   ext,
 
   DB: {
