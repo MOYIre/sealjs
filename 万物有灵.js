@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.5.2
+// @version     1.5.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776616129
+// @timestamp   1776616514
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.5.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.3');
   seal.ext.register(ext);
 }
 
@@ -23,7 +23,7 @@ const CONFIG = {
   baseExpGain: 10,
   // 战斗相关
   battleLogLimit: 8,
-  battleLogPvPLimit: 10,
+  battleLogPvPLimit: 15,
   battleEnergyCost: 20,
   battleHpLoss: 10,
   // 斗殴相关
@@ -312,9 +312,10 @@ const PLAYER_BASE = { hp: 50, atk: 25, def: 20, energy: 100, spd: 100 };
 const Battle = {
   calcDmg(atk, def, skill, atkLv, atkEle, defEle) {
     const sk = SKILLS[skill] || SKILLS['冲撞'];
-    let dmg = (atk + sk.power) * (1 + atkLv * 0.05) * (100 / (100 + def));
-    if (atkEle && defEle && ELEMENT_ADV[atkEle] === defEle) dmg *= 1.5;
-    return Math.floor(dmg);
+    // 调整伤害公式：降低攻击影响，增加防御作用，让战斗持续3-5回合
+    let dmg = (atk * 0.4 + sk.power * 0.6) * (1 + atkLv * 0.03) * (100 / (100 + def * 1.2));
+    if (atkEle && defEle && ELEMENT_ADV[atkEle] === defEle) dmg *= 1.3;
+    return Math.max(1, Math.floor(dmg));
   },
 
   attack(a, d, logs, isPlayer = false) {
@@ -1128,7 +1129,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.5.2',
+  version: '1.5.3',
   ext,
 
   DB: {
