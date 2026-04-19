@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.4.0
+// @version     1.5.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
-// @timestamp   1776615725
+// @timestamp   1776616060
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.4.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.5.0');
   seal.ext.register(ext);
 }
 
@@ -129,6 +129,11 @@ const SKILLS = {
 
 // ==================== 道具定义 ====================
 const ITEMS = {
+  // 捉宠相关
+  '捉宠符咒': { cost: 30, desc: '捉宠必备道具，无符咒只能获得经验', type: 'catch' },
+  '幸运符': { cost: 150, desc: '下次捉宠稀有度提升一档', type: 'luck' },
+  '传说之证': { cost: 1000, desc: '下次捉宠必定为传说品质', type: 'luck' },
+
   // 育种相关
   '计划生育卡': { cost: 200, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
   '多胞胎药水': { cost: 150, desc: '下次育种必定生出双胞胎', type: 'breed' },
@@ -142,10 +147,6 @@ const ITEMS = {
   '经验药水': { cost: 50, desc: '宠物获得100经验', type: 'exp' },
   '大经验药水': { cost: 120, desc: '宠物获得300经验', type: 'exp' },
 
-  // 幸运相关
-  '幸运符': { cost: 150, desc: '下次捉宠稀有度提升一档', type: 'luck' },
-  '传说之证': { cost: 500, desc: '下次捉宠必定为传说品质', type: 'luck' },
-
   // 复活相关
   '复活药': { cost: 200, desc: '复活一只死亡的宠物', type: 'revive' },
 
@@ -156,7 +157,7 @@ const ITEMS = {
 
 const DB = {
   get(userId) {
-    const defaultData = { pets: [], storage: [], money: 100, food: { '面包': 5 }, items: {}, maxStorage: 15 };
+    const defaultData = { pets: [], storage: [], money: 100, food: { '面包': 5 }, items: { '捉宠符咒': 5 }, maxStorage: 15 };
     try {
       const d = ext.storageGet('u_' + userId);
       if (!d) return defaultData;
@@ -438,10 +439,8 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '捉宠' || action === '斗殴') {
-    // 检查总容量
-    if (data.pets.length >= CONFIG.maxPets && data.storage.length >= data.maxStorage) {
-      return reply(`宠物和仓库都已满，无法捉宠`);
-    }
+    // 检查是否有捉宠符咒
+    const hasCharm = data.items['捉宠符咒'] > 0;
 
     // 检查幸运道具
     let rarityBoost = 0; // 稀有度提升档数
@@ -521,27 +520,69 @@ cmd.solve = (ctx, msg, argv) => {
         }
       } else if (result.winner === fighter) {
         logs.push(`\n[胜利] ${fighter.name}战胜了 ${wildPet.name}！`);
-        logs.push(`[捕捉] 成功捕捉 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}！`);
-        wildPet.hp = wildPet.maxHp;
-        wildPet.energy = wildPet.maxEnergy;
 
-        if (data.pets.length < CONFIG.maxPets) {
-          data.pets.push(wildPet);
-          logs.push(`已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
-        } else if (data.storage.length < CONFIG.maxStorage) {
-          data.storage.push(wildPet);
-          logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
+        // 计算经验和金币奖励
+        const expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
+        const goldGain = 10 + Math.floor(Math.random() * 20) + wildPet.level * 3;
+
+        if (hasCharm) {
+          // 有符咒，可以捕捉宠物
+          // 检查容量
+          if (data.pets.length >= CONFIG.maxPets && data.storage.length >= data.maxStorage) {
+            logs.push(`[捕捉] 宠物和仓库已满，无法捕捉`);
+            logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
+          } else {
+            // 消耗符咒
+            data.items['捉宠符咒']--;
+            if (data.items['捉宠符咒'] <= 0) delete data.items['捉宠符咒'];
+
+            logs.push(`[捕捉] 成功捕捉 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}！`);
+            wildPet.hp = wildPet.maxHp;
+            wildPet.energy = wildPet.maxEnergy;
+
+            if (data.pets.length < CONFIG.maxPets) {
+              data.pets.push(wildPet);
+              logs.push(`已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
+            } else if (data.storage.length < data.maxStorage) {
+              data.storage.push(wildPet);
+              logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${data.maxStorage})`);
+            }
+            logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
+            data.money += goldGain;
+          }
+          WanwuYouling.emit('capture', { uid, pet: wildPet });
+        } else {
+          // 无符咒，只获得经验和金币
+          logs.push(`[捕捉] 没有捉宠符咒，无法捕捉宠物`);
+          logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
+          logs.push(`提示: 发送 .宠物商店 购买捉宠符咒`);
+          data.money += goldGain;
+
+          // 给出战宠物加经验
+          if (!isPlayerFight) {
+            const pet = getPet(p1);
+            pet.exp += expGain;
+            const expNeed = pet.level * 100;
+            if (pet.exp >= expNeed) {
+              pet.exp -= expNeed;
+              pet.level++;
+              pet.maxHp += 5;
+              pet.hp = Math.min(pet.hp + 5, pet.maxHp);
+              pet.atk += 2;
+              pet.def += 2;
+              logs.push(`${pet.name} 升级到 Lv.${pet.level}！`);
+            }
+          }
         }
 
         // 宠物出战消耗：同步战斗后的血量
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
+          pet.hp = Math.max(0, fighter.hp);
           pet.energy = Math.max(0, pet.energy - 20);
         }
 
         save();
-        WanwuYouling.emit('capture', { uid, pet: wildPet });
       } else {
         logs.push(`\n[失败] ${fighter.name}被 ${wildPet.name} 打败了，它逃跑了...`);
         if (!isPlayerFight) {
@@ -1087,7 +1128,7 @@ ext.cmdMap['宠物购买'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.4.0',
+  version: '1.5.0',
   ext,
 
   DB: {
