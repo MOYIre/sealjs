@@ -387,6 +387,7 @@ cmd.solve = (ctx, msg, argv) => {
     pet.def += f.def;
     pet.energy = Math.min(pet.maxEnergy, pet.energy + f.energy);
     save();
+    WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f });
     return reply(`喂食成功！${pet.name} 的属性提升了\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
   }
 
@@ -396,6 +397,7 @@ cmd.solve = (ctx, msg, argv) => {
     const recover = Math.floor(pet.maxEnergy * 0.5);
     pet.energy = Math.min(pet.maxEnergy, pet.energy + recover);
     save();
+    WanwuYouling.emit('rest', { uid, pet, recover });
     return reply(`${pet.name} 休息了一会，恢复了 ${recover} 点精力`);
   }
 
@@ -403,8 +405,10 @@ cmd.solve = (ctx, msg, argv) => {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
     if (!p2) return reply('请指定新名字');
+    const oldName = pet.name;
     pet.name = p2;
     save();
+    WanwuYouling.emit('rename', { uid, pet, oldName, newName: p2 });
     return reply(`已将宠物改名为 ${p2}`);
   }
 
@@ -415,6 +419,7 @@ cmd.solve = (ctx, msg, argv) => {
     const skill = PetFactory.learnSkill(pet);
     if (!skill) return reply('没有可学习的技能');
     save();
+    WanwuYouling.emit('learn', { uid, pet, skill });
     return reply(`${pet.name} 学会了 ${skill}！`);
   }
 
@@ -462,6 +467,7 @@ cmd.solve = (ctx, msg, argv) => {
 
         const expNeed = pet1.level * 100;
         if (pet1.exp >= expNeed) {
+          const oldLevel = pet1.level;
           pet1.exp -= expNeed;
           pet1.level++;
           pet1.maxHp += 5;
@@ -469,6 +475,7 @@ cmd.solve = (ctx, msg, argv) => {
           pet1.atk += 2;
           pet1.def += 2;
           logs.push(`[升级] ${pet1.name} 升级到 Lv.${pet1.level}！`);
+          WanwuYouling.emit('levelup', { uid, pet: pet1, oldLevel, newLevel: pet1.level });
         }
       } else {
         pet1.hp = Math.max(0, pet1.hp - 10);
@@ -479,6 +486,7 @@ cmd.solve = (ctx, msg, argv) => {
       if (pet1.evolved && pet1.battles >= pet1.maxBattles) {
         pet1.retired = true;
         logs.push(`${pet1.name} 已完成对战次数，退休了`);
+        WanwuYouling.emit('retire', { uid, pet: pet1 });
       }
 
       save();
@@ -516,6 +524,7 @@ cmd.solve = (ctx, msg, argv) => {
     pet1.canBreed = false;
     pet2.canBreed = false;
     save();
+    WanwuYouling.emit('breed', { uid, parents: [pet1, pet2], child });
     return reply(`[育种] 育种成功！获得了 ${RARITY_MARK[child.rarity]}${ELEMENT_MARK[child.element]} ${child.name}(${child.species})\n${PetFactory.info(child)}`);
   }
 
@@ -525,6 +534,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (pet.evolved) return reply('该宠物已经进化过了');
     if (pet.level < CONFIG.evolveLevel) return reply(`等级不足，需要 Lv.${CONFIG.evolveLevel}`);
 
+    const oldRarity = pet.rarity;
     const rarityOrder = ['普通', '稀有', '超稀有', '传说'];
     const rarityIdx = rarityOrder.indexOf(pet.rarity);
     if (rarityIdx < rarityOrder.length - 1 && Math.random() < 0.5) {
@@ -543,6 +553,7 @@ cmd.solve = (ctx, msg, argv) => {
     pet.maxBattles = CONFIG.evolveBattles[0] + Math.floor(Math.random() * (CONFIG.evolveBattles[1] - CONFIG.evolveBattles[0]));
     pet.battles = 0;
     save();
+    WanwuYouling.emit('evolve', { uid, pet, oldRarity, newRarity: pet.rarity });
     return reply(`[进化] ${pet.name} 进化了！\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
   }
 
@@ -555,6 +566,7 @@ cmd.solve = (ctx, msg, argv) => {
     data.money += price;
     data.pets.splice(idx, 1);
     save();
+    WanwuYouling.emit('sell', { uid, pet, price });
     return reply(`已将 ${pet.name} 卖给宠物保护协会，获得 ${price} 金币`);
   }
 
@@ -581,6 +593,7 @@ cmd.solve = (ctx, msg, argv) => {
     data.money -= cost;
     data.food[item] = (data.food[item] || 0) + count;
     save();
+    WanwuYouling.emit('buy', { uid, item, count, cost });
     return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
   }
 
