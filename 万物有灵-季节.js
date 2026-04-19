@@ -18,10 +18,10 @@ const MOD_ID = 'wanwu-season';
 
 // ==================== 季节定义 ====================
 const SEASONS = {
-  spring: { name: '春季', months: [3, 4, 5], icon: '🌸' },
-  summer: { name: '夏季', months: [6, 7, 8], icon: '☀️' },
-  autumn: { name: '秋季', months: [9, 10, 11], icon: '🍂' },
-  winter: { name: '冬季', months: [12, 1, 2], icon: '❄️' },
+  spring: { name: '春季', months: [3, 4, 5] },
+  summer: { name: '夏季', months: [6, 7, 8] },
+  autumn: { name: '秋季', months: [9, 10, 11] },
+  winter: { name: '冬季', months: [12, 1, 2] },
 };
 
 const SEASONAL_PETS = {
@@ -82,7 +82,8 @@ function getCurrentFestival() {
 
 // ==================== Mod API ====================
 const ModAPI = {
-  getCurrentSeason, getCurrentFestival,
+  getCurrentSeason,
+  getCurrentFestival,
   getSeasonInfo: () => SEASONS[getCurrentSeason()],
   getSeasonalPets: () => SEASONAL_PETS[getCurrentSeason()] || [],
   getSeasonalArea: () => SEASONAL_AREAS[getCurrentSeason()],
@@ -105,9 +106,9 @@ function init() {
     const area = SEASONAL_AREAS[season];
     const pets = SEASONAL_PETS[season];
     const festival = getCurrentFestival();
-    const lines = [`${s.icon} 【${s.name}】`, '', `季节限定区域: ${area.name}`, `季节限定宠物: ${pets.map(x => x.species).join('、')}`];
+    const lines = [`【${s.name}】`, '', `季节限定区域: ${area.name}`, `季节限定宠物: ${pets.map(x => x.species).join('、')}`];
     if (festival) {
-      lines.push('', `🎉 【${festival.name}活动进行中】`);
+      lines.push('', `[!] 【${festival.name}活动进行中】`);
       const b = [];
       if (festival.bonus.exp) b.push(`经验x${festival.bonus.exp}`);
       if (festival.bonus.gold) b.push(`金币x${festival.bonus.gold}`);
@@ -125,18 +126,15 @@ function init() {
     if (!pet) return p.reply('宠物不存在');
     if (pet.hp <= 0) return p.reply('宠物已阵亡');
     if (pet.energy < 30) return p.reply('宠物精力不足');
-    
     const area = SEASONAL_AREAS[getCurrentSeason()];
     const festival = getCurrentFestival();
     const gold = Math.floor((Math.random() * (area.gold[1] - area.gold[0] + 1) + area.gold[0]) * (festival?.bonus?.gold || 1));
     const food = area.foods[Math.floor(Math.random() * area.foods.length)];
-    
     if (Math.random() < area.danger) pet.hp = Math.max(1, pet.hp - 20);
     mainData.money = (mainData.money || 0) + gold;
     mainData.food[food] = (mainData.food[food] || 0) + 1;
     pet.energy -= 30;
     main.DB.save(p.uid, mainData);
-    
     p.reply(`【${area.name}探险】\n${pet.name} 完成探险\n获得 ${gold} 金币\n获得 ${food} x1`);
     return seal.ext.newCmdExecuteResult(true);
   }, '季节探险', MOD_ID);
@@ -147,9 +145,9 @@ function init() {
     const lines = ['【季节商店】', ''];
     pets.forEach(x => {
       const price = { '稀有': 500, '超稀有': 1500, '传说': 5000 }[x.rarity];
-      lines.push(`${x.species} [${x.element}] ${x.rarity} - ${price}金`);
+      lines.push(`[${x.rarity}] ${x.species} [${x.element}] - ${price}金`);
     });
-    if (festival) lines.push('', `【${festival.name}限定】`, ...festival.pets.map(n => `${n} - 2000金`));
+    if (festival) lines.push('', `[${festival.name}限定]`, ...festival.pets.map(n => `${n} - 2000金`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看季节商店', MOD_ID);
@@ -157,22 +155,16 @@ function init() {
   main.registerCommand('购买季节宠物', (ctx, msg, p) => {
     const species = p.p1;
     if (!species) return p.reply('用法: .宠物 购买季节宠物 <名称>');
-    
     const pets = SEASONAL_PETS[getCurrentSeason()];
     const festival = getCurrentFestival();
     let petInfo = pets.find(x => x.species === species);
-    let isFestival = false;
-    
     if (!petInfo && festival?.pets?.includes(species)) {
       petInfo = { species, element: '超能', rarity: '超稀有', bonus: {} };
-      isFestival = true;
     }
     if (!petInfo) return p.reply('当前季节没有这个宠物');
-    
     const price = { '稀有': 500, '超稀有': 1500, '传说': 5000 }[petInfo.rarity];
     const mainData = main.DB.get(p.uid);
     if (mainData.money < price) return p.reply(`金币不足，需要 ${price} 金币`);
-    
     const pet = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       name: species, species, element: petInfo.element, rarity: petInfo.rarity, level: 1,
@@ -181,12 +173,10 @@ function init() {
       energy: 100 + (petInfo.bonus?.energy || 0), maxEnergy: 100 + (petInfo.bonus?.energy || 0),
       exp: 0, sp: 0, skills: ['冲撞'], battles: 0, canBreed: true,
     };
-    
     mainData.money -= price;
     if (mainData.pets.length < main.Config.maxPets) mainData.pets.push(pet);
     else mainData.storage.push(pet);
     main.DB.save(p.uid, mainData);
-    
     p.reply(`购买成功！获得 ${species}\n花费 ${price} 金币`);
     return seal.ext.newCmdExecuteResult(true);
   }, '购买季节宠物', MOD_ID);
