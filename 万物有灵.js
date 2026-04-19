@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.2
+// @version     1.2.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776607324
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.3');
   seal.ext.register(ext);
 }
 
@@ -354,6 +354,8 @@ cmd.solve = (ctx, msg, argv) => {
   const p1 = args[1] || '';
   const p2 = args.slice(2).join(' ') || '';
 
+  console.log('[万物有灵] 命令解析:', { action, p1, p2, args });
+
   const reply = (text) => seal.replyToSender(ctx, msg, text);
   const save = () => DB.save(uid, data);
   const getPet = (idx) => data.pets[parseInt(idx) - 1];
@@ -616,6 +618,7 @@ cmd.solve = (ctx, msg, argv) => {
 
     // 检查是否@了其他玩家
     const atList = ctx.atInfo || ctx.atList || [];
+    console.log('[万物有灵] PVP atList:', JSON.stringify(atList), 'p1:', p1, 'p2:', p2);
     if (atList && atList.length > 0) {
       const atUser = atList[0];
       targetUid = atUser.userId || atUser.id || atUser.uid;
