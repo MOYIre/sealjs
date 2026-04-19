@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     1.2.7
+// @version     1.2.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776610708
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '1.2.7');
+  ext = seal.ext.new('万物有灵', '铭茗', '1.2.8');
   seal.ext.register(ext);
 }
 
@@ -653,9 +653,9 @@ cmd.solve = (ctx, msg, argv) => {
       const logs = result.logs.slice(0, CONFIG.battleLogPvPLimit);
       if (result.logs.length > CONFIG.battleLogPvPLimit) logs.push('...\n（战斗太激烈，省略部分回合）');
 
-      // 同步战斗后的血量
+      // 同步战斗后的状态（血量和能量都从战斗副本同步）
       pet1.hp = Math.max(0, p1Copy.hp);
-      pet1.energy = Math.max(0, pet1.energy - CONFIG.battleEnergyCost);
+      pet1.energy = Math.max(0, p1Copy.energy - CONFIG.battleEnergyCost);
 
       if (result.draw) {
         logs.push('\n[平局] 双方同归于尽！');
@@ -714,6 +714,9 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '育种') {
+    const idx1 = parseInt(p1);
+    const idx2 = parseInt(p2);
+    if (isNaN(idx1) || isNaN(idx2)) return reply('请指定两只正确的宠物编号');
     const pet1 = getPet(p1);
     const pet2 = getPet(p2);
     if (!pet1 || !pet2) return reply('请指定两只正确的宠物编号');
@@ -823,7 +826,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (!mods.length) return reply('【Mod管理】\n没有已安装的Mod');
     const lines = ['【Mod管理】', ''];
     for (const mod of mods) {
-      const status = mod.enabled ? '✓' : '✗';
+      const status = mod.enabled ? '[√]' : '[×]';
       lines.push(`${status} ${mod.name} v${mod.version} (${mod.author})`);
       if (mod.description) lines.push(`  ${mod.description}`);
     }
@@ -838,7 +841,7 @@ ext.cmdMap['万物有灵'] = cmd;
 
 // ==================== 外部接口 ====================
 const WanwuYouling = {
-  version: '1.2.7',
+  version: '1.2.8',
   ext,
 
   DB: {
