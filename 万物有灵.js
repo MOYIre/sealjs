@@ -16,6 +16,7 @@ if (!ext) {
 
 const CONFIG = {
   maxPets: 3,
+  maxStorage: 15,
   evolveLevel: 10,
   evolveBattles: [3, 5],
   baseExpGain: 10,
@@ -342,9 +343,11 @@ cmd.solve = (ctx, msg, argv) => {
         if (data.pets.length < CONFIG.maxPets) {
           data.pets.push(wildPet);
           logs.push(`已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
-        } else {
+        } else if (data.storage.length < CONFIG.maxStorage) {
           data.storage.push(wildPet);
-          logs.push(`队伍已满，已存入仓库 (仓库: ${data.storage.length}只)`);
+          logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
+        } else {
+          logs.push(`队伍和仓库都已满，只能放生了`);
         }
         save();
         // 触发捕捉事件
@@ -369,13 +372,13 @@ cmd.solve = (ctx, msg, argv) => {
       const r = RARITY_MARK[pet.rarity] || '';
       lines.push(`${i + 1}. ${r}${e} ${pet.name} (${pet.species}) Lv.${pet.level} 战力:${PetFactory.power(pet)}`);
     });
-    if (data.storage.length) lines.push(`\n仓库: ${data.storage.length}只 (.宠物 仓库 查看)`);
+    if (data.storage.length) lines.push(`\n仓库: ${data.storage.length}/${CONFIG.maxStorage} (.宠物 仓库 查看)`);
     return reply(lines.join('\n'));
   }
 
   if (action === '仓库') {
-    if (!data.storage.length) return reply('【仓库】\n仓库空空如也');
-    const lines = [`【仓库】(${data.storage.length}只)`, ''];
+    if (!data.storage.length) return reply(`【仓库】(${data.storage.length}/${CONFIG.maxStorage})\n仓库空空如也`);
+    const lines = [`【仓库】(${data.storage.length}/${CONFIG.maxStorage})`, ''];
     data.storage.forEach((pet, i) => {
       const e = ELEMENT_MARK[pet.element] || '';
       const r = RARITY_MARK[pet.rarity] || '';
@@ -392,11 +395,12 @@ cmd.solve = (ctx, msg, argv) => {
     const pet = data.pets[idx];
     if (!pet) return reply('请指定正确的宠物编号');
     if (data.pets.length <= 1) return reply('队伍至少要保留1只宠物');
+    if (data.storage.length >= CONFIG.maxStorage) return reply(`仓库已满(${CONFIG.maxStorage}只)`);
     data.pets.splice(idx, 1);
     data.storage.push(pet);
     save();
     WanwuYouling.emit('store', { uid, pet, to: 'storage' });
-    return reply(`${pet.name} 已存入仓库`);
+    return reply(`${pet.name} 已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
   }
 
   if (action === '取出') {
