@@ -74,6 +74,18 @@ class GameSession {
     return { sword, heart };
   }
 
+  // 获取完整牌堆统计（包含已抽出的顶牌）
+  getFullDeckCount() {
+    let sword = 0, heart = 0;
+    for (let c of this.deck) {
+      if (c === '剑') sword++;
+      else heart++;
+    }
+    if (this.topCard === '剑') sword++;
+    else if (this.topCard === '心') heart++;
+    return { sword, heart };
+  }
+
   getCurrentPlayer() {
     return this.players.find(p => p.isCurrent);
   }
@@ -93,12 +105,15 @@ class GameSession {
     if (this.deck.length === 0) {
       this.initDeck();
       regenerated = true;
-      const cnt = this.getDeckCount();
-      sword = cnt.sword;
-      heart = cnt.heart;
     }
     
     this.topCard = this.deck.pop();
+    
+    if (regenerated) {
+      const cnt = this.getFullDeckCount();
+      sword = cnt.sword;
+      heart = cnt.heart;
+    }
     return { regenerated, sword, heart };
   }
 
@@ -132,13 +147,13 @@ function hpBar(hp, max = 3, len = 5) {
 }
 
 function showStatus(session) {
-  const cnt = session.getDeckCount();
+  const cnt = session.getFullDeckCount();
   const current = session.getCurrentPlayer();
   const p1 = session.players[0];
   const p2 = session.players[1];
   return `✦ 轮盘对决 ✧
 ${p1.name} ${hpBar(p1.hp)} ${p1.hp}/3  vs  ${p2.name} ${hpBar(p2.hp)} ${p2.hp}/3
-牌堆: 余${cnt.sword + cnt.heart}张 | 已抽顶牌
+牌堆: ⚔${cnt.sword} ♡${cnt.heart} (含顶牌)
 当前回合: ${current ? current.name : '无'}
 ───────────────────────────`;
 }
@@ -208,11 +223,10 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       const firstIdx = random(0, 1);
       session.players[firstIdx].isCurrent = true;
       session.drawTopCard();
-      // 抽走顶牌后的实际牌数
-      const cnt = session.getDeckCount();
+      const cnt = session.getFullDeckCount();
       seal.replyToSender(ctx, msg, `✦ 对决开始 ✧
 ${session.players[0].name} VS ${session.players[1].name}
-牌堆: 余${cnt.sword + cnt.heart}张 | 已抽顶牌
+牌堆: ⚔${cnt.sword} ♡${cnt.heart} (含顶牌)
 先手: ${session.players[firstIdx].name}
 ───────────────────────────
 使用 .出击 对对手使用顶牌
@@ -320,7 +334,7 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   const drawResult = session.drawTopCard();
   let extraMsg = '';
   if (drawResult.regenerated) {
-    extraMsg = `\n[牌堆已重新生成: 余${drawResult.sword + drawResult.heart}张]`;
+    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
   }
   seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
@@ -372,7 +386,7 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
   const drawResult = session.drawTopCard();
   let extraMsg = '';
   if (drawResult.regenerated) {
-    extraMsg = `\n[牌堆已重新生成: 余${drawResult.sword + drawResult.heart}张]`;
+    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
   }
   seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
