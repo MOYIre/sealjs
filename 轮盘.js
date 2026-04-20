@@ -87,10 +87,19 @@ class GameSession {
   }
 
   drawTopCard() {
+    let regenerated = false;
+    let sword = 0, heart = 0;
+    
     if (this.deck.length === 0) {
       this.initDeck();
+      regenerated = true;
+      const cnt = this.getDeckCount();
+      sword = cnt.sword;
+      heart = cnt.heart;
     }
+    
     this.topCard = this.deck.pop();
+    return { regenerated, sword, heart };
   }
 
   switchTurn() {
@@ -129,7 +138,7 @@ function showStatus(session) {
   const p2 = session.players[1];
   return `✦ 轮盘对决 ✧
 ${p1.name} ${hpBar(p1.hp)} ${p1.hp}/3  vs  ${p2.name} ${hpBar(p2.hp)} ${p2.hp}/3
-牌堆: ⚔${cnt.sword} ♡${cnt.heart} (共${cnt.sword + cnt.heart}张)
+牌堆: ⚔${cnt.sword} ♡${cnt.heart} (余${cnt.sword + cnt.heart}张) | 已抽顶牌
 当前回合: ${current ? current.name : '无'}
 ───────────────────────────`;
 }
@@ -199,9 +208,11 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       const firstIdx = random(0, 1);
       session.players[firstIdx].isCurrent = true;
       session.drawTopCard();
+      // 抽走顶牌后的实际牌数
+      const cnt = session.getDeckCount();
       seal.replyToSender(ctx, msg, `✦ 对决开始 ✧
 ${session.players[0].name} VS ${session.players[1].name}
-新牌堆: ⚔${swordNum}张 ♡${heartNum}张
+牌堆: ⚔${cnt.sword} ♡${cnt.heart} (余${cnt.sword + cnt.heart}张) | 已抽顶牌
 先手: ${session.players[firstIdx].name}
 ───────────────────────────
 使用 .出击 对对手使用顶牌
@@ -306,8 +317,12 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   }
 
   session.switchTurn();
-  session.drawTopCard();
-  seal.replyToSender(ctx, msg, `${result}\n\n${showStatus(session)}`);
+  const drawResult = session.drawTopCard();
+  let extraMsg = '';
+  if (drawResult.regenerated) {
+    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
+  }
+  seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -354,8 +369,12 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
   }
 
   session.switchTurn();
-  session.drawTopCard();
-  seal.replyToSender(ctx, msg, `${result}\n\n${showStatus(session)}`);
+  const drawResult = session.drawTopCard();
+  let extraMsg = '';
+  if (drawResult.regenerated) {
+    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
+  }
+  seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
 };
 
