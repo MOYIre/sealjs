@@ -184,7 +184,7 @@ ${p2.name} ${hpBar(p2.hp)} ${p2.hp}/3 [${itemsStr(p2.items)}]
 ───────────────────────────`;
 }
 
-// ===================== 主命令 =====================
+// 主命令
 const cmdRoulette = seal.ext.newCmdItemInfo();
 cmdRoulette.name = '轮盘';
 cmdRoulette.help = `【轮盘对决】2人对战游戏
@@ -325,7 +325,7 @@ function randomDiscardItem(player) {
   return type;
 }
 
-// ===================== 出击命令 =====================
+// 出击命令
 const cmdAttack = seal.ext.newCmdItemInfo();
 cmdAttack.name = '出击';
 cmdAttack.help = '对对手使用顶牌';
@@ -382,7 +382,7 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
-// ===================== 自用命令 =====================
+// 自用命令
 const cmdSelfUse = seal.ext.newCmdItemInfo();
 cmdSelfUse.name = '自用';
 cmdSelfUse.help = '对自己使用顶牌';
@@ -441,7 +441,7 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
-// ===================== 用药命令 =====================
+// 用药命令
 const cmdUseMed = seal.ext.newCmdItemInfo();
 cmdUseMed.name = '用药';
 cmdUseMed.help = '使用药牌，回复1血';
@@ -475,7 +475,7 @@ cmdUseMed.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
-// ===================== 用弃命令 =====================
+// 用弃命令
 const cmdUseDiscard = seal.ext.newCmdItemInfo();
 cmdUseDiscard.name = '用弃';
 cmdUseDiscard.help = '使用弃牌，移除当前顶牌';
@@ -511,7 +511,7 @@ cmdUseDiscard.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
-// ===================== 用毁命令 =====================
+// 用毁命令
 const cmdUseDestroy = seal.ext.newCmdItemInfo();
 cmdUseDestroy.name = '用毁';
 cmdUseDestroy.help = '使用毁牌，随机销毁对方一张道具';
@@ -554,7 +554,7 @@ cmdUseDestroy.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
-// ===================== 注册命令 =====================
+// 注册命令
 ext.cmdMap['轮盘'] = cmdRoulette;
 ext.cmdMap['出击'] = cmdAttack;
 ext.cmdMap['自用'] = cmdSelfUse;
