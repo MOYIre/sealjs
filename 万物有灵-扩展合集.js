@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展合集
 // @author      铭茗
-// @version     3.1.1
+// @version     3.1.2
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
-// @timestamp   1776680453
+// @timestamp   1776695926
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.1');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.2');
   seal.ext.register(ext);
 }
 
@@ -415,7 +415,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.1', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.2', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -591,9 +591,13 @@ function init() {
   main.registerCommand('市场', (ctx, msg, p) => {
     loadMarket(); cleanExpired();
     const listings = Object.entries(marketData.listings);
-    if (!listings.length) return p.reply('【市场】\n暂无宠物\n.宠物 挂售 <仓库编号> <价格>');
+    if (!listings.length) {
+      p.reply('【市场】\n暂无宠物\n.宠物 挂售 <仓库编号> <价格>\n.宠物 购买宠物 <编号>');
+      return seal.ext.newCmdExecuteResult(true);
+    }
     const lines = ['【市场】', `在售: ${listings.length}只`];
-    listings.slice(0, 10).forEach(([id, item]) => lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金`));
+    listings.slice(0, 10).forEach(([id, item]) => lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金 卖家:${item.sellerName}`));
+    lines.push('.宠物 购买宠物 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看市场', 'wanwu-all', '图鉴');
