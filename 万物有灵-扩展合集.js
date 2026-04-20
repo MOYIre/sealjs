@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展合集
 // @author      铭茗
-// @version     3.1.2
+// @version     3.1.3
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
-// @timestamp   1776695926
+// @timestamp   1776696319
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.2');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.3');
   seal.ext.register(ext);
 }
 
@@ -415,7 +415,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.2', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.3', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -634,6 +634,71 @@ function init() {
     p.reply(`购买成功！获得 ${item.pet.name}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '购买宠物', 'wanwu-all', '图鉴');
+
+  // ========== 生灵保护机构 ==========
+  main.registerCommand('机构', (ctx, msg, p) => {
+    const shelter = main._shelterMarket || {};
+    // 清理过期（放生）
+    const now = Date.now();
+    let released = 0;
+    for (const [id, item] of Object.entries(shelter)) {
+      if (item.expire < now) {
+        delete shelter[id];
+        released++;
+      }
+    }
+    if (released > 0) {
+      main._shelterMarket = shelter;
+      try {
+        ext.storageSet('shelterMarket', JSON.stringify(shelter));
+      } catch (e) {}
+    }
+
+    const listings = Object.entries(shelter);
+    if (!listings.length) {
+      p.reply('【生灵保护机构】\n暂无待领养宠物\n\n.宠物 出售 [编号] 机构 - 交给机构');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    const lines = ['【生灵保护机构 - 待领养】', `在售: ${listings.length}只`];
+    listings.slice(0, 10).forEach(([id, item]) => {
+      const pet = item.pet;
+      const remain = Math.max(0, Math.ceil((item.expire - now) / 3600000));
+      lines.push(`#${id.slice(-4)} [${pet.rarity}]${pet.name} Lv.${pet.level} ${item.price}金 剩${remain}h`);
+    });
+    lines.push('\n.宠物 领养 <编号>');
+    p.reply(lines.join('\n'));
+    return seal.ext.newCmdExecuteResult(true);
+  }, '查看生灵保护机构', 'wanwu-all', '图鉴');
+
+  main.registerCommand('领养', (ctx, msg, p) => {
+    const shortId = p.p1;
+    if (!shortId) return p.reply('用法: .宠物 领养 <编号>');
+
+    const shelter = main._shelterMarket || {};
+    const listingId = Object.keys(shelter).find(id => id.slice(-4) === shortId);
+    if (!listingId) return p.reply('未找到该宠物，可能已被领养或放生');
+
+    const item = shelter[listingId];
+    const mainData = main.DB.get(p.uid);
+    if (mainData.money < item.price) return p.reply(`金币不足，需要 ${item.price} 金币`);
+
+    mainData.money -= item.price;
+    if (mainData.pets.length < 3) mainData.pets.push(item.pet);
+    else {
+      mainData.storage = mainData.storage || [];
+      mainData.storage.push(item.pet);
+    }
+    main.DB.save(p.uid, mainData);
+
+    delete shelter[listingId];
+    main._shelterMarket = shelter;
+    try {
+      ext.storageSet('shelterMarket', JSON.stringify(shelter));
+    } catch (e) {}
+
+    p.reply(`【领养成功】\n获得 ${item.pet.name}\n花费 ${item.price} 金币`);
+    return seal.ext.newCmdExecuteResult(true);
+  }, '从生灵保护机构领养', 'wanwu-all', '图鉴');
 
   // ========== 季节 ==========
   main.registerCommand('季节', (ctx, msg, p) => {
