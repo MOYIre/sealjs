@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name        万物有灵-扩展合集
+// @name        万物有灵·万象篇
 // @author      铭茗
 // @version     3.1.3
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
@@ -8,9 +8,9 @@
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
-let ext = seal.ext.find('万物有灵-扩展合集');
+let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.4');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.4');
   seal.ext.register(ext);
 }
 
