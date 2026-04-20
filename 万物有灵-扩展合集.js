@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展合集
 // @author      铭茗
-// @version     2.0.1
+// @version     3.0.0
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
-// @timestamp   1776660708
+// @timestamp   1776666372
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '2.0.1');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.0.0');
   seal.ext.register(ext);
 }
 
@@ -296,7 +296,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '2.0.1', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.0.0', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 事件监听
   main.on('capture', ({ uid, pet }) => {
