@@ -138,7 +138,7 @@ function showStatus(session) {
   const p2 = session.players[1];
   return `✦ 轮盘对决 ✧
 ${p1.name} ${hpBar(p1.hp)} ${p1.hp}/3  vs  ${p2.name} ${hpBar(p2.hp)} ${p2.hp}/3
-牌堆: ⚔${cnt.sword} ♡${cnt.heart} (余${cnt.sword + cnt.heart}张) | 已抽顶牌
+牌堆: 余${cnt.sword + cnt.heart}张 | 已抽顶牌
 当前回合: ${current ? current.name : '无'}
 ───────────────────────────`;
 }
@@ -203,7 +203,7 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
       }
       session.players.push({ id: playerId, name: playerName, hp: 3, isCurrent: false });
-      const { swordNum, heartNum } = session.initDeck();
+      session.initDeck();
       session.phase = 'playing';
       const firstIdx = random(0, 1);
       session.players[firstIdx].isCurrent = true;
@@ -212,7 +212,7 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       const cnt = session.getDeckCount();
       seal.replyToSender(ctx, msg, `✦ 对决开始 ✧
 ${session.players[0].name} VS ${session.players[1].name}
-牌堆: ⚔${cnt.sword} ♡${cnt.heart} (余${cnt.sword + cnt.heart}张) | 已抽顶牌
+牌堆: 余${cnt.sword + cnt.heart}张 | 已抽顶牌
 先手: ${session.players[firstIdx].name}
 ───────────────────────────
 使用 .出击 对对手使用顶牌
@@ -320,7 +320,7 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   const drawResult = session.drawTopCard();
   let extraMsg = '';
   if (drawResult.regenerated) {
-    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
+    extraMsg = `\n[牌堆已重新生成: 余${drawResult.sword + drawResult.heart}张]`;
   }
   seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
@@ -372,7 +372,7 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
   const drawResult = session.drawTopCard();
   let extraMsg = '';
   if (drawResult.regenerated) {
-    extraMsg = `\n[牌堆已重新生成: ⚔${drawResult.sword} ♡${drawResult.heart}]`;
+    extraMsg = `\n[牌堆已重新生成: 余${drawResult.sword + drawResult.heart}张]`;
   }
   seal.replyToSender(ctx, msg, `${result}${extraMsg}\n\n${showStatus(session)}`);
   return seal.ext.newCmdExecuteResult(true);
