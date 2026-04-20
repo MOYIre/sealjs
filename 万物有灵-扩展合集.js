@@ -5,7 +5,7 @@
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
-// @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
+// @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵·万象篇.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵·万象篇');
