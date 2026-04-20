@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.3');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.4');
   seal.ext.register(ext);
 }
 
@@ -415,7 +415,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.3', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.4', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -603,11 +603,24 @@ function init() {
   }, '查看市场', 'wanwu-all', '图鉴');
 
   main.registerCommand('挂售', (ctx, msg, p) => {
-    const storageIdx = parseInt(p.p1) - 1, price = parseInt(p.p2);
-    if (isNaN(storageIdx) || isNaN(price)) return p.reply('用法: .宠物 挂售 <仓库编号> <价格>');
+    const petNum = parseInt(p.p1), price = parseInt(p.p2);
+    if (isNaN(petNum) || isNaN(price)) return p.reply('用法: .宠物 挂售 <宠物编号> <价格>\n编号: 1-3队伍, 4-18仓库');
     const mainData = main.DB.get(p.uid);
-    const pet = (mainData.storage || [])[storageIdx]; if (!pet) return p.reply('仓库无此宠物');
-    mainData.storage.splice(storageIdx, 1); main.DB.save(p.uid, mainData);
+    let pet;
+    if (petNum <= 3) {
+      // 队伍宠物
+      if (petNum > mainData.pets.length) return p.reply('队伍无此宠物');
+      pet = mainData.pets[petNum - 1];
+      mainData.pets.splice(petNum - 1, 1);
+    } else {
+      // 仓库宠物
+      const storageIdx = petNum - 4;
+      const storage = mainData.storage || [];
+      if (storageIdx < 0 || storageIdx >= storage.length) return p.reply('仓库无此宠物');
+      pet = storage[storageIdx];
+      storage.splice(storageIdx, 1);
+    }
+    main.DB.save(p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     marketData.listings[listingId] = { pet, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
     saveMarket();
