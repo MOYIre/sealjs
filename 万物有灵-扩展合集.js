@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展合集
 // @author      铭茗
-// @version     2.0.0
+// @version     2.0.1
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
-// @timestamp   1776613363
+// @timestamp   1776660708
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '2.0.0');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '2.0.1');
   seal.ext.register(ext);
 }
 
@@ -296,7 +296,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '2.0.0', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '2.0.1', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 事件监听
   main.on('capture', ({ uid, pet }) => {
@@ -313,7 +313,7 @@ function init() {
     if (pet.rarity === '传说') { unlockAchievement(uid, 'first_legend'); if (achData.stats.captureCount === 1) unlockAchievement(uid, 'lucky'); }
     if (pet.rarity === '超稀有') unlockAchievement(uid, 'first_super');
     DB.achievement.save(uid, achData);
-  }, 'wanwu-all');
+  }, 'wanwu-all', '图鉴');
 
   main.on('battle', ({ uid, winner, draw, isNPC, targetUid }) => {
     if (draw || !winner) return;
@@ -335,7 +335,7 @@ function init() {
       else { extData.arenaRank = Math.max(0, (extData.arenaRank || 1000) - change); targetData.arenaRank = (targetData.arenaRank || 1000) + change; }
       DB.ext.save(uid, extData); DB.ext.save(targetUid, targetData);
     }
-  }, 'wanwu-all');
+  }, 'wanwu-all', '图鉴');
 
   main.on('feed', ({ uid, pet }) => {
     if (!pet) return;
@@ -344,11 +344,11 @@ function init() {
     else data.stats.feedStreak = { petId: pet.id, count: 1 };
     if (data.stats.feedStreak.count >= 10) unlockAchievement(uid, 'feeder');
     DB.achievement.save(uid, data);
-  }, 'wanwu-all');
+  }, 'wanwu-all', '图鉴');
 
-  main.on('levelup', ({ uid, newLevel }) => { if (newLevel >= 50) unlockAchievement(uid, 'level_max'); }, 'wanwu-all');
-  main.on('evolve', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all');
-  main.on('breed', ({ uid }) => unlockAchievement(uid, 'breed_first'), 'wanwu-all');
+  main.on('levelup', ({ uid, newLevel }) => { if (newLevel >= 50) unlockAchievement(uid, 'level_max'); }, 'wanwu-all', '图鉴');
+  main.on('evolve', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all', '图鉴');
+  main.on('breed', ({ uid }) => unlockAchievement(uid, 'breed_first'), 'wanwu-all', '图鉴');
 
   // ========== 图鉴 ==========
   main.registerCommand('图鉴', (ctx, msg, p) => {
@@ -359,14 +359,14 @@ function init() {
     entries.sort((a, b) => b[1].count - a[1].count).slice(0, 15).forEach(([s, i]) => lines.push(`${s}: ${i.count}次`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看图鉴', 'wanwu-all');
+  }, '查看图鉴', 'wanwu-all', '图鉴');
 
   // ========== 竞技场 ==========
   main.registerCommand('竞技场', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
     p.reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看竞技场', 'wanwu-all');
+  }, '查看竞技场', 'wanwu-all', '图鉴');
 
   // ========== 成就 ==========
   main.registerCommand('成就', (ctx, msg, p) => {
@@ -377,7 +377,7 @@ function init() {
     unlocked.slice(0, 10).forEach(([id]) => { const ach = ACHIEVEMENTS[id]; if (ach) lines.push(`${ach.mark} ${ach.name}`); });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看成就', 'wanwu-all');
+  }, '查看成就', 'wanwu-all', '图鉴');
 
   main.registerCommand('成就列表', (ctx, msg, p) => {
     const data = DB.achievement.get(p.uid);
@@ -385,7 +385,7 @@ function init() {
     Object.entries(ACHIEVEMENTS).forEach(([id, ach]) => lines.push(`${data.unlocked[id] ? '[v]' : '[ ]'} ${ach.name} - ${ach.desc}`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看所有成就', 'wanwu-all');
+  }, '查看所有成就', 'wanwu-all', '图鉴');
 
   // ========== 装备商店 ==========
   main.registerCommand('装备商店', (ctx, msg, p) => {
@@ -397,7 +397,7 @@ function init() {
     });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看装备商店', 'wanwu-all');
+  }, '查看装备商店', 'wanwu-all', '图鉴');
 
   main.registerCommand('购买装备', (ctx, msg, p) => {
     const name = p.p1; if (!name) return p.reply('请指定装备名称');
@@ -408,7 +408,7 @@ function init() {
     const data = DB.equip.get(p.uid); data.bag[name] = (data.bag[name] || 0) + 1; DB.equip.save(p.uid, data);
     p.reply(`购买成功！获得 ${name}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '购买装备', 'wanwu-all');
+  }, '购买装备', 'wanwu-all', '图鉴');
 
   main.registerCommand('装备背包', (ctx, msg, p) => {
     const data = DB.equip.get(p.uid);
@@ -417,7 +417,7 @@ function init() {
     const lines = ['【装备背包】']; items.forEach(([n, c]) => lines.push(`${n} x${c}`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看装备背包', 'wanwu-all');
+  }, '查看装备背包', 'wanwu-all', '图鉴');
 
   main.registerCommand('装备', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), equipName = p.p2;
@@ -433,7 +433,7 @@ function init() {
     DB.equip.save(p.uid, data);
     p.reply(`${pet.name} 穿戴了 ${equipName}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '穿戴装备', 'wanwu-all');
+  }, '穿戴装备', 'wanwu-all', '图鉴');
 
   // ========== 技能书 ==========
   main.registerCommand('技能书', (ctx, msg, p) => {
@@ -443,7 +443,7 @@ function init() {
     const lines = ['【技能书】']; items.forEach(([n, c]) => { const b = SKILL_BOOKS[n]; lines.push(`${n} x${c} -> ${b.skill}`); });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看技能书', 'wanwu-all');
+  }, '查看技能书', 'wanwu-all', '图鉴');
 
   main.registerCommand('学习技能', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), bookName = p.p2;
@@ -458,7 +458,7 @@ function init() {
     main.DB.save(p.uid, mainData); DB.skillbook.save(p.uid, data);
     p.reply(`${pet.name} 学会了 ${book.skill}！`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '使用技能书', 'wanwu-all');
+  }, '使用技能书', 'wanwu-all', '图鉴');
 
   // ========== 市场 ==========
   main.registerCommand('市场', (ctx, msg, p) => {
@@ -469,7 +469,7 @@ function init() {
     listings.slice(0, 10).forEach(([id, item]) => lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看市场', 'wanwu-all');
+  }, '查看市场', 'wanwu-all', '图鉴');
 
   main.registerCommand('挂售', (ctx, msg, p) => {
     const storageIdx = parseInt(p.p1) - 1, price = parseInt(p.p2);
@@ -482,7 +482,7 @@ function init() {
     saveMarket();
     p.reply(`已挂售 ${pet.name} ${price}金 #${listingId.slice(-4)}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '挂售宠物', 'wanwu-all');
+  }, '挂售宠物', 'wanwu-all', '图鉴');
 
   main.registerCommand('购买宠物', (ctx, msg, p) => {
     const shortId = p.p1; if (!shortId) return p.reply('用法: .宠物 购买宠物 <编号>');
@@ -502,7 +502,7 @@ function init() {
     delete marketData.listings[listingId]; saveMarket();
     p.reply(`购买成功！获得 ${item.pet.name}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '购买宠物', 'wanwu-all');
+  }, '购买宠物', 'wanwu-all', '图鉴');
 
   // ========== 季节 ==========
   main.registerCommand('季节', (ctx, msg, p) => {
@@ -513,7 +513,7 @@ function init() {
     if (festival) lines.push(`[活动] ${festival.name}进行中`);
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看季节', 'wanwu-all');
+  }, '查看季节', 'wanwu-all', '图鉴');
 
   console.log('[万物有灵-扩展合集] Mod已启用');
 }
