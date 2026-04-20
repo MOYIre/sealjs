@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵-扩展合集
 // @author      铭茗
-// @version     3.1.0
+// @version     3.1.1
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
-// @timestamp   1776679909
+// @timestamp   1776680453
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵-扩展合集.js
 // ==/UserScript==
 
 let ext = seal.ext.find('万物有灵-扩展合集');
 if (!ext) {
-  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.0');
+  ext = seal.ext.new('万物有灵-扩展合集', '铭茗', '3.1.1');
   seal.ext.register(ext);
 }
 
@@ -125,8 +125,10 @@ const TaskNotifier = {
 
   // 启动定时检查
   startInterval(main) {
+    // 清理旧的定时器
+    if (this._interval) clearInterval(this._interval);
     // 每30秒检查一次
-    setInterval(() => this.checkAndNotify(main), 30000);
+    this._interval = setInterval(() => this.checkAndNotify(main), 30000);
     console.log('[万物有灵-扩展合集] 任务通知系统已启动');
   }
 };
@@ -413,7 +415,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.0', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.1', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -653,15 +655,15 @@ function init() {
     const data = DB.ext.get(p.uid);
     const now = Date.now();
     data.explore = (data.explore || []).filter(e => e.endTime > now);
-    if (data.explore.length >= CONFIG.maxExplore) return p.reply(`探险队伍已满(最多${CONFIG.maxExplore}只)`);
+    if (data.explore.length >= EXT_CONFIG.maxExplore) return p.reply(`探险队伍已满(最多${EXT_CONFIG.maxExplore}只)`);
     if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
 
-    data.explore.push({ petId: pet.id, endTime: now + CONFIG.exploreTime * 60000, area: area.name });
+    data.explore.push({ petId: pet.id, endTime: now + EXT_CONFIG.exploreTime * 60000, area: area.name });
     pet.energy -= 30;
     p.save();
     DB.ext.save(p.uid, data);
     TaskNotifier.register(p.uid, ctx, msg);
-    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${CONFIG.exploreTime}分钟后返回，完成后将自动通知`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${EXT_CONFIG.exploreTime}分钟后返回，完成后将自动通知`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物探险', 'wanwu-all', '探险');
 
@@ -714,15 +716,15 @@ function init() {
     const data = DB.ext.get(p.uid);
     const now = Date.now();
     data.work = (data.work || []).filter(w => w.endTime > now);
-    if (data.work.length >= CONFIG.maxWork) return p.reply(`打工位置已满(最多${CONFIG.maxWork}只)`);
+    if (data.work.length >= EXT_CONFIG.maxWork) return p.reply(`打工位置已满(最多${EXT_CONFIG.maxWork}只)`);
     if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
 
-    data.work.push({ petId: pet.id, endTime: now + CONFIG.workTime * 60000, work: work.name });
+    data.work.push({ petId: pet.id, endTime: now + EXT_CONFIG.workTime * 60000, work: work.name });
     pet.energy -= work.energy;
     p.save();
     DB.ext.save(p.uid, data);
     TaskNotifier.register(p.uid, ctx, msg);
-    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${CONFIG.workTime}分钟后完成，完成后将自动通知`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${EXT_CONFIG.workTime}分钟后完成，完成后将自动通知`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物打工', 'wanwu-all', '探险');
 
