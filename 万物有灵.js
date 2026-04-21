@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.6
+// @version     3.7.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.7');
   seal.ext.register(ext);
 }
 
@@ -4330,7 +4330,7 @@ cmd.solve = (ctx, msg, argv) => {
       ext.storageSet('shelterMarket', JSON.stringify(WanwuYouling._shelterMarket));
     } catch (e) {}
 
-    return reply(`【生灵保护机构收购】\n${pet.name} → ${buyPrice}金币\n将以${sellPrice}金币上架，1天后放生\n.宠物 机构 查看`);
+    return reply(`【生灵保护机构收购】\n${pet.name} → ${buyPrice}金币\n将以${sellPrice}金币上架，编号: #${listingId.slice(-4)}\n1天后放生\n.宠物 机构 查看`);
   }
 
   //   繁殖优化  
@@ -4654,7 +4654,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.6',
+  version: '3.7.7',
   ext,
 
   DB: {
