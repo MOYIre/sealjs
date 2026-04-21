@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.7
+// @version     3.7.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.7');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.8');
   seal.ext.register(ext);
 }
 
@@ -2849,6 +2849,44 @@ cmd.solve = (ctx, msg, argv) => {
         // 计算经验和金币奖励
         const expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
         const goldGain = 10 + Math.floor(Math.random() * 20) + wildPet.level * 3;
+        
+        // 统一处理经验和金币奖励
+        data.money = (data.money || 0) + goldGain;
+        
+        // 给出战宠物加经验
+        if (!isPlayerFight && petIdx && petIdx !== '肉身') {
+          const pet = getPet(petIdx);
+          if (pet) {
+            let finalExp = expGain;
+            if (data.player.skills?.includes('驯兽术')) finalExp = Math.floor(finalExp * 1.1);
+            pet.exp = (pet.exp || 0) + finalExp;
+            const expNeed = pet.level * 100;
+            if (pet.exp >= expNeed) {
+              pet.exp -= expNeed;
+              pet.level++;
+              pet.maxHp += 5;
+              pet.hp = Math.min(pet.hp + 5, pet.maxHp);
+              pet.atk += 2;
+              pet.def += 2;
+              logs.push(`${pet.name} 升级到 Lv.${pet.level}！`);
+            }
+          }
+        }
+        
+        // 给玩家加经验
+        const playerExpGain = Math.floor(expGain * 0.5);
+        data.player = data.player || { level: 1, exp: 0, str: 10, agi: 10, int: 10, vit: 10, energy: 100, maxEnergy: 100, equipment: {}, skills: [], dailyTrain: 0, lastTrainDate: '' };
+        data.player.exp = (data.player.exp || 0) + playerExpGain;
+        const playerExpNeed = PLAYER_EXP_TABLE[data.player.level] || data.player.level * 500;
+        if (data.player.exp >= playerExpNeed) {
+          data.player.exp -= playerExpNeed;
+          data.player.level++;
+          data.player.str = (data.player.str || 10) + 1;
+          data.player.agi = (data.player.agi || 10) + 1;
+          data.player.int = (data.player.int || 10) + 1;
+          data.player.vit = (data.player.vit || 10) + 1;
+          logs.push(`训练师升级到 Lv.${data.player.level}！全属性+1`);
+        }
 
         if (hasCharm) {
           // 有符咒，可以捕捉宠物
@@ -2928,14 +2966,12 @@ cmd.solve = (ctx, msg, argv) => {
                 logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${data.maxStorage})`);
               }
               logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
-              data.money += goldGain;
             }
           } else {
             // 捕捉失败也消耗符咒
             data.items['捉宠符咒']--;
             if (data.items['捉宠符咒'] <= 0) delete data.items['捉宠符咒'];
             logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
-            data.money += goldGain;
           }
           WanwuYouling.emit('capture', { uid, pet: wildPet });
         } else {
@@ -2943,26 +2979,6 @@ cmd.solve = (ctx, msg, argv) => {
           logs.push(`[捕捉] 没有捉宠符咒，无法捕捉宠物`);
           logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
           logs.push(`提示: 发送 .宠物商店 购买捉宠符咒`);
-          data.money += goldGain;
-
-          // 给出战宠物加经验
-          if (!isPlayerFight) {
-            const pet = getPet(p1);
-            // 驯兽术：经验+10%
-            let finalExp = expGain;
-            if (data.player.skills?.includes('驯兽术')) finalExp = Math.floor(finalExp * 1.1);
-            pet.exp += finalExp;
-            const expNeed = pet.level * 100;
-            if (pet.exp >= expNeed) {
-              pet.exp -= expNeed;
-              pet.level++;
-              pet.maxHp += 5;
-              pet.hp = Math.min(pet.hp + 5, pet.maxHp);
-              pet.atk += 2;
-              pet.def += 2;
-              logs.push(`${pet.name} 升级到 Lv.${pet.level}！`);
-            }
-          }
         }
 
         // 图鉴记录
@@ -4654,7 +4670,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.7',
+  version: '3.7.8',
   ext,
 
   DB: {
