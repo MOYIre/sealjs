@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.9
+// @version     3.7.10
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.10');
   seal.ext.register(ext);
 }
 
@@ -2522,18 +2522,17 @@ cmd.solve = (ctx, msg, argv) => {
     // 新手福利：第一次捉宠送一只普通宠物
     if ((!data.pets || data.pets.length === 0) && !data.firstPetClaimed) {
       data.firstPetClaimed = true;
-      const starterPets = [
-        { name: '小狐狸', species: '狐狸', element: '火', rarity: '普通' },
-        { name: '小蓝龟', species: '蓝龟', element: '水', rarity: '普通' },
-        { name: '小绿叶', species: '绿叶', element: '草', rarity: '普通' },
-      ];
-      const starter = starterPets[Math.floor(Math.random() * starterPets.length)];
+      // 随机属性
+      const elements = ['火', '水', '草'];
+      const element = elements[Math.floor(Math.random() * elements.length)];
+      // 使用游戏内名字生成风格
+      const name = PetManager.generateName(element);
       const newPet = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        name: starter.name,
-        species: starter.species,
-        element: starter.element,
-        rarity: starter.rarity,
+        name: name,
+        species: name,
+        element: element,
+        rarity: '普通',
         gender: Math.random() < 0.5 ? '♂' : '♀',
         nature: Object.keys(NATURES)[Math.floor(Math.random() * Object.keys(NATURES).length)],
         level: 1,
@@ -2554,7 +2553,7 @@ cmd.solve = (ctx, msg, argv) => {
       };
       data.pets = [newPet];
       save();
-      reply(`【新手礼物】\n你获得了一只${starter.name}！\n[${starter.rarity}]${starter.name} ${starter.element}属性\n\n现在你可以开始冒险了！\n.宠物 查看你的宠物`);
+      reply(`【新手礼物】\n你获得了一只${name}！\n[普通]${name} ${element}属性\n\n现在你可以开始冒险了！\n.宠物 查看你的宠物`);
       return;
     }
     
@@ -4709,7 +4708,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.9',
+  version: '3.7.10',
   ext,
 
   DB: {
