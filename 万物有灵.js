@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.2
+// @version     4.0.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.3');
   seal.ext.register(ext);
 }
 
@@ -2850,6 +2850,25 @@ const Battle = {
         // 设置回合数供物种特性使用
         attacker._turn = turn;
 
+        // 处理状态效果
+        // 束缚状态：无法行动
+        if (attacker.webbed && attacker.webbed > 0) {
+          logs.push(`[束缚] ${attacker.name} 被蛛网束缚，无法行动！`);
+          attacker.webbed--;
+          continue;
+        }
+
+        // 混乱状态：50%概率攻击自己
+        if (attacker.confused && attacker.confused > 0) {
+          attacker.confused--;
+          if (Math.random() < 0.5) {
+            logs.push(`[混乱] ${attacker.name} 陷入混乱，攻击了自己！`);
+            const selfDmg = Math.floor((attacker.atk || 10) * 0.5);
+            attacker.hp = Math.max(0, attacker.hp - selfDmg);
+            continue;
+          }
+        }
+
         // 消耗行动值
         if (action.atbKey === 'atb1') atb1 -= ACTION_THRESHOLD;
         else if (action.atbKey === 'atb2') atb2 -= ACTION_THRESHOLD;
@@ -2865,6 +2884,29 @@ const Battle = {
 
       const finalStatus = isBattleEnd();
       if (finalStatus.ended) break;
+
+      // 回合结束时处理持续伤害
+      const processDot = (unit, name) => {
+        if (!unit || (unit.hp || 0) <= 0) return;
+        // 中毒伤害
+        if (unit.poisoned && unit.poisoned > 0) {
+          const poisonDmg = Math.floor((unit.maxHp || 100) * 0.05);
+          unit.hp = Math.max(0, unit.hp - poisonDmg);
+          logs.push(`[中毒] ${name} 受到 ${poisonDmg} 毒素伤害！`);
+          unit.poisoned--;
+        }
+        // 蝎毒伤害
+        if (unit.scorpioPoison && unit.scorpioPoison > 0) {
+          const scorpioDmg = Math.floor((unit.maxHp || 100) * 0.08);
+          unit.hp = Math.max(0, unit.hp - scorpioDmg);
+          logs.push(`[蝎毒] ${name} 受到 ${scorpioDmg} 蝎毒伤害！`);
+          unit.scorpioPoison--;
+        }
+      };
+      processDot(p1, p1.name);
+      processDot(p2, p2.name);
+      if (p1Ally) processDot(p1Ally, p1Ally.name);
+      if (p2Ally) processDot(p2Ally, p2Ally.name);
 
       turn++;
     }
@@ -5648,7 +5690,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.2',
+  version: '4.0.3',
   ext,
 
   DB: {
