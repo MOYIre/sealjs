@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.6.25
+// @version     3.6.26
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.6.25');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.6.26');
   seal.ext.register(ext);
 }
 
@@ -1343,6 +1343,33 @@ const DB = {
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
       data.playerItems = data.playerItems ?? {};
 
+      // 精力自动恢复：每小时恢复10%精力
+      const now = Date.now();
+      const lastCheck = data.lastEnergyCheck || now;
+      const hoursPassed = (now - lastCheck) / 3600000;
+      if (hoursPassed >= 0.1) { // 至少6分钟才恢复
+        const recoverRate = 0.1; // 每小时恢复10%
+        
+        // 恢复所有宠物精力
+        for (const pet of data.pets) {
+          if (pet.energy < pet.maxEnergy) {
+            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * recoverRate));
+          }
+        }
+        for (const pet of data.storage || []) {
+          if (pet.energy < pet.maxEnergy) {
+            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * recoverRate));
+          }
+        }
+        
+        // 恢复玩家精力
+        if (data.player.energy < data.player.maxEnergy) {
+          data.player.energy = Math.min(data.player.maxEnergy, data.player.energy + Math.floor(data.player.maxEnergy * hoursPassed * recoverRate));
+        }
+        
+        data.lastEnergyCheck = now;
+      }
+
       return data;
     } catch (e) {
       console.log('[万物有灵] 数据解析失败:', e);
@@ -1892,8 +1919,10 @@ const HELP_PAGES = {
 .宠物 捉宠 [编号] [地区] - 捕捉野外宠物
 .宠物 对战 <编号> @人 - PVP对战
 .宠物 喂食 <编号> <食物> - 喂食恢复
-.宠物 休息 <编号> - 恢复精力
-.宠物 学习 <编号> - 学习技能`,
+.宠物 学习 <编号> - 学习技能
+
+【精力自动恢复】
+宠物和训练师精力每小时自动恢复10%`,
 
   管理: `【管理命令】
 .宠物 存入 <编号> - 存入仓库
@@ -2289,7 +2318,7 @@ cmd.solve = (ctx, msg, argv) => {
       const pet = getPet(petIdx);
       if (!pet) return reply('请指定正确的宠物编号');
       if (pet.hp <= 0) return reply('宠物生命值不足，请先喂食恢复');
-      if (pet.energy < 20) return reply('宠物精力不足，请先休息');
+      if (pet.energy < 20) return reply('宠物精力不足，请稍后再试(精力每小时自动恢复10%)');
 
       // 宠物战斗单位 (v3.6.10 添加训练师属性加成)
       fighter = JSON.parse(JSON.stringify(pet));
@@ -2769,16 +2798,6 @@ cmd.solve = (ctx, msg, argv) => {
     save();
     WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f });
     return reply(`喂食成功！${pet.name} 的属性提升了\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
-  }
-
-  if (action === '休息') {
-    const pet = getPet(p1);
-    if (!pet) return reply('请指定正确的宠物编号');
-    const recover = Math.floor(pet.maxEnergy * 0.5);
-    pet.energy = Math.min(pet.maxEnergy, pet.energy + recover);
-    save();
-    WanwuYouling.emit('rest', { uid, pet, recover });
-    return reply(`${pet.name} 休息了一会，恢复了 ${recover} 点精力`);
   }
 
   if (action === '改名') {
@@ -4012,7 +4031,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.6.25',
+  version: '3.6.26',
   ext,
 
   DB: {
