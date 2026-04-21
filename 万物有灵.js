@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.4
+// @version     3.7.5
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.5');
   seal.ext.register(ext);
 }
 
@@ -4117,9 +4117,13 @@ cmd.solve = (ctx, msg, argv) => {
       const fighters = [];
       for (const member of myTeam.members) {
         const memberData = DB.get(member.uid);
-        if (memberData && memberData.pets[member.petIdx]) {
-          const pet = memberData.pets[member.petIdx];
-          if (pet.hp > 0 && pet.energy >= 20) {
+        if (memberData && memberData.pets.length > 0) {
+          // 如果没有设置宠物或设置的宠物不存在，使用最强宠物
+          let pet = memberData.pets[member.petIdx];
+          if (!pet) {
+            pet = getStrongestPet(memberData.pets);
+          }
+          if (pet && pet.hp > 0 && pet.energy >= 20) {
             pet.energy -= 20;
             fighters.push({ pet, name: member.name, uid: member.uid, data: memberData });
           }
@@ -4591,7 +4595,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.4',
+  version: '3.7.5',
   ext,
 
   DB: {
