@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.16
+// @version     3.1.17
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.16');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.17');
   seal.ext.register(ext);
 }
 
@@ -429,7 +429,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.16', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.17', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -745,12 +745,23 @@ function init() {
       p.reply('【生灵保护机构】\n暂无待领养宠物\n\n.宠物 出售 [编号] 机构 - 交给机构');
       return seal.ext.newCmdExecuteResult(true);
     }
-    const lines = ['【生灵保护机构 - 待领养】', `在售: ${listings.length}只`];
-    listings.slice(0, 10).forEach(([id, item]) => {
+    
+    // 分页显示，每页15只
+    const page = parseInt(p.p1) || 1;
+    const pageSize = 15;
+    const totalPages = Math.ceil(listings.length / pageSize);
+    const startIdx = (page - 1) * pageSize;
+    const pageListings = listings.slice(startIdx, startIdx + pageSize);
+    
+    const lines = ['【生灵保护机构 - 待领养】', `在售: ${listings.length}只 (第${page}/${totalPages}页)`];
+    pageListings.forEach(([id, item]) => {
       const pet = item.pet;
       const remain = Math.max(0, Math.ceil((item.expire - now) / 3600000));
       lines.push(`#${id.slice(-4)} [${pet.rarity}]${pet.name} Lv.${pet.level} ${item.price}金 剩${remain}h`);
     });
+    if (totalPages > 1) {
+      lines.push(`\n.宠物 机构 ${page + 1} 查看下一页`);
+    }
     lines.push('\n.宠物 领养 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
