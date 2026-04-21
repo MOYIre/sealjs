@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.8.1
+// @version     4.0.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.8.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.0');
   seal.ext.register(ext);
 }
 
@@ -67,6 +67,19 @@ const SPECIES = {
   '猪': { elements: ['草', '岩石'], baseMod: { hp: 1.2, atk: 0.9, def: 1, energy: 0.9 } },
   '骷髅': { elements: ['超能', '岩石'], baseMod: { hp: 0.7, atk: 1.2, def: 0.8, energy: 1.1 } },
   '傀儡': { elements: ['岩石', '超能'], baseMod: { hp: 1.4, atk: 0.9, def: 1.4, energy: 0.6 } },
+  // 新增物种 - 12个
+  '鹤': { elements: ['水', '超能'], baseMod: { hp: 0.9, atk: 1, def: 0.9, energy: 1.3, spd: 1.1 } },
+  '蛙': { elements: ['水', '草'], baseMod: { hp: 1.1, atk: 0.9, def: 0.9, energy: 1.1 } },
+  '蜂': { elements: ['草', '电'], baseMod: { hp: 0.7, atk: 1.2, def: 0.7, energy: 1, spd: 1.3 } },
+  '蛇颈龙': { elements: ['水'], baseMod: { hp: 1.3, atk: 1.1, def: 1.1, energy: 0.9 } },
+  '翼龙': { elements: ['电', '火'], baseMod: { hp: 0.9, atk: 1.2, def: 0.8, energy: 1, spd: 1.2 } },
+  '独角兽': { elements: ['超能'], baseMod: { hp: 1, atk: 1.1, def: 1, energy: 1.3 } },
+  '九头蛇': { elements: ['水', '超能'], baseMod: { hp: 1.4, atk: 1.2, def: 1, energy: 1.1 } },
+  '凤凰雏': { elements: ['火'], baseMod: { hp: 0.8, atk: 1.3, def: 0.7, energy: 1.4 } },
+  '石像鬼': { elements: ['岩石'], baseMod: { hp: 1.2, atk: 1, def: 1.4, energy: 0.7 } },
+  '树人': { elements: ['草'], baseMod: { hp: 1.4, atk: 0.8, def: 1.2, energy: 1 } },
+  '美人鱼': { elements: ['水', '超能'], baseMod: { hp: 0.9, atk: 1, def: 0.9, energy: 1.4 } },
+  '天使': { elements: ['超能'], baseMod: { hp: 1, atk: 1.1, def: 1, energy: 1.4 } },
 };
 
 //   进化系统
@@ -292,6 +305,214 @@ const EVOLUTIONS = {
     { stage: 1.5, name: '甲虫', level: 18, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { atk: 18, def: 20, spd: 8 }, branch: '装甲' },
     { stage: 2, name: '虫王', level: 30, req: { item: '虫王之甲', count: 1 }, bonus: { atk: 35, def: 30, skill: '虫群召唤' }, from: ['毒虫', '甲虫'] },
     { stage: 3, name: '虫神', level: 50, req: { item: '神话契约', count: 1 }, bonus: { all: 42, skill: '虫神降临' }, from: '虫王' },
+  ],
+  // 补全进化链 - 鼠
+  '鼠': [
+    { stage: 1, name: '灵鼠', level: 8, req: { item: '进化石', count: 1 }, bonus: { spd: 22, atk: 8 } },
+    { stage: 1.5, name: '银月鼠', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { spd: 30, energy: 18 }, branch: '月光' },
+    { stage: 1.5, name: '紫电鼠', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 35, atk: 15 }, branch: '雷霆' },
+    { stage: 2, name: '飞天鼠王', level: 35, req: { item: '风行之翼', count: 1 }, bonus: { spd: 55, atk: 32, skill: '风行术' }, from: ['银月鼠', '紫电鼠'] },
+    { stage: 3, name: '鼠神·遁空', level: 55, req: { item: '神话契约', count: 1 }, bonus: { all: 50, skill: '虚空遁形' }, from: '飞天鼠王' },
+  ],
+  // 补全进化链 - 鹿
+  '鹿': [
+    { stage: 1, name: '灵鹿', level: 10, req: { item: '进化石', count: 1 }, bonus: { hp: 18, energy: 15 } },
+    { stage: 1.5, name: '森灵鹿', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { hp: 28, energy: 22, def: 10 }, branch: '森林' },
+    { stage: 1.5, name: '月华鹿', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { hp: 25, energy: 30, skill: '月华' }, branch: '月光' },
+    { stage: 2, name: '九色神鹿', level: 38, req: { item: '神鹿之角', count: 1 }, bonus: { hp: 55, energy: 50, skill: '九色光环' }, from: ['森灵鹿', '月华鹿'] },
+    { stage: 3, name: '麒麟·瑞兽', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 58, skill: '麒麟祥瑞' }, from: '九色神鹿' },
+  ],
+  // 补全进化链 - 猿
+  '猿': [
+    { stage: 1, name: '灵猿', level: 12, req: { item: '进化石', count: 1 }, bonus: { atk: 18, hp: 12 } },
+    { stage: 1.5, name: '烈焰猿', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { atk: 30, hp: 18 }, branch: '烈焰' },
+    { stage: 1.5, name: '金刚猿', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { atk: 25, hp: 28, def: 15 }, branch: '金刚' },
+    { stage: 2, name: '斗战猿王', level: 40, req: { item: '斗战之棒', count: 1 }, bonus: { atk: 55, hp: 45, skill: '斗战怒吼' }, from: ['烈焰猿', '金刚猿'] },
+    { stage: 3, name: '齐天·大圣', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 65, skill: '齐天大圣' }, from: '斗战猿王' },
+  ],
+  // 补全进化链 - 螳螂
+  '螳螂': [
+    { stage: 1, name: '刀螂', level: 10, req: { item: '进化石', count: 1 }, bonus: { atk: 22, spd: 12 } },
+    { stage: 1.5, name: '铁臂螂', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { atk: 35, spd: 15 }, branch: '钢铁' },
+    { stage: 1.5, name: '碧影螂', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { atk: 30, spd: 22, skill: '影刃' }, branch: '幻影' },
+    { stage: 2, name: '螳螂刀皇', level: 38, req: { item: '刀皇之刃', count: 1 }, bonus: { atk: 60, spd: 35, skill: '刀刃风暴' }, from: ['铁臂螂', '碧影螂'] },
+    { stage: 3, name: '刀神·断空', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '断空斩' }, from: '螳螂刀皇' },
+  ],
+  // 补全进化链 - 哥布林
+  '哥布林': [
+    { stage: 1, name: '小妖', level: 8, req: { item: '进化石', count: 1 }, bonus: { atk: 12, spd: 10 } },
+    { stage: 1.5, name: '狂战妖', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { atk: 25, def: 12 }, branch: '狂战' },
+    { stage: 1.5, name: '暗法妖', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { atk: 20, energy: 25 }, branch: '暗法' },
+    { stage: 2, name: '妖王·格罗姆', level: 35, req: { item: '妖王之证', count: 1 }, bonus: { atk: 45, energy: 35, skill: '妖王降临' }, from: ['狂战妖', '暗法妖'] },
+    { stage: 3, name: '妖神·混沌', level: 55, req: { item: '神话契约', count: 1 }, bonus: { all: 52, skill: '混沌降临' }, from: '妖王·格罗姆' },
+  ],
+  // 补全进化链 - 蟹
+  '蟹': [
+    { stage: 1, name: '灵蟹', level: 10, req: { item: '进化石', count: 1 }, bonus: { hp: 22, def: 18 } },
+    { stage: 1.5, name: '炎甲蟹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { hp: 30, def: 25, atk: 12 }, branch: '炎甲' },
+    { stage: 1.5, name: '霜甲蟹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '水' }, bonus: { hp: 35, def: 28, skill: '冰甲' }, branch: '霜甲' },
+    { stage: 2, name: '巨蟹将军', level: 38, req: { item: '将军之钳', count: 1 }, bonus: { hp: 65, def: 50, atk: 30, skill: '巨钳粉碎' }, from: ['炎甲蟹', '霜甲蟹'] },
+    { stage: 3, name: '帝蟹·霸王', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 58, skill: '霸王之钳' }, from: '巨蟹将军' },
+  ],
+  // 补全进化链 - 蜘蛛
+  '蜘蛛': [
+    { stage: 1, name: '织灵', level: 10, req: { item: '进化石', count: 1 }, bonus: { atk: 15, energy: 15 } },
+    { stage: 1.5, name: '毒织者', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { atk: 25, energy: 20, skill: '毒网' }, branch: '毒液' },
+    { stage: 1.5, name: '幻织者', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { atk: 22, energy: 28, skill: '幻网' }, branch: '幻影' },
+    { stage: 2, name: '蛛后·罗网', level: 38, req: { item: '蛛后之冠', count: 1 }, bonus: { atk: 48, energy: 45, skill: '死亡之网' }, from: ['毒织者', '幻织者'] },
+    { stage: 3, name: '蛛神·千丝', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 52, skill: '千丝杀阵' }, from: '蛛后·罗网' },
+  ],
+  // 补全进化链 - 蝎
+  '蝎': [
+    { stage: 1, name: '灵蝎', level: 10, req: { item: '进化石', count: 1 }, bonus: { atk: 20, def: 10 } },
+    { stage: 1.5, name: '赤炎蝎', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { atk: 32, def: 12 }, branch: '烈焰' },
+    { stage: 1.5, name: '幽冥蝎', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { atk: 28, def: 18, skill: '冥毒' }, branch: '幽冥' },
+    { stage: 2, name: '蝎王·毒煞', level: 38, req: { item: '蝎王之尾', count: 1 }, bonus: { atk: 55, def: 30, skill: '致命毒刺' }, from: ['赤炎蝎', '幽冥蝎'] },
+    { stage: 3, name: '蝎神·冥杀', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '冥杀之刺' }, from: '蝎王·毒煞' },
+  ],
+  // 补全进化链 - 蝙蝠
+  '蝙蝠': [
+    { stage: 1, name: '夜蝠', level: 10, req: { item: '进化石', count: 1 }, bonus: { spd: 18, energy: 12 } },
+    { stage: 1.5, name: '血翼蝠', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { spd: 25, atk: 18, skill: '吸血' }, branch: '血翼' },
+    { stage: 1.5, name: '影翼蝠', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 30, energy: 20, skill: '暗影飞行' }, branch: '影翼' },
+    { stage: 2, name: '吸血伯爵', level: 38, req: { item: '伯爵之血', count: 1 }, bonus: { spd: 45, atk: 40, skill: '血之盛宴' }, from: ['血翼蝠', '影翼蝠'] },
+    { stage: 3, name: '夜王·永夜', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '永夜降临' }, from: '吸血伯爵' },
+  ],
+  // 补全进化链 - 豹
+  '豹': [
+    { stage: 1, name: '云豹', level: 10, req: { item: '进化石', count: 1 }, bonus: { spd: 20, atk: 12 } },
+    { stage: 1.5, name: '烈风豹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 32, atk: 18 }, branch: '疾风' },
+    { stage: 1.5, name: '雷影豹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { spd: 28, atk: 22, skill: '雷影' }, branch: '雷霆' },
+    { stage: 2, name: '豹王·疾风', level: 38, req: { item: '豹王之爪', count: 1 }, bonus: { spd: 55, atk: 42, skill: '疾风突袭' }, from: ['烈风豹', '雷影豹'] },
+    { stage: 3, name: '豹神·迅雷', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 52, skill: '迅雷不及掩耳' }, from: '豹王·疾风' },
+  ],
+  // 补全进化链 - 牛
+  '牛': [
+    { stage: 1, name: '灵牛', level: 12, req: { item: '进化石', count: 1 }, bonus: { hp: 25, atk: 15 } },
+    { stage: 1.5, name: '炎角牛', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { hp: 35, atk: 22, def: 12 }, branch: '炎角' },
+    { stage: 1.5, name: '玄甲牛', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { hp: 45, def: 25, atk: 12 }, branch: '玄甲' },
+    { stage: 2, name: '牛魔·撼地', level: 40, req: { item: '牛魔之角', count: 1 }, bonus: { hp: 75, atk: 50, skill: '撼地冲撞' }, from: ['炎角牛', '玄甲牛'] },
+    { stage: 3, name: '牛神·蛮荒', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 58, skill: '蛮荒之力' }, from: '牛魔·撼地' },
+  ],
+  // 补全进化链 - 马
+  '马': [
+    { stage: 1, name: '灵驹', level: 10, req: { item: '进化石', count: 1 }, bonus: { spd: 22, hp: 12 } },
+    { stage: 1.5, name: '烈焰驹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { spd: 30, atk: 18 }, branch: '烈焰' },
+    { stage: 1.5, name: '闪电驹', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 35, energy: 15, skill: '闪电冲刺' }, branch: '雷霆' },
+    { stage: 2, name: '天马·踏云', level: 38, req: { item: '天马之翼', count: 1 }, bonus: { spd: 60, atk: 35, skill: '踏云飞行' }, from: ['烈焰驹', '闪电驹'] },
+    { stage: 3, name: '龙马·神行', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '神行千里' }, from: '天马·踏云' },
+  ],
+  // 补全进化链 - 羊
+  '羊': [
+    { stage: 1, name: '灵羊', level: 10, req: { item: '进化石', count: 1 }, bonus: { hp: 18, energy: 15 } },
+    { stage: 1.5, name: '云羊', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { hp: 25, energy: 22, skill: '云雾' }, branch: '云端' },
+    { stage: 1.5, name: '森羊', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { hp: 30, energy: 18, def: 10 }, branch: '森林' },
+    { stage: 2, name: '神羊·祥瑞', level: 38, req: { item: '祥瑞之角', count: 1 }, bonus: { hp: 55, energy: 50, skill: '祥瑞之光' }, from: ['云羊', '森羊'] },
+    { stage: 3, name: '神羊·瑞兽', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 52, skill: '瑞兽降临' }, from: '神羊·祥瑞' },
+  ],
+  // 补全进化链 - 猪
+  '猪': [
+    { stage: 1, name: '灵猪', level: 10, req: { item: '进化石', count: 1 }, bonus: { hp: 25, def: 10 } },
+    { stage: 1.5, name: '野猪', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { hp: 35, atk: 18, def: 15 }, branch: '野性' },
+    { stage: 1.5, name: '森猪', level: 22, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { hp: 40, def: 12, energy: 12 }, branch: '森林' },
+    { stage: 2, name: '豪猪王', level: 38, req: { item: '豪猪之鬃', count: 1 }, bonus: { hp: 70, atk: 35, def: 30, skill: '尖刺防御' }, from: ['野猪', '森猪'] },
+    { stage: 3, name: '猪神·蛮力', level: 58, req: { item: '神话契约', count: 1 }, bonus: { all: 50, skill: '蛮力冲撞' }, from: '豪猪王' },
+  ],
+  // 新增物种进化链 - 鹤
+  '鹤': [
+    { stage: 1, name: '灵鹤', level: 12, req: { item: '进化石', count: 1 }, bonus: { spd: 20, energy: 15 } },
+    { stage: 1.5, name: '云鹤', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { spd: 28, energy: 22, skill: '云雾' }, branch: '云端' },
+    { stage: 1.5, name: '丹顶鹤', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '水' }, bonus: { spd: 25, energy: 25, def: 10 }, branch: '水韵' },
+    { stage: 2, name: '仙鹤·凌云', level: 40, req: { item: '仙鹤之羽', count: 2 }, bonus: { spd: 50, energy: 45, skill: '凌云飞行' }, from: ['云鹤', '丹顶鹤'] },
+    { stage: 3, name: '鹤神·九霄', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '九霄云外' }, from: '仙鹤·凌云' },
+  ],
+  // 新增物种进化链 - 蛙
+  '蛙': [
+    { stage: 1, name: '灵蛙', level: 8, req: { item: '进化石', count: 1 }, bonus: { hp: 18, atk: 10 } },
+    { stage: 1.5, name: '毒蟾', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { hp: 25, atk: 18, skill: '毒液' }, branch: '毒液' },
+    { stage: 1.5, name: '金蟾', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '水' }, bonus: { hp: 30, energy: 20, skill: '金光' }, branch: '金光' },
+    { stage: 2, name: '蛤蟆妖王', level: 35, req: { item: '妖王之珠', count: 1 }, bonus: { hp: 60, atk: 40, skill: '妖王之怒' }, from: ['毒蟾', '金蟾'] },
+    { stage: 3, name: '金蟾·吞月', level: 55, req: { item: '神话契约', count: 1 }, bonus: { all: 50, skill: '吞月之力' }, from: '蛤蟆妖王' },
+  ],
+  // 新增物种进化链 - 蜂
+  '蜂': [
+    { stage: 1, name: '灵蜂', level: 8, req: { item: '进化石', count: 1 }, bonus: { spd: 22, atk: 12 } },
+    { stage: 1.5, name: '铁翼蜂', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 30, atk: 20, def: 8 }, branch: '铁翼' },
+    { stage: 1.5, name: '毒针蜂', level: 20, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { spd: 28, atk: 25, skill: '毒针' }, branch: '毒针' },
+    { stage: 2, name: '蜂后·万军', level: 35, req: { item: '蜂后之冠', count: 1 }, bonus: { spd: 45, atk: 50, skill: '蜂群召唤' }, from: ['铁翼蜂', '毒针蜂'] },
+    { stage: 3, name: '蜂神·天灾', level: 55, req: { item: '神话契约', count: 1 }, bonus: { all: 52, skill: '天灾蜂群' }, from: '蜂后·万军' },
+  ],
+  // 新增物种进化链 - 蛇颈龙
+  '蛇颈龙': [
+    { stage: 1, name: '幼龙', level: 15, req: { item: '进化石', count: 2 }, bonus: { hp: 30, atk: 15, def: 12 } },
+    { stage: 1.5, name: '沧龙', level: 30, req: { item: '龙之鳞', count: 2 }, condition: { element: '水' }, bonus: { hp: 50, atk: 28, def: 20 }, branch: '深海' },
+    { stage: 1.5, name: '深渊龙', level: 30, req: { item: '龙之鳞', count: 2 }, bonus: { hp: 45, atk: 35, def: 15, skill: '深渊之力' }, branch: '深渊' },
+    { stage: 2, name: '海龙·波塞冬', level: 45, req: { item: '海神之珠', count: 1 }, bonus: { hp: 80, atk: 55, skill: '海神之怒' }, from: ['沧龙', '深渊龙'] },
+    { stage: 3, name: '龙神·沧海', level: 65, req: { item: '神话契约', count: 2 }, bonus: { all: 65, skill: '沧海龙神' }, from: '海龙·波塞冬' },
+  ],
+  // 新增物种进化链 - 翼龙
+  '翼龙': [
+    { stage: 1, name: '飞龙', level: 12, req: { item: '进化石', count: 1 }, bonus: { spd: 25, atk: 15 } },
+    { stage: 1.5, name: '风神翼龙', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '电' }, bonus: { spd: 40, atk: 22, skill: '风神之翼' }, branch: '风神' },
+    { stage: 1.5, name: '炎翼龙', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { spd: 35, atk: 30, skill: '炎翼' }, branch: '炎翼' },
+    { stage: 2, name: '天空霸主', level: 40, req: { item: '天空之冠', count: 1 }, bonus: { spd: 60, atk: 50, skill: '天空霸权' }, from: ['风神翼龙', '炎翼龙'] },
+    { stage: 3, name: '龙神·苍穹', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 58, skill: '苍穹龙神' }, from: '天空霸主' },
+  ],
+  // 新增物种进化链 - 独角兽
+  '独角兽': [
+    { stage: 1, name: '灵角兽', level: 15, req: { item: '进化石', count: 1 }, bonus: { energy: 25, atk: 12 } },
+    { stage: 1.5, name: '月角兽', level: 28, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { energy: 40, atk: 18, skill: '月光' }, branch: '月光' },
+    { stage: 1.5, name: '圣角兽', level: 28, req: { item: '高级进化石', count: 1 }, condition: { affection: 85 }, bonus: { energy: 35, atk: 22, def: 15, skill: '圣光' }, branch: '圣光' },
+    { stage: 2, name: '独角圣兽', level: 45, req: { item: '圣兽之角', count: 1 }, bonus: { energy: 70, atk: 45, skill: '圣兽降临' }, from: ['月角兽', '圣角兽'] },
+    { stage: 3, name: '神兽·麒麟', level: 65, req: { item: '神话契约', count: 1 }, bonus: { all: 60, skill: '麒麟祥瑞' }, from: '独角圣兽' },
+  ],
+  // 新增物种进化链 - 九头蛇
+  '九头蛇': [
+    { stage: 1, name: '双头蛇', level: 18, req: { item: '进化石', count: 2 }, bonus: { hp: 35, atk: 20 } },
+    { stage: 1.5, name: '五头蛇', level: 32, req: { item: '高级进化石', count: 2 }, condition: { element: '水' }, bonus: { hp: 55, atk: 35, def: 15 }, branch: '水蛇' },
+    { stage: 1.5, name: '毒蛇皇', level: 32, req: { item: '高级进化石', count: 2 }, condition: { element: '超能' }, bonus: { hp: 50, atk: 40, skill: '剧毒' }, branch: '毒蛇' },
+    { stage: 2, name: '九头蛇·海德拉', level: 50, req: { item: '九头之冠', count: 1 }, bonus: { hp: 100, atk: 65, skill: '九头攻击' }, from: ['五头蛇', '毒蛇皇'] },
+    { stage: 3, name: '蛇神·九首', level: 70, req: { item: '神话契约', count: 2 }, bonus: { all: 70, skill: '九首神威' }, from: '九头蛇·海德拉' },
+  ],
+  // 新增物种进化链 - 凤凰雏
+  '凤凰雏': [
+    { stage: 1, name: '火雏', level: 15, req: { item: '进化石', count: 1 }, bonus: { atk: 20, energy: 18 } },
+    { stage: 1.5, name: '炎凤', level: 28, req: { item: '高级进化石', count: 1 }, condition: { element: '火' }, bonus: { atk: 38, energy: 28, skill: '炎凤之翼' }, branch: '炎凤' },
+    { stage: 1.5, name: '冰凤', level: 28, req: { item: '高级进化石', count: 1 }, condition: { affection: 90 }, bonus: { atk: 32, energy: 35, def: 15, skill: '冰凤' }, branch: '冰凤' },
+    { stage: 2, name: '凤凰·涅槃', level: 45, req: { item: '凤凰之羽', count: 3 }, bonus: { atk: 65, energy: 60, skill: '涅槃重生' }, from: ['炎凤', '冰凤'] },
+    { stage: 3, name: '神凤·不死', level: 65, req: { item: '神话契约', count: 2 }, bonus: { all: 70, skill: '不死神凤' }, from: '凤凰·涅槃' },
+  ],
+  // 新增物种进化链 - 石像鬼
+  '石像鬼': [
+    { stage: 1, name: '石灵', level: 12, req: { item: '进化石', count: 1 }, bonus: { hp: 25, def: 20 } },
+    { stage: 1.5, name: '守护石像', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '岩石' }, bonus: { hp: 45, def: 35, skill: '石像守护' }, branch: '守护' },
+    { stage: 1.5, name: '恶魔石像', level: 25, req: { item: '高级进化石', count: 1 }, bonus: { hp: 40, def: 30, atk: 20, skill: '恶魔之怒' }, branch: '恶魔' },
+    { stage: 2, name: '石像恶魔', level: 40, req: { item: '恶魔之石', count: 1 }, bonus: { hp: 80, def: 55, atk: 35, skill: '石像恶魔' }, from: ['守护石像', '恶魔石像'] },
+    { stage: 3, name: '石神·泰坦', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 58, skill: '泰坦之力' }, from: '石像恶魔' },
+  ],
+  // 新增物种进化链 - 树人
+  '树人': [
+    { stage: 1, name: '树灵', level: 12, req: { item: '进化石', count: 1 }, bonus: { hp: 28, def: 12 } },
+    { stage: 1.5, name: '古树精', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '草' }, bonus: { hp: 50, def: 25, energy: 20, skill: '自然之力' }, branch: '古树' },
+    { stage: 1.5, name: '森之守卫', level: 25, req: { item: '高级进化石', count: 1 }, condition: { affection: 80 }, bonus: { hp: 45, def: 30, atk: 15, skill: '森林守护' }, branch: '守护' },
+    { stage: 2, name: '世界树·尤格', level: 42, req: { item: '世界之种', count: 1 }, bonus: { hp: 100, def: 60, energy: 50, skill: '世界树庇护' }, from: ['古树精', '森之守卫'] },
+    { stage: 3, name: '树神·生命', level: 62, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '生命之源' }, from: '世界树·尤格' },
+  ],
+  // 新增物种进化链 - 美人鱼
+  '美人鱼': [
+    { stage: 1, name: '人鱼', level: 12, req: { item: '进化石', count: 1 }, bonus: { energy: 22, hp: 15 } },
+    { stage: 1.5, name: '海之姬', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '水' }, bonus: { energy: 38, hp: 25, skill: '海之歌声' }, branch: '海洋' },
+    { stage: 1.5, name: '深渊人鱼', level: 25, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { energy: 35, atk: 20, skill: '深渊之歌' }, branch: '深渊' },
+    { stage: 2, name: '美人鱼·塞壬', level: 40, req: { item: '塞壬之泪', count: 1 }, bonus: { energy: 70, atk: 40, skill: '塞壬之歌' }, from: ['海之姬', '深渊人鱼'] },
+    { stage: 3, name: '海神·波涛', level: 60, req: { item: '神话契约', count: 1 }, bonus: { all: 55, skill: '海神之怒' }, from: '美人鱼·塞壬' },
+  ],
+  // 新增物种进化链 - 天使
+  '天使': [
+    { stage: 1, name: '天使', level: 15, req: { item: '进化石', count: 1 }, bonus: { energy: 25, hp: 12 } },
+    { stage: 1.5, name: '炽天使', level: 28, req: { item: '高级进化石', count: 1 }, condition: { element: '超能' }, bonus: { energy: 45, atk: 20, skill: '炽天使之光' }, branch: '炽热' },
+    { stage: 1.5, name: '暗天使', level: 28, req: { item: '高级进化石', count: 1 }, condition: { affection: 85 }, bonus: { energy: 40, atk: 25, def: 12, skill: '暗天使之翼' }, branch: '暗影' },
+    { stage: 2, name: '大天使·米迦勒', level: 45, req: { item: '天使之羽', count: 3 }, bonus: { energy: 80, atk: 50, skill: '神圣审判' }, from: ['炽天使', '暗天使'] },
+    { stage: 3, name: '天使长·神座', level: 65, req: { item: '神话契约', count: 2 }, bonus: { all: 68, skill: '神座降临' }, from: '大天使·米迦勒' },
   ],
 };
 
@@ -1572,17 +1793,19 @@ const PET_NAMES = {
 
 const NAME_SUFFIX = ['丸', '子', '酱', '儿', '灵', '兽', '君', '姬', '王', '皇', '神', '仙', '蛋', '宝', '球', ''];
 
-//   基础属性  
+//   基础属性
 const BASE_STATS = {
   '普通': { hp: 30, atk: 25, def: 25, energy: 30, spd: 100 },
   '稀有': { hp: 42, atk: 35, def: 35, energy: 42, spd: 110 },
   '超稀有': { hp: 56, atk: 50, def: 50, energy: 56, spd: 120 },
   '传说': { hp: 70, atk: 65, def: 65, energy: 70, spd: 130 },
+  '神话': { hp: 100, atk: 95, def: 95, energy: 100, spd: 150 },
+  '异变': { hp: 50, atk: 50, def: 50, energy: 50, spd: 120 }, // 异变宠物随机属性
 };
 
 const ELEMENT_ADV = { '火': '草', '水': '火', '草': '水', '电': '水', '岩石': '电', '超能': '岩石' };
-const RARITY_WEIGHTS = { '普通': 70, '稀有': 25, '超稀有': 4.9, '传说': 0.1 };
-const RARITY_MARK = { '普通': '☆', '稀有': '★', '超稀有': '★★', '传说': '★★★', '神话': '★★★★' };
+const RARITY_WEIGHTS = { '普通': 69.9, '稀有': 25, '超稀有': 4.5, '传说': 0.5, '神话': 0.05 };
+const RARITY_MARK = { '普通': '☆', '稀有': '★', '超稀有': '★★', '传说': '★★★', '神话': '★★★★', '异变': '✦' };
 const ELEMENT_MARK = { '火': '[火]', '水': '[水]', '草': '[草]', '电': '[电]', '岩石': '[岩]', '超能': '[灵]' };
 
 const FOODS = {
@@ -1881,7 +2104,8 @@ const DB = {
 };
 
 const PetFactory = {
-  randomRarity(boost = 0, forceLegend = false, legendBoost = 0) {
+  randomRarity(boost = 0, forceLegend = false, legendBoost = 0, forceMyth = false) {
+    if (forceMyth) return '神话';
     if (forceLegend) return '传说';
 
     const rand = Math.random() * 100;
@@ -1892,6 +2116,7 @@ const PetFactory = {
     const weights = { ...RARITY_WEIGHTS };
     if (legendBoost > 0) {
       weights['传说'] = (weights['传说'] || 0) * (1 + legendBoost);
+      weights['神话'] = (weights['神话'] || 0) * (1 + legendBoost);
     }
 
     for (const [rarity, weight] of Object.entries(weights)) {
@@ -1904,7 +2129,7 @@ const PetFactory = {
 
     // 应用稀有度提升
     if (boost > 0) {
-      const rarityOrder = ['普通', '稀有', '超稀有', '传说'];
+      const rarityOrder = ['普通', '稀有', '超稀有', '传说', '神话'];
       const idx = rarityOrder.indexOf(result);
       const newIdx = Math.min(idx + boost, rarityOrder.length - 1);
       result = rarityOrder[newIdx];
@@ -1973,7 +2198,8 @@ const PetFactory = {
       if (talentData.energyMod) maxEnergy = Math.floor(maxEnergy * talentData.energyMod);
     }
 
-    return {
+    // 基础宠物对象
+    const pet = {
       id: DB.genId(),
       name: customName || this.generateName(element),
       species,
@@ -1999,6 +2225,45 @@ const PetFactory = {
       canBreed: true,
       parents: null,
     };
+
+    // 自然变异系统（0.5%概率触发变异）
+    if (Math.random() < 0.005) {
+      pet.rarity = '异变';
+      pet.mutation = true;
+      // 随机变异类型
+      const mutationTypes = ['属性变异', '技能变异', '元素变异', '双元素变异'];
+      const mutationType = mutationTypes[Math.floor(Math.random() * mutationTypes.length)];
+      pet.mutationType = mutationType;
+
+      switch (mutationType) {
+        case '属性变异':
+          // 随机大幅提升或降低某项属性
+          const attrBoost = Math.random() < 0.5 ? 1.5 : 0.5;
+          const attrs = ['maxHp', 'atk', 'def', 'spd', 'maxEnergy'];
+          const attr = attrs[Math.floor(Math.random() * attrs.length)];
+          pet[attr] = Math.floor(pet[attr] * attrBoost);
+          if (attr === 'maxHp') pet.hp = pet.maxHp;
+          if (attr === 'maxEnergy') pet.energy = pet.maxEnergy;
+          break;
+        case '技能变异':
+          // 获得稀有技能
+          const rareSkills = ['究极爆破', '灭世龙息', '凤凰涅槃', '九尾魅惑', '白虎之威'];
+          const skill = rareSkills[Math.floor(Math.random() * rareSkills.length)];
+          if (!pet.skills.includes(skill)) pet.skills.push(skill);
+          break;
+        case '元素变异':
+          // 改变元素属性
+          const elements = ['火', '水', '草', '电', '岩石', '超能'];
+          pet.element = elements[Math.floor(Math.random() * elements.length)];
+          break;
+        case '双元素变异':
+          // 获得双元素
+          pet.element2 = ['火', '水', '草', '电', '岩石', '超能'].filter(e => e !== pet.element)[Math.floor(Math.random() * 5)];
+          break;
+      }
+    }
+
+    return pet;
   },
 
   power(pet) {
@@ -2979,7 +3244,7 @@ cmd.solve = (ctx, msg, argv) => {
         }
         if (eventResult.specialEffect === 'rarityBoost') {
           // 稀有宠物出现
-          const rarityOrder = ['普通', '稀有', '超稀有', '传说'];
+          const rarityOrder = ['普通', '稀有', '超稀有', '传说', '神话'];
           const idx = rarityOrder.indexOf(wildPet.rarity);
           if (idx < rarityOrder.length - 1) {
             wildPet.rarity = rarityOrder[idx + 1];
@@ -4132,16 +4397,24 @@ cmd.solve = (ctx, msg, argv) => {
       
       // 检查等级
       if (pet.level < evo.level) return false;
-      
+
       // 检查道具
       if ((data.items[evo.req.item] || 0) < evo.req.count) return false;
-      
+
       // 检查特殊条件
       if (evo.condition) {
         if (evo.condition.element && pet.element !== evo.condition.element) return false;
         if (evo.condition.affection && affection < evo.condition.affection) return false;
       }
-      
+
+      // 第3阶进化：极高难度条件
+      if (evo.stage === 3) {
+        // 好感度必须满值100
+        if (affection < 100) return false;
+        // 需要击败过守护者Boss
+        if (!data.guardianDefeated || !data.guardianDefeated[pet.species]) return false;
+      }
+
       return true;
     });
 
@@ -4163,12 +4436,20 @@ cmd.solve = (ctx, msg, argv) => {
         const meetsItem = (data.items[evo.req.item] || 0) >= evo.req.count;
         const meetsElement = !evo.condition?.element || pet.element === evo.condition.element;
         const meetsAffection = !evo.condition?.affection || affection >= evo.condition.affection;
-        
-        let status = meetsLevel && meetsItem && meetsElement && meetsAffection ? '✓' : '✗';
+        // 第3阶额外条件
+        const meetsStage3Affection = evo.stage !== 3 || affection >= 100;
+        const meetsGuardian = evo.stage !== 3 || (data.guardianDefeated && data.guardianDefeated[pet.species]);
+
+        let status = meetsLevel && meetsItem && meetsElement && meetsAffection && meetsStage3Affection && meetsGuardian ? '✓' : '✗';
         lines.push(`${status} ${evo.name} (Lv.${evo.level})`);
         lines.push(`   需要: ${evo.req.item}x${evo.req.count}`);
         if (evo.condition?.element) lines.push(`   属性: ${evo.condition.element} ${meetsElement ? '✓' : '✗'}`);
         if (evo.condition?.affection) lines.push(`   好感度: ${evo.condition.affection} ${meetsAffection ? '✓' : '✗'}`);
+        // 第3阶特殊条件显示
+        if (evo.stage === 3) {
+          lines.push(`   [终极进化] 好感度100: ${meetsStage3Affection ? '✓' : '✗'}`);
+          lines.push(`   [终极进化] 击败守护者: ${meetsGuardian ? '✓' : '✗'}`);
+        }
       });
       return reply(lines.join('\n'));
     }
@@ -4273,6 +4554,84 @@ cmd.solve = (ctx, msg, argv) => {
     save();
     WanwuYouling.emit('evolution', { uid, pet, oldSpecies: oldName, newSpecies: pet.name });
     return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
+  }
+
+  //   守护者挑战系统（第3阶进化前置条件）
+  if (action === '守护者' || action === '挑战守护者') {
+    const pet = getPet(p1);
+    if (!pet) return reply('请指定正确的宠物编号');
+
+    const evoChain = EVOLUTIONS[pet.species];
+    if (!evoChain) return reply('该宠物没有进化链');
+
+    // 检查是否有第3阶进化
+    const stage3Evo = evoChain.find(evo => evo.stage === 3);
+    if (!stage3Evo) return reply('该宠物没有终极进化形态');
+
+    // 检查是否已经击败过守护者
+    if (data.guardianDefeated && data.guardianDefeated[pet.species]) {
+      return reply(`【守护者挑战】\n你已经击败过 ${pet.species} 的守护者，可以进行终极进化了！`);
+    }
+
+    // 检查等级和好感度
+    if (pet.level < 50) return reply(`宠物等级不足50级，无法挑战守护者\n当前等级: ${pet.level}`);
+    const affection = pet.affection || 50;
+    if (affection < 100) return reply(`宠物好感度不足100，无法挑战守护者\n当前好感度: ${affection}`);
+
+    // 创建守护者Boss
+    const guardianName = stage3Evo.name.replace('神', '守护者').replace('·', '·') + '守护者';
+    const guardian = {
+      name: guardianName,
+      species: pet.species,
+      element: pet.element,
+      level: Math.max(60, pet.level + 5),
+      maxHp: 800 + pet.level * 20,
+      hp: 800 + pet.level * 20,
+      atk: 80 + pet.level * 3,
+      def: 60 + pet.level * 2,
+      spd: 100 + pet.level,
+      maxEnergy: 150,
+      energy: 150,
+      skills: ['守护之击', '神圣护盾', '终极审判'],
+      rarity: '传说',
+    };
+
+    const fighter = { ...pet };
+    fighter.maxHp = pet.maxHp;
+    fighter.hp = pet.hp;
+    fighter.energy = pet.energy;
+
+    const result = Battle.run(fighter, guardian);
+
+    const logs = [`【守护者挑战】`, `${pet.name} VS ${guardianName}`, ''];
+    logs.push(...result.logs);
+
+    if (result.winner === fighter) {
+      // 胜利
+      if (!data.guardianDefeated) data.guardianDefeated = {};
+      data.guardianDefeated[pet.species] = true;
+      // 同步战斗后的血量
+      pet.hp = Math.max(1, fighter.hp);
+      pet.energy = Math.max(0, fighter.energy);
+      save();
+      logs.push(`\n【胜利】你击败了 ${guardianName}！`);
+      logs.push(`现在可以进行终极进化为 ${stage3Evo.name}！`);
+      logs.push(`使用命令: .宠物 进化 ${p1}`);
+    } else if (result.draw) {
+      pet.hp = Math.max(1, fighter.hp);
+      pet.energy = Math.max(0, fighter.energy - 20);
+      save();
+      logs.push(`\n【平局】守护者太强大了，再接再厉！`);
+    } else {
+      // 失败
+      pet.hp = Math.max(1, fighter.hp);
+      pet.energy = Math.max(0, fighter.energy - 30);
+      save();
+      logs.push(`\n【失败】${guardianName}太强大了...`);
+      logs.push(`提升实力后再来挑战吧！`);
+    }
+
+    return reply(logs.join('\n'));
   }
 
   //   装备系统  
@@ -5010,7 +5369,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.8.1',
+  version: '4.0.0',
   ext,
 
   DB: {
