@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.1
+// @version     4.0.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.2');
   seal.ext.register(ext);
 }
 
@@ -2075,12 +2075,16 @@ const DB = {
         // 恢复所有宠物精力
         for (const pet of data.pets) {
           if (pet.energy < pet.maxEnergy) {
-            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * recoverRate));
+            // 慵懒性格：精力恢复速度+100%
+            const petRecoverRate = pet.nature === '慵懒' ? recoverRate * (NATURES['慵懒'].energyRegenMod || 2.0) : recoverRate;
+            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * petRecoverRate));
           }
         }
         for (const pet of data.storage || []) {
           if (pet.energy < pet.maxEnergy) {
-            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * recoverRate));
+            // 慵懒性格：精力恢复速度+100%
+            const petRecoverRate = pet.nature === '慵懒' ? recoverRate * (NATURES['慵懒'].energyRegenMod || 2.0) : recoverRate;
+            pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * petRecoverRate));
           }
         }
         
@@ -2227,6 +2231,14 @@ const PetFactory = {
     // 应用天赋修正
     if (talent) {
       const talentData = TALENTS[talent];
+      // 适应天赋：全属性+5%
+      if (talentData.allMod) {
+        maxHp = Math.floor(maxHp * talentData.allMod);
+        atk = Math.floor(atk * talentData.allMod);
+        def = Math.floor(def * talentData.allMod);
+        spd = Math.floor(spd * talentData.allMod);
+        maxEnergy = Math.floor(maxEnergy * talentData.allMod);
+      }
       if (talentData.hpMod) maxHp = Math.floor(maxHp * talentData.hpMod);
       if (talentData.atkMod) atk = Math.floor(atk * talentData.atkMod);
       if (talentData.defMod) def = Math.floor(def * talentData.defMod);
@@ -2483,6 +2495,12 @@ const Battle = {
 
   attack(a, d, logs, isPlayer = false) {
     try {
+      // 闪避天赋：防御方有概率闪避攻击
+      if (d.talent === '闪避' && Math.random() < (TALENTS['闪避'].dodgeMod || 0.1)) {
+        logs.push(`[闪避天赋] ${d.name} 灵巧闪避了攻击！`);
+        return;
+      }
+
       const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
       const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
       const sk = SKILLS[skill] || SKILLS['冲撞'];
@@ -2494,6 +2512,8 @@ const Battle = {
       // 能量涌动：减少精力消耗
       let energyCost = sk.cost || 0;
       if (a.playerBuffs?.energySave) energyCost = Math.floor(energyCost * (1 - a.playerBuffs.energySave));
+      // 冷静性格：技能消耗精力-25%
+      if (a.nature === '冷静') energyCost = Math.floor(energyCost * (NATURES['冷静'].energyCostMod || 0.75));
       a.energy = Math.max(0, (a.energy || 0) - energyCost);
 
       // 处理特殊效果
@@ -2696,6 +2716,13 @@ const Battle = {
         const healAmount = Math.floor(dmg * (sk.lifestealRate || 0.5));
         a.hp = Math.min(a.maxHp || 100, (a.hp || 0) + healAmount);
         logs.push(`${a.name} 吸取了 ${healAmount} 生命！`);
+      }
+
+      // 吸血天赋：攻击回复10%伤害值的生命
+      if (a.talent === '吸血') {
+        const lifestealAmount = Math.floor(dmg * (TALENTS['吸血'].lifesteal || 0.1));
+        a.hp = Math.min(a.maxHp || 100, (a.hp || 0) + lifestealAmount);
+        logs.push(`[吸血天赋] ${a.name} 回复了 ${lifestealAmount} 生命！`);
       }
 
       // 显示克制信息
@@ -3567,9 +3594,15 @@ cmd.solve = (ctx, msg, argv) => {
         logs.push(`\n[胜利] ${fighter.name}战胜了 ${wildPet.name}！`);
 
         // 计算经验和金币奖励
-        const expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
-        const goldGain = 10 + Math.floor(Math.random() * 20) + wildPet.level * 3;
-        
+        let expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
+        let goldGain = 10 + Math.floor(Math.random() * 20) + wildPet.level * 3;
+
+        // 机智性格：战斗金币+35%
+        const battlePet = getPet(petIdx);
+        if (battlePet && battlePet.nature === '机智') {
+          goldGain = Math.floor(goldGain * (NATURES['机智'].goldMod || 1.35));
+        }
+
         // 统一处理经验和金币奖励
         data.money = (data.money || 0) + goldGain;
         
@@ -3579,6 +3612,14 @@ cmd.solve = (ctx, msg, argv) => {
           if (pet) {
             let finalExp = expGain;
             if (data.player.skills?.includes('驯兽术')) finalExp = Math.floor(finalExp * 1.1);
+            // 认真性格：经验获取+30%
+            if (pet.nature === '认真') {
+              finalExp = Math.floor(finalExp * (NATURES['认真'].expMod || 1.30));
+            }
+            // 猎人天赋：战斗经验+40%
+            if (pet.talent === '猎人') {
+              finalExp = Math.floor(finalExp * (TALENTS['猎人'].expMod || 1.40));
+            }
             pet.exp = (pet.exp || 0) + finalExp;
             // 战斗胜利增加好感度
             const natureData = NATURES[pet.nature] || {};
@@ -5607,7 +5648,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.1',
+  version: '4.0.2',
   ext,
 
   DB: {
