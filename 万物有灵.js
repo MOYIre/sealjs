@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.0
+// @version     3.7.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.1');
   seal.ext.register(ext);
 }
 
@@ -541,6 +541,9 @@ const DUNGEONS = {
 //   世界Boss系统
 const WorldBossManager = {
   _boss: null,
+  
+  // 刷新时间点（小时）: 每天12点、18点、22点刷新
+  SPAWN_HOURS: [12, 18, 22],
 
   load() {
     if (this._boss) return this._boss;
@@ -559,24 +562,52 @@ const WorldBossManager = {
     }
   },
 
-  // 生成世界Boss
-  spawnBoss() {
-    const bosses = [
-      { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
-      { name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
-      { name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
-    ];
-    const boss = bosses[Math.floor(Math.random() * bosses.length)];
-    this._boss = {
-      ...boss,
-      maxHp: boss.hp,
-      currentHp: boss.hp,
-      spawnTime: Date.now(),
-      damageDealt: {}, // { uid: damage }
-      killers: [],
-    };
-    this.save();
-    return this._boss;
+  // 检查并自动刷新世界Boss
+  checkAndSpawn() {
+    this.load();
+    const now = new Date();
+    const currentHour = now.getHours();
+    const today = now.toDateString();
+    
+    // 检查是否在刷新时间点
+    const shouldSpawn = this.SPAWN_HOURS.includes(currentHour);
+    
+    if (shouldSpawn && (!this._boss || this._boss.spawnDate !== today || this._boss.spawnHour !== currentHour)) {
+      // 生成新的世界Boss
+      const bosses = [
+        { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
+        { name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
+        { name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
+      ];
+      const boss = bosses[Math.floor(Math.random() * bosses.length)];
+      this._boss = {
+        ...boss,
+        maxHp: boss.hp,
+        currentHp: boss.hp,
+        spawnTime: Date.now(),
+        spawnDate: today,
+        spawnHour: currentHour,
+        damageDealt: {},
+        killers: [],
+      };
+      this.save();
+      return { spawned: true, boss: this._boss };
+    }
+    
+    return { spawned: false, boss: this._boss };
+  },
+
+  // 获取下次刷新时间
+  getNextSpawnTime() {
+    const now = new Date();
+    const currentHour = now.getHours();
+    
+    for (const hour of this.SPAWN_HOURS) {
+      if (hour > currentHour) {
+        return `今天 ${hour}:00`;
+      }
+    }
+    return `明天 ${this.SPAWN_HOURS[0]}:00`;
   },
 
   // 攻击世界Boss
@@ -2239,9 +2270,11 @@ const HELP_PAGES = {
 
   世界Boss: `【世界Boss系统】
 .宠物 世界Boss - 查看Boss状态
-.宠物 世界Boss 召唤 - 召唤世界Boss
 .宠物 世界Boss 攻击 <宠物编号> - 攻击Boss
 .宠物 世界Boss 排行 - 查看伤害排行
+
+【世界Boss刷新时间】
+每天 12:00、18:00、22:00 自动刷新
 
 【世界Boss】
 世界之树·尤格德拉 HP:50000
@@ -4099,25 +4132,29 @@ cmd.solve = (ctx, msg, argv) => {
 
   //   世界Boss系统
   if (action === '世界Boss' || action === 'worldboss') {
+    // 检查并自动刷新世界Boss
+    const spawnResult = WorldBossManager.checkAndSpawn();
+    
     if (!p1) {
-      const status = WorldBossManager.getStatus();
-      if (!status) return reply('【世界Boss】当前没有世界Boss\n.宠物 世界Boss 召唤 - 召唤世界Boss');
+      if (!spawnResult.boss) {
+        const nextSpawn = WorldBossManager.getNextSpawnTime();
+        return reply(`【世界Boss】当前没有世界Boss\n刷新时间: 每天 12:00、18:00、22:00\n下次刷新: ${nextSpawn}`);
+      }
+      const boss = spawnResult.boss;
       const lines = [
-        `【世界Boss】${status.name}`,
-        `HP: ${status.hp}/${status.maxHp} (${status.percent}%)`,
-        `出现时间: ${new Date(status.spawnTime).toLocaleString()}`,
+        `【世界Boss】${boss.name}`,
+        `HP: ${boss.currentHp}/${boss.maxHp} (${Math.floor(boss.currentHp / boss.maxHp * 100)}%)`,
+        `出现时间: ${new Date(boss.spawnTime).toLocaleString()}`,
         '\n.宠物 世界Boss 攻击 <宠物编号> - 攻击世界Boss',
         '.宠物 世界Boss 排行 - 查看伤害排行',
       ];
+      if (spawnResult.spawned) {
+        lines.unshift('🌟 【世界Boss降临】');
+      }
       return reply(lines.join('\n'));
     }
-    if (p1 === '召唤') {
-      const status = WorldBossManager.getStatus();
-      if (status) return reply('世界Boss已存在');
-      const boss = WorldBossManager.spawnBoss();
-      return reply(`【世界Boss降临】${boss.name}\nHP: ${boss.maxHp} ATK: ${boss.atk} DEF: ${boss.def}\n全服玩家可共同挑战！`);
-    }
     if (p1 === '攻击' || p1 === 'attack') {
+      if (!spawnResult.boss) return reply('当前没有世界Boss');
       const pet = getPet(p2 || '1');
       if (!pet) return reply('请指定宠物编号');
       if (pet.hp <= 0) return reply('宠物已阵亡');
@@ -4138,13 +4175,14 @@ cmd.solve = (ctx, msg, argv) => {
       return reply(lines.join('\n'));
     }
     if (p1 === '排行' || p1 === 'rank') {
+      if (!spawnResult.boss) return reply('当前没有世界Boss');
       const rank = WorldBossManager.getDamageRank();
       if (rank.length === 0) return reply('暂无伤害记录');
       const lines = ['【世界Boss伤害排行】'];
       rank.forEach(r => lines.push(`${r.rank}. ${r.uid.replace('QQ:', '')} - ${r.damage}伤害`));
       return reply(lines.join('\n'));
     }
-    return reply('用法: .宠物 世界Boss [攻击/排行/召唤]');
+    return reply('用法: .宠物 世界Boss [攻击/排行]');
   }
 
   //   出售系统  
@@ -4510,7 +4548,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.0',
+  version: '3.7.1',
   ext,
 
   DB: {
