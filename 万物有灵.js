@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.2
+// @version     3.7.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.3');
   seal.ext.register(ext);
 }
 
@@ -587,8 +587,32 @@ const WorldBossManager = {
       // 记录本次尝试
       ext.storageSet('worldBoss_attempt', lastAttemptKey);
       
-      // 概率判定是否刷新
-      if (Math.random() < this.SPAWN_CHANCE) {
+      // 检查是否有玩家超过30级（通过遍历所有用户数据）
+      let hasHighLevelPlayer = false;
+      try {
+        const nameMap = ext.storageGet('nameMap_global');
+        if (nameMap) {
+          const users = JSON.parse(nameMap);
+          for (const uid of Object.keys(users)) {
+            const userData = ext.storageGet('u_' + uid);
+            if (userData) {
+              const data = JSON.parse(userData);
+              // 检查训练师等级或宠物等级
+              if ((data.player && data.player.level >= 30) || 
+                  (data.pets && data.pets.some(p => p.level >= 30))) {
+                hasHighLevelPlayer = true;
+                break;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // 如果检查失败，默认允许刷新
+        hasHighLevelPlayer = true;
+      }
+      
+      // 只有有玩家超过30级才进行概率判定
+      if (hasHighLevelPlayer && Math.random() < this.SPAWN_CHANCE) {
         // 生成新的世界Boss
         const bosses = [
           { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
@@ -2292,6 +2316,7 @@ const HELP_PAGES = {
 
 【世界Boss刷新规则】
 刷新时间: 每天 12:00、18:00、22:00
+刷新条件: 有玩家达到30级（训练师或宠物）
 刷新概率: 20%（大部分时候不会出现）
 
 【世界Boss】
@@ -4566,7 +4591,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.2',
+  version: '3.7.3',
   ext,
 
   DB: {
