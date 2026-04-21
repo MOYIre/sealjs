@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.0
+// @version     4.0.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.1');
   seal.ext.register(ext);
 }
 
@@ -1892,6 +1892,11 @@ const SKILLS = {
   '生命之源': { power: 0, acc: 100, cost: 40, effect: 'heal', healRate: 0.5, desc: '恢复50%生命' },
   '海神之怒': { power: 140, acc: 80, cost: 45, element: '水', desc: '海神专属，海啸攻击' },
   '神座降临': { power: 220, acc: 65, cost: 90, element: '超能', desc: '天使专属，神圣审判' },
+
+  // 守护者Boss技能
+  '守护之击': { power: 80, acc: 95, cost: 15, desc: '守护者的强力一击' },
+  '神圣护盾': { power: 0, acc: 100, cost: 25, effect: 'shield', desc: '守护者召唤神圣护盾' },
+  '终极审判': { power: 150, acc: 75, cost: 50, element: '超能', desc: '守护者的终极审判' },
 };
 
 // 元素对应的初始技能
@@ -2401,6 +2406,16 @@ const PetFactory = {
     pet.sp--;
     return { success: true, skill };
   },
+
+  // 获取最强宠物
+  getStrongestPet(petList) {
+    if (!petList || !petList.length) return null;
+    return petList.reduce((best, pet) => {
+      const power = (pet.atk || 0) + (pet.def || 0) + (pet.maxHp || 0);
+      const bestPower = (best.atk || 0) + (best.def || 0) + (best.maxHp || 0);
+      return power > bestPower ? pet : best;
+    }, petList[0]);
+  },
 };
 
 //   玩家肉身属性 (v3.6.9 削弱)
@@ -2512,14 +2527,12 @@ const Battle = {
       if (a.species) {
         switch (a.species) {
           case '猫':
-          case '猫':
             // 猫科：10%概率闪避攻击并反击
             if (Math.random() < 0.1) {
               dmg = Math.floor(dmg * 1.3);
               logs.push(`[猫科特性] ${a.name} 灵巧反击！伤害+30%`);
             }
             break;
-          case '犬':
           case '犬':
             // 犬科：血量低于50%时攻击+20%
             if (a.hp / a.maxHp < 0.5) {
@@ -2528,14 +2541,12 @@ const Battle = {
             }
             break;
           case '龙':
-          case '龙':
             // 龙族：对所有元素技能伤害+15%
             if (sk.element) {
               dmg = Math.floor(dmg * 1.15);
               logs.push(`[龙族特性] ${a.name} 龙威！元素伤害+15%`);
             }
             break;
-          case '蛇':
           case '蛇':
             // 蛇类：15%概率使敌人中毒
             if (Math.random() < 0.15) {
@@ -2544,14 +2555,12 @@ const Battle = {
             }
             break;
           case '鸟':
-          case '鸟':
             // 鸟类：速度+15%，闪避率+10%
             if (Math.random() < 0.1) {
               logs.push(`[鸟类特性] ${a.name} 灵巧闪避！`);
               return; // 闪避本次攻击
             }
             break;
-          case '龟':
           case '龟':
             // 龟类：防御+25%，被攻击时有20%概率反弹10%伤害
             if (Math.random() < 0.2) {
@@ -2561,14 +2570,12 @@ const Battle = {
             }
             break;
           case '熊':
-          case '熊':
             // 熊类：血量低于30%时攻击+40%
             if (a.hp / a.maxHp < 0.3) {
               dmg = Math.floor(dmg * 1.4);
               logs.push(`[熊类特性] ${a.name} 狂暴！攻击+40%`);
             }
             break;
-          case '狐':
           case '狐':
             // 狐狸：15%概率使敌人混乱
             if (Math.random() < 0.15) {
@@ -2577,14 +2584,12 @@ const Battle = {
             }
             break;
           case '狼':
-          case '狼':
             // 狼类：对血量低于50%的敌人伤害+25%
             if (d.hp / d.maxHp < 0.5) {
               dmg = Math.floor(dmg * 1.25);
               logs.push(`[狼类特性] ${a.name} 狩猎本能！伤害+25%`);
             }
             break;
-          case '虎':
           case '虎':
             // 虎类：暴击率+15%，暴击伤害+50%
             if (Math.random() < 0.15) {
@@ -2593,14 +2598,12 @@ const Battle = {
             }
             break;
           case '狮':
-          case '狮':
-            // 狮类：首击伤害+30%
-            if (turn === 1) {
+            // 狮类：首击伤害+30%（使用 a._turn 存储回合数）
+            if (a._turn === 1) {
               dmg = Math.floor(dmg * 1.3);
               logs.push(`[狮类特性] ${a.name} 狮王威压！首击+30%`);
             }
             break;
-          case '鼠':
           case '鼠':
             // 鼠类：20%概率偷取敌人能量
             if (Math.random() < 0.2 && d.energy) {
@@ -2611,14 +2614,12 @@ const Battle = {
             }
             break;
           case '兔':
-          case '兔':
             // 兔类：每回合有15%概率获得额外行动
             if (Math.random() < 0.15) {
               a.extraAction = true;
               logs.push(`[兔类特性] ${a.name} 疾速！获得额外行动机会`);
             }
             break;
-          case '蛙':
           case '蛙':
             // 蛙类：水属性技能伤害+20%，有20%概率使敌人减速
             if (sk.element === '水') {
@@ -2631,7 +2632,6 @@ const Battle = {
             }
             break;
           case '蜂':
-          case '蜂':
             // 蜂类：连续攻击时伤害递增
             if (a.lastAttacked === d.name) {
               a.beeCombo = (a.beeCombo || 0) + 1;
@@ -2640,7 +2640,6 @@ const Battle = {
             }
             break;
           case '蜘蛛':
-          case '蜘蛛':
             // 蜘蛛：10%概率使敌人无法行动1回合
             if (Math.random() < 0.1) {
               d.webbed = 1;
@@ -2648,14 +2647,12 @@ const Battle = {
             }
             break;
           case '蝙蝠':
-          case '蝙蝠':
             // 蝙蝠：夜间战斗伤害+20%，吸血效果+30%
             if (sk.effect === 'lifesteal') {
               dmg = Math.floor(dmg * 1.3);
               logs.push(`[蝙蝠特性] ${a.name} 吸血强化！`);
             }
             break;
-          case '蝎':
           case '蝎':
             // 蝎类：攻击附带毒素，每回合造成持续伤害
             if (!d.scorpioPoison) {
@@ -2822,6 +2819,9 @@ const Battle = {
         if (!defender || (defender.hp || 0) <= 0) continue;
 
         logs.push(`${attacker.name}(${Math.round(action.atbVal)}) 行动`);
+
+        // 设置回合数供物种特性使用
+        attacker._turn = turn;
 
         // 消耗行动值
         if (action.atbKey === 'atb1') atb1 -= ACTION_THRESHOLD;
@@ -3934,16 +3934,6 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '对战') {
-    // 获取最强宠物函数
-    const getStrongestPet = (petList) => {
-      if (!petList || !petList.length) return null;
-      return petList.reduce((best, pet) => {
-        const power = (pet.atk || 0) + (pet.def || 0) + (pet.maxHp || 0);
-        const bestPower = (best.atk || 0) + (best.def || 0) + (best.maxHp || 0);
-        return power > bestPower ? pet : best;
-      }, petList[0]);
-    };
-
     // 解析参数 (v3.6.10 纯PVP模式)
     // 参数格式：
     // .宠物对战 @雪梨 → 最强宠物 vs 对方最强宠物
@@ -4006,7 +3996,7 @@ cmd.solve = (ctx, msg, argv) => {
       pet1 = getPet(myPetIdx);
       if (!pet1) return reply('请指定正确的宠物编号');
     } else {
-      pet1 = getStrongestPet(data.pets);
+      pet1 = PetFactory.getStrongestPet(data.pets);
       if (!pet1) return reply('你没有宠物');
     }
 
@@ -4098,7 +4088,7 @@ cmd.solve = (ctx, msg, argv) => {
         }
         pet2 = targetData.pets[enemyPetIdx - 1];
       } else {
-        pet2 = getStrongestPet(targetData.pets);
+        pet2 = PetFactory.getStrongestPet(targetData.pets);
         if (!pet2) return reply('对方没有宠物');
       }
 
@@ -5111,7 +5101,7 @@ cmd.solve = (ctx, msg, argv) => {
           // 如果没有设置宠物或设置的宠物不存在，使用最强宠物
           let pet = memberData.pets[member.petIdx];
           if (!pet) {
-            pet = getStrongestPet(memberData.pets);
+            pet = PetFactory.getStrongestPet(memberData.pets);
           }
           if (pet && pet.hp > 0 && pet.energy >= 20) {
             pet.energy -= 20;
@@ -5617,7 +5607,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.0',
+  version: '4.0.1',
   ext,
 
   DB: {
