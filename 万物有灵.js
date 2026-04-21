@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.6.26
+// @version     3.7.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.6.26');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.0');
   seal.ext.register(ext);
 }
 
@@ -387,12 +387,261 @@ const GuildManager = {
   },
 };
 
-//   副本系统  
+//   组队系统
+const TeamManager = {
+  _teams: null,
+
+  load() {
+    if (this._teams) return this._teams;
+    try {
+      const saved = ext.storageGet('teams');
+      this._teams = saved ? JSON.parse(saved) : {};
+    } catch { this._teams = {}; }
+    return this._teams;
+  },
+
+  save() {
+    ext.storageSet('teams', JSON.stringify(this._teams || {}));
+  },
+
+  get teams() { return this.load(); },
+
+  // 创建队伍
+  createTeam(leaderUid, leaderName, dungeonName) {
+    this.load();
+    const teamId = 'team_' + Date.now();
+    this._teams[teamId] = {
+      id: teamId,
+      leader: leaderUid,
+      leaderName: leaderName,
+      dungeon: dungeonName,
+      members: [{ uid: leaderUid, name: leaderName, petIdx: 0 }],
+      status: 'recruiting', // recruiting, fighting, completed
+      createdAt: Date.now(),
+    };
+    this.save();
+    return { success: true, teamId, msg: `队伍创建成功！\n.宠物 组队 加入 @${leaderName} 加入队伍` };
+  },
+
+  // 加入队伍
+  joinTeam(teamId, uid, name) {
+    this.load();
+    const team = this._teams[teamId];
+    if (!team) return { success: false, msg: '队伍不存在' };
+    if (team.status !== 'recruiting') return { success: false, msg: '队伍已开始战斗' };
+    if (team.members.length >= 4) return { success: false, msg: '队伍已满(最多4人)' };
+    if (team.members.find(m => m.uid === uid)) return { success: false, msg: '你已在队伍中' };
+    
+    team.members.push({ uid, name, petIdx: 0 });
+    this.save();
+    return { success: true, msg: `成功加入队伍！当前成员: ${team.members.length}/4` };
+  },
+
+  // 退出队伍
+  leaveTeam(teamId, uid) {
+    this.load();
+    const team = this._teams[teamId];
+    if (!team) return { success: false, msg: '队伍不存在' };
+    
+    const idx = team.members.findIndex(m => m.uid === uid);
+    if (idx === -1) return { success: false, msg: '你不在队伍中' };
+    
+    team.members.splice(idx, 1);
+    
+    // 如果队长退出，转让队长
+    if (team.leader === uid && team.members.length > 0) {
+      team.leader = team.members[0].uid;
+      team.leaderName = team.members[0].name;
+    }
+    
+    // 如果队伍空了，删除队伍
+    if (team.members.length === 0) {
+      delete this._teams[teamId];
+    }
+    this.save();
+    return { success: true, msg: '已退出队伍' };
+  },
+
+  // 设置出战宠物
+  setPet(teamId, uid, petIdx) {
+    this.load();
+    const team = this._teams[teamId];
+    if (!team) return { success: false, msg: '队伍不存在' };
+    
+    const member = team.members.find(m => m.uid === uid);
+    if (!member) return { success: false, msg: '你不在队伍中' };
+    
+    member.petIdx = petIdx;
+    this.save();
+    return { success: true, msg: `已设置第${petIdx}只宠物出战` };
+  },
+
+  // 获取招募中的队伍列表
+  getRecruitingTeams(dungeonName = null) {
+    this.load();
+    const now = Date.now();
+    const list = [];
+    for (const [id, team] of Object.entries(this._teams)) {
+      // 清理超过30分钟的队伍
+      if (now - team.createdAt > 1800000) {
+        delete this._teams[id];
+        continue;
+      }
+      if (team.status === 'recruiting') {
+        if (!dungeonName || team.dungeon === dungeonName) {
+          list.push(team);
+        }
+      }
+    }
+    this.save();
+    return list;
+  },
+
+  // 开始战斗
+  startBattle(teamId, leaderUid) {
+    this.load();
+    const team = this._teams[teamId];
+    if (!team) return { success: false, msg: '队伍不存在' };
+    if (team.leader !== leaderUid) return { success: false, msg: '只有队长可以开始战斗' };
+    if (team.members.length < 1) return { success: false, msg: '至少需要1人' };
+    if (team.status !== 'recruiting') return { success: false, msg: '队伍状态异常' };
+    
+    team.status = 'fighting';
+    this.save();
+    return { success: true, msg: '战斗开始！' };
+  },
+
+  // 获取用户所在队伍
+  getUserTeam(uid) {
+    this.load();
+    for (const team of Object.values(this._teams)) {
+      if (team.members.find(m => m.uid === uid)) {
+        return team;
+      }
+    }
+    return null;
+  },
+
+  // 删除队伍
+  deleteTeam(teamId) {
+    this.load();
+    delete this._teams[teamId];
+    this.save();
+  },
+};
+
+//   副本系统
 const DUNGEONS = {
-  '迷雾深渊': { level: 10, boss: '深渊领主', bossHp: 500, bossAtk: 80, rewards: { money: [100, 300], items: ['进化石'] } },
-  '熔岩地狱': { level: 25, boss: '炎魔', bossHp: 1000, bossAtk: 150, rewards: { money: [300, 600], items: ['龙之鳞'] } },
-  '冰霜王座': { level: 35, boss: '冰霜巨龙', bossHp: 2000, bossAtk: 200, rewards: { money: [500, 1000], items: ['龙之心'] } },
-  '虚空裂隙': { level: 50, boss: '虚空主宰', bossHp: 5000, bossAtk: 400, rewards: { money: [1000, 3000], items: ['神话召唤石'] } },
+  '迷雾深渊': { boss: '深渊领主', bossHp: 500, bossAtk: 80, bossDef: 30, rewards: { money: [100, 300], items: ['进化石'] } },
+  '熔岩地狱': { boss: '炎魔', bossHp: 1000, bossAtk: 150, bossDef: 50, rewards: { money: [300, 600], items: ['龙之鳞'] } },
+  '冰霜王座': { boss: '冰霜巨龙', bossHp: 2000, bossAtk: 200, bossDef: 80, rewards: { money: [500, 1000], items: ['龙之心'] } },
+  '虚空裂隙': { boss: '虚空主宰', bossHp: 5000, bossAtk: 400, bossDef: 150, rewards: { money: [1000, 3000], items: ['神话召唤石'] } },
+};
+
+//   世界Boss系统
+const WorldBossManager = {
+  _boss: null,
+
+  load() {
+    if (this._boss) return this._boss;
+    try {
+      const saved = ext.storageGet('worldBoss');
+      this._boss = saved ? JSON.parse(saved) : null;
+    } catch { this._boss = null; }
+    return this._boss;
+  },
+
+  save() {
+    if (this._boss) {
+      ext.storageSet('worldBoss', JSON.stringify(this._boss));
+    } else {
+      ext.storageSet('worldBoss', '');
+    }
+  },
+
+  // 生成世界Boss
+  spawnBoss() {
+    const bosses = [
+      { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
+      { name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
+      { name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
+    ];
+    const boss = bosses[Math.floor(Math.random() * bosses.length)];
+    this._boss = {
+      ...boss,
+      maxHp: boss.hp,
+      currentHp: boss.hp,
+      spawnTime: Date.now(),
+      damageDealt: {}, // { uid: damage }
+      killers: [],
+    };
+    this.save();
+    return this._boss;
+  },
+
+  // 攻击世界Boss
+  attackBoss(uid, name, pet) {
+    this.load();
+    if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
+    
+    // 计算伤害
+    const baseDamage = pet.atk * 2 + Math.floor(Math.random() * pet.atk);
+    const defense = this._boss.def;
+    const damage = Math.max(1, baseDamage - defense + Math.floor(Math.random() * 50));
+    
+    this._boss.currentHp -= damage;
+    this._boss.damageDealt[uid] = (this._boss.damageDealt[uid] || 0) + damage;
+    
+    let result = { success: true, damage, currentHp: this._boss.currentHp, maxHp: this._boss.maxHp };
+    
+    // Boss反击
+    const counterDamage = Math.floor(this._boss.atk * 0.3);
+    pet.hp = Math.max(0, pet.hp - counterDamage);
+    result.counterDamage = counterDamage;
+    
+    // 检查是否击杀
+    if (this._boss.currentHp <= 0) {
+      result.killed = true;
+      result.rewards = this.calculateRewards(uid, name);
+      this._boss.killers.push({ uid, name });
+      this._boss = null;
+    }
+    
+    this.save();
+    return result;
+  },
+
+  // 计算奖励
+  calculateRewards(uid, name) {
+    const baseReward = {
+      money: 2000 + Math.floor(Math.random() * 3000),
+      items: ['神话召唤石', '龙之心', '天赋果实'],
+    };
+    return baseReward;
+  },
+
+  // 获取世界Boss状态
+  getStatus() {
+    this.load();
+    if (!this._boss) return null;
+    return {
+      name: this._boss.name,
+      hp: this._boss.currentHp,
+      maxHp: this._boss.maxHp,
+      percent: Math.floor(this._boss.currentHp / this._boss.maxHp * 100),
+      spawnTime: this._boss.spawnTime,
+    };
+  },
+
+  // 获取伤害排行
+  getDamageRank() {
+    this.load();
+    if (!this._boss) return [];
+    return Object.entries(this._boss.damageDealt)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([uid, damage], idx) => ({ rank: idx + 1, uid, damage }));
+  },
 };
 
 //   繁殖优化  
@@ -1902,6 +2151,8 @@ cmd.help = `【万物有灵】宠物养成对战系统
 .宠物 help 世界 - 世界探索
 .宠物 help 训练师 - 训练师系统
 .宠物 help 进阶 - 进阶功能
+.宠物 help 组队 - 组队副本
+.宠物 help 世界Boss - 世界Boss
 .宠物 help 社交 - 社交系统
 .宠物 help 万象篇 - 万象篇扩展
 .宠物 help mod - Mod帮助`;
@@ -1964,8 +2215,40 @@ const HELP_PAGES = {
 .宠物 装备 <编号> <宠物编号> - 给宠物穿装备
 .宠物 图鉴 - 查看图鉴收集进度
 .宠物 排行 - 查看排行榜
-.宠物 副本 - 挑战副本
-.宠物 神话 - 查看神话宠物`,
+.宠物 副本 [副本名] [宠物编号] - 挑战副本Boss
+.宠物 神话 - 查看神话宠物
+
+【副本系统】
+迷雾深渊 - 深渊领主 HP:500
+熔岩地狱 - 炎魔 HP:1000
+冰霜王座 - 冰霜巨龙 HP:2000
+虚空裂隙 - 虚空主宰 HP:5000`,
+
+  组队: `【组队系统】
+.宠物 组队 - 查看队伍状态/招募列表
+.宠物 组队 创建 <副本名> - 创建队伍
+.宠物 组队 加入 @队长 - 加入队伍
+.宠物 组队 设宠 <编号> - 设置出战宠物
+.宠物 组队 开始 - 开始战斗(队长)
+.宠物 组队 退出 - 退出队伍
+
+【组队规则】
+最多4人组队
+队伍成员共享奖励
+队长负责开始战斗`,
+
+  世界Boss: `【世界Boss系统】
+.宠物 世界Boss - 查看Boss状态
+.宠物 世界Boss 召唤 - 召唤世界Boss
+.宠物 世界Boss 攻击 <宠物编号> - 攻击Boss
+.宠物 世界Boss 排行 - 查看伤害排行
+
+【世界Boss】
+世界之树·尤格德拉 HP:50000
+混沌巨兽·利维坦 HP:80000
+灭世魔龙·尼德霍格 HP:100000
+
+全服玩家共同挑战，击杀者获得丰厚奖励！`,
 
   万象篇: `【万象篇扩展】(需安装万象篇Mod)
 
@@ -3621,33 +3904,61 @@ cmd.solve = (ctx, msg, argv) => {
     return reply(`【排行榜】\n你的最高战力: ${power}\n\n排行榜功能需要多玩家数据支持`);
   }
 
-  //   副本系统  
+  //   副本系统
   if (action === '副本' || action === 'dungeon') {
-    if (!p1) return reply(Object.entries(DUNGEONS).map(([n, d]) => `${n} (Lv.${d.level}+) - Boss:${d.boss}`).join('\n'));
+    if (!p1) {
+      const lines = ['【副本列表】'];
+      for (const [n, d] of Object.entries(DUNGEONS)) {
+        lines.push(`${n} - Boss:${d.boss} HP:${d.bossHp} ATK:${d.bossAtk}`);
+      }
+      lines.push('\n单人挑战: .宠物 副本 <副本名> <宠物编号>');
+      lines.push('组队挑战: .宠物 组队 创建 <副本名>');
+      return reply(lines.join('\n'));
+    }
     const pet = getPet(p2 || '1');
     if (!pet) return reply('请指定宠物编号');
     const dungeon = DUNGEONS[p1];
     if (!dungeon) return reply('副本不存在');
-    if (pet.level < dungeon.level) return reply(`需要Lv.${dungeon.level}以上`);
-    if (pet.energy < 50) return reply('精力不足(需要50)');
+    if (pet.hp <= 0) return reply('宠物已阵亡，请先复活');
+    if (pet.energy < 30) return reply('精力不足(需要30)');
 
-    pet.energy -= 50;
-    // 简化战斗
-    const win = Math.random() < (pet.level - dungeon.level + 10) / 50;
-    if (win) {
+    pet.energy -= 30;
+    
+    // 完整Boss战斗
+    let bossHp = dungeon.bossHp;
+    let petHp = pet.hp;
+    const logs = [`【${dungeon.boss}战斗】`, `${pet.name} vs ${dungeon.boss}`];
+    let round = 0;
+    
+    while (bossHp > 0 && petHp > 0 && round < 20) {
+      round++;
+      const petDamage = Math.max(1, pet.atk - dungeon.bossDef + Math.floor(Math.random() * 20));
+      bossHp -= petDamage;
+      logs.push(`第${round}回合: ${pet.name}造成${petDamage}伤害`);
+      if (bossHp <= 0) break;
+      const bossDamage = Math.max(1, dungeon.bossAtk - pet.def + Math.floor(Math.random() * 30));
+      petHp -= bossDamage;
+      logs.push(`${dungeon.boss}反击造成${bossDamage}伤害`);
+    }
+    
+    pet.hp = Math.max(1, petHp);
+    
+    if (bossHp <= 0) {
       const money = dungeon.rewards.money[0] + Math.floor(Math.random() * (dungeon.rewards.money[1] - dungeon.rewards.money[0]));
       const item = dungeon.rewards.items[Math.floor(Math.random() * dungeon.rewards.items.length)];
       data.money += money;
       data.items[item] = (data.items[item] || 0) + 1;
       save();
-      return reply(`【副本胜利】击败${dungeon.boss}！\n获得: ${money}金币, ${item}`);
+      logs.push(`【胜利】击败${dungeon.boss}！获得: ${money}金币, ${item}`);
+      return reply(logs.slice(0, 15).join('\n'));
     } else {
       save();
-      return reply(`【副本失败】被${dungeon.boss}击败...`);
+      logs.push(`【失败】被${dungeon.boss}击败...`);
+      return reply(logs.slice(0, 15).join('\n'));
     }
   }
 
-  //   公会系统  
+  //   公会系统
   if (action === '公会' || action === 'guild') {
     if (!p1) return reply(GuildManager.getGuildInfo(data) + '\n\n用法: .宠物 公会 [创建/加入/退出] [名称]');
     if (p1 === '创建') {
@@ -3666,6 +3977,174 @@ cmd.solve = (ctx, msg, argv) => {
       return reply(result.msg);
     }
     return reply('用法: .宠物 公会 [创建/加入/退出] [名称]');
+  }
+
+  //   组队系统
+  if (action === '组队' || action === 'team') {
+    if (!p1) {
+      const myTeam = TeamManager.getUserTeam(uid);
+      if (myTeam) {
+        const lines = [`【当前队伍】副本: ${myTeam.dungeon}`];
+        myTeam.members.forEach((m, i) => lines.push(`${i + 1}. ${m.name} (宠物${m.petIdx + 1})`));
+        lines.push(`\n状态: ${myTeam.status === 'recruiting' ? '招募中' : '战斗中'}`);
+        lines.push('.宠物 组队 设宠 <编号> - 设置出战宠物');
+        if (myTeam.leader === uid) lines.push('.宠物 组队 开始 - 开始战斗');
+        lines.push('.宠物 组队 退出 - 退出队伍');
+        return reply(lines.join('\n'));
+      }
+      const teams = TeamManager.getRecruitingTeams();
+      if (teams.length === 0) {
+        return reply('暂无招募中的队伍\n.宠物 组队 创建 <副本名> - 创建队伍');
+      }
+      const lines = ['【招募中的队伍】'];
+      teams.forEach(t => lines.push(`${t.dungeon} - 队长:${t.leaderName} (${t.members.length}/4)`));
+      lines.push('\n.宠物 组队 加入 @队长 - 加入队伍');
+      lines.push('.宠物 组队 创建 <副本名> - 创建队伍');
+      return reply(lines.join('\n'));
+    }
+    if (p1 === '创建') {
+      if (!p2) return reply('用法: .宠物 组队 创建 <副本名>');
+      if (!DUNGEONS[p2]) return reply('副本不存在');
+      const result = TeamManager.createTeam(uid, myName || '玩家', p2);
+      return reply(result.msg);
+    }
+    if (p1 === '加入') {
+      const targetUid = atUserId;
+      if (!targetUid) return reply('用法: .宠物 组队 加入 @队长');
+      const teams = TeamManager.getRecruitingTeams();
+      const team = teams.find(t => t.leader === targetUid);
+      if (!team) return reply('该玩家没有招募中的队伍');
+      const result = TeamManager.joinTeam(team.id, uid, myName || '玩家');
+      return reply(result.msg);
+    }
+    if (p1 === '退出') {
+      const myTeam = TeamManager.getUserTeam(uid);
+      if (!myTeam) return reply('你不在任何队伍中');
+      const result = TeamManager.leaveTeam(myTeam.id, uid);
+      return reply(result.msg);
+    }
+    if (p1 === '设宠' || p1 === 'setpet') {
+      const myTeam = TeamManager.getUserTeam(uid);
+      if (!myTeam) return reply('你不在任何队伍中');
+      const petIdx = parseInt(p2) || 1;
+      if (petIdx < 1 || petIdx > data.pets.length) return reply('宠物编号无效');
+      const result = TeamManager.setPet(myTeam.id, uid, petIdx - 1);
+      return reply(result.msg);
+    }
+    if (p1 === '开始') {
+      const myTeam = TeamManager.getUserTeam(uid);
+      if (!myTeam) return reply('你不在任何队伍中');
+      if (myTeam.leader !== uid) return reply('只有队长可以开始战斗');
+      const dungeon = DUNGEONS[myTeam.dungeon];
+      if (!dungeon) return reply('副本不存在');
+      
+      const fighters = [];
+      for (const member of myTeam.members) {
+        const memberData = DB.get(member.uid);
+        if (memberData && memberData.pets[member.petIdx]) {
+          const pet = memberData.pets[member.petIdx];
+          if (pet.hp > 0 && pet.energy >= 20) {
+            pet.energy -= 20;
+            fighters.push({ pet, name: member.name, uid: member.uid, data: memberData });
+          }
+        }
+      }
+      if (fighters.length === 0) return reply('没有可出战的宠物');
+      
+      let bossHp = dungeon.bossHp;
+      const logs = [`【组队副本】${myTeam.dungeon}`, `队伍 vs ${dungeon.boss}`];
+      let round = 0;
+      
+      while (bossHp > 0 && fighters.some(f => f.pet.hp > 0) && round < 30) {
+        round++;
+        logs.push(`\n--- 第${round}回合 ---`);
+        for (const f of fighters) {
+          if (f.pet.hp <= 0 || bossHp <= 0) continue;
+          const damage = Math.max(1, f.pet.atk - dungeon.bossDef + Math.floor(Math.random() * 20));
+          bossHp -= damage;
+          logs.push(`${f.name}的${f.pet.name}造成${damage}伤害 (Boss剩余:${Math.max(0, bossHp)})`);
+        }
+        if (bossHp <= 0) break;
+        const aliveFighters = fighters.filter(f => f.pet.hp > 0);
+        if (aliveFighters.length > 0) {
+          const target = aliveFighters[Math.floor(Math.random() * aliveFighters.length)];
+          const damage = Math.max(1, dungeon.bossAtk - target.pet.def + Math.floor(Math.random() * 30));
+          target.pet.hp = Math.max(0, target.pet.hp - damage);
+          logs.push(`${dungeon.boss}攻击${target.name}的${target.pet.name}，造成${damage}伤害`);
+        }
+      }
+      
+      for (const f of fighters) { f.pet.hp = Math.max(1, f.pet.hp); DB.save(f.uid, f.data); }
+      TeamManager.deleteTeam(myTeam.id);
+      
+      if (bossHp <= 0) {
+        logs.push(`\n【胜利】击败${dungeon.boss}！`);
+        const moneyEach = dungeon.rewards.money[0] + Math.floor(Math.random() * (dungeon.rewards.money[1] - dungeon.rewards.money[0]));
+        const item = dungeon.rewards.items[Math.floor(Math.random() * dungeon.rewards.items.length)];
+        for (const f of fighters) {
+          f.data.money = (f.data.money || 0) + moneyEach;
+          f.data.items = f.data.items || {};
+          f.data.items[item] = (f.data.items[item] || 0) + 1;
+          DB.save(f.uid, f.data);
+          logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+        }
+        return reply(logs.slice(0, 20).join('\n'));
+      } else {
+        logs.push(`\n【失败】被${dungeon.boss}击败...`);
+        return reply(logs.slice(0, 20).join('\n'));
+      }
+    }
+    return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
+  }
+
+  //   世界Boss系统
+  if (action === '世界Boss' || action === 'worldboss') {
+    if (!p1) {
+      const status = WorldBossManager.getStatus();
+      if (!status) return reply('【世界Boss】当前没有世界Boss\n.宠物 世界Boss 召唤 - 召唤世界Boss');
+      const lines = [
+        `【世界Boss】${status.name}`,
+        `HP: ${status.hp}/${status.maxHp} (${status.percent}%)`,
+        `出现时间: ${new Date(status.spawnTime).toLocaleString()}`,
+        '\n.宠物 世界Boss 攻击 <宠物编号> - 攻击世界Boss',
+        '.宠物 世界Boss 排行 - 查看伤害排行',
+      ];
+      return reply(lines.join('\n'));
+    }
+    if (p1 === '召唤') {
+      const status = WorldBossManager.getStatus();
+      if (status) return reply('世界Boss已存在');
+      const boss = WorldBossManager.spawnBoss();
+      return reply(`【世界Boss降临】${boss.name}\nHP: ${boss.maxHp} ATK: ${boss.atk} DEF: ${boss.def}\n全服玩家可共同挑战！`);
+    }
+    if (p1 === '攻击' || p1 === 'attack') {
+      const pet = getPet(p2 || '1');
+      if (!pet) return reply('请指定宠物编号');
+      if (pet.hp <= 0) return reply('宠物已阵亡');
+      const result = WorldBossManager.attackBoss(uid, myName || '玩家', pet);
+      if (!result.success) return reply(result.msg);
+      save();
+      const lines = [`【攻击世界Boss】`, `${pet.name}造成${result.damage}伤害`, `Boss HP: ${result.currentHp}/${result.maxHp}`, `${pet.name}受到${result.counterDamage}反击伤害`];
+      if (result.killed) {
+        lines.push(`\n【击杀成功】你击败了世界Boss！获得: ${result.rewards.money}金币`);
+        data.money = (data.money || 0) + result.rewards.money;
+        data.items = data.items || {};
+        for (const item of result.rewards.items) {
+          data.items[item] = (data.items[item] || 0) + 1;
+          lines.push(`获得: ${item}`);
+        }
+        save();
+      }
+      return reply(lines.join('\n'));
+    }
+    if (p1 === '排行' || p1 === 'rank') {
+      const rank = WorldBossManager.getDamageRank();
+      if (rank.length === 0) return reply('暂无伤害记录');
+      const lines = ['【世界Boss伤害排行】'];
+      rank.forEach(r => lines.push(`${r.rank}. ${r.uid.replace('QQ:', '')} - ${r.damage}伤害`));
+      return reply(lines.join('\n'));
+    }
+    return reply('用法: .宠物 世界Boss [攻击/排行/召唤]');
   }
 
   //   出售系统  
@@ -4031,7 +4510,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.6.26',
+  version: '3.7.0',
   ext,
 
   DB: {
