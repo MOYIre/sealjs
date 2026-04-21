@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.5
+// @version     3.7.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.5');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.6');
   seal.ext.register(ext);
 }
 
@@ -2298,7 +2298,7 @@ const HELP_PAGES = {
 
   组队: `【组队系统】
 .宠物 组队 - 查看队伍状态/招募列表
-.宠物 组队 创建 <副本名> - 创建队伍
+.宠物 组队 创建 <副本名/世界Boss> - 创建队伍
 .宠物 组队 加入 @队长 - 加入队伍
 .宠物 组队 设宠 <编号> - 设置出战宠物
 .宠物 组队 开始 - 开始战斗(队长)
@@ -2307,7 +2307,12 @@ const HELP_PAGES = {
 【组队规则】
 最多4人组队
 队伍成员共享奖励
-队长负责开始战斗`,
+队长负责开始战斗
+未设置宠物默认使用最强宠物
+
+【可挑战目标】
+迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙
+世界Boss(需Boss存在时)`,
 
   世界Boss: `【世界Boss系统】
 .宠物 世界Boss - 查看Boss状态
@@ -4079,8 +4084,13 @@ cmd.solve = (ctx, msg, argv) => {
       return reply(lines.join('\n'));
     }
     if (p1 === '创建') {
-      if (!p2) return reply('用法: .宠物 组队 创建 <副本名>');
-      if (!DUNGEONS[p2]) return reply('副本不存在');
+      if (!p2) return reply('用法: .宠物 组队 创建 <副本名/世界Boss>');
+      // 检查是否是世界Boss或普通副本
+      if (p2 !== '世界Boss' && !DUNGEONS[p2]) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/世界Boss');
+      if (p2 === '世界Boss') {
+        const spawnResult = WorldBossManager.checkAndSpawn();
+        if (!spawnResult.boss) return reply('当前没有世界Boss');
+      }
       const result = TeamManager.createTeam(uid, myName || '玩家', p2);
       return reply(result.msg);
     }
@@ -4111,9 +4121,26 @@ cmd.solve = (ctx, msg, argv) => {
       const myTeam = TeamManager.getUserTeam(uid);
       if (!myTeam) return reply('你不在任何队伍中');
       if (myTeam.leader !== uid) return reply('只有队长可以开始战斗');
-      const dungeon = DUNGEONS[myTeam.dungeon];
-      if (!dungeon) return reply('副本不存在');
       
+      // 检查是世界Boss还是普通副本
+      const isWorldBoss = myTeam.dungeon === '世界Boss';
+      let bossData = null;
+      
+      if (isWorldBoss) {
+        const spawnResult = WorldBossManager.checkAndSpawn();
+        if (!spawnResult.boss) return reply('当前没有世界Boss');
+        bossData = {
+          name: spawnResult.boss.name,
+          bossHp: spawnResult.boss.currentHp,
+          bossAtk: spawnResult.boss.atk,
+          bossDef: spawnResult.boss.def,
+          maxHp: spawnResult.boss.maxHp,
+        };
+      } else {
+        bossData = DUNGEONS[myTeam.dungeon];
+        if (!bossData) return reply('副本不存在');
+      }
+
       const fighters = [];
       for (const member of myTeam.members) {
         const memberData = DB.get(member.uid);
@@ -4130,48 +4157,80 @@ cmd.solve = (ctx, msg, argv) => {
         }
       }
       if (fighters.length === 0) return reply('没有可出战的宠物');
-      
-      let bossHp = dungeon.bossHp;
-      const logs = [`【组队副本】${myTeam.dungeon}`, `队伍 vs ${dungeon.boss}`];
+
+      let bossHp = bossData.bossHp;
+      const logs = [`【组队${isWorldBoss ? '世界Boss' : '副本'}】${myTeam.dungeon}`, `队伍 vs ${bossData.name}`];
       let round = 0;
-      
+      let totalDamage = 0;
+
       while (bossHp > 0 && fighters.some(f => f.pet.hp > 0) && round < 30) {
         round++;
         logs.push(`\n--- 第${round}回合 ---`);
         for (const f of fighters) {
           if (f.pet.hp <= 0 || bossHp <= 0) continue;
-          const damage = Math.max(1, f.pet.atk - dungeon.bossDef + Math.floor(Math.random() * 20));
+          const damage = Math.max(1, f.pet.atk - bossData.bossDef + Math.floor(Math.random() * 20));
           bossHp -= damage;
+          totalDamage += damage;
           logs.push(`${f.name}的${f.pet.name}造成${damage}伤害 (Boss剩余:${Math.max(0, bossHp)})`);
         }
         if (bossHp <= 0) break;
         const aliveFighters = fighters.filter(f => f.pet.hp > 0);
         if (aliveFighters.length > 0) {
           const target = aliveFighters[Math.floor(Math.random() * aliveFighters.length)];
-          const damage = Math.max(1, dungeon.bossAtk - target.pet.def + Math.floor(Math.random() * 30));
+          const damage = Math.max(1, bossData.bossAtk - target.pet.def + Math.floor(Math.random() * 30));
           target.pet.hp = Math.max(0, target.pet.hp - damage);
-          logs.push(`${dungeon.boss}攻击${target.name}的${target.pet.name}，造成${damage}伤害`);
+          logs.push(`${bossData.name}攻击${target.name}的${target.pet.name}，造成${damage}伤害`);
         }
       }
-      
+
       for (const f of fighters) { f.pet.hp = Math.max(1, f.pet.hp); DB.save(f.uid, f.data); }
       TeamManager.deleteTeam(myTeam.id);
-      
+
       if (bossHp <= 0) {
-        logs.push(`\n【胜利】击败${dungeon.boss}！`);
-        const moneyEach = dungeon.rewards.money[0] + Math.floor(Math.random() * (dungeon.rewards.money[1] - dungeon.rewards.money[0]));
-        const item = dungeon.rewards.items[Math.floor(Math.random() * dungeon.rewards.items.length)];
-        for (const f of fighters) {
-          f.data.money = (f.data.money || 0) + moneyEach;
-          f.data.items = f.data.items || {};
-          f.data.items[item] = (f.data.items[item] || 0) + 1;
-          DB.save(f.uid, f.data);
-          logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+        logs.push(`\n【胜利】击败${bossData.name}！`);
+        
+        if (isWorldBoss) {
+          // 世界Boss奖励更丰富
+          const moneyEach = 3000 + Math.floor(Math.random() * 5000);
+          const items = ['神话召唤石', '龙之心', '天赋果实', '进化石'];
+          for (const f of fighters) {
+            f.data.money = (f.data.money || 0) + moneyEach;
+            f.data.items = f.data.items || {};
+            const item = items[Math.floor(Math.random() * items.length)];
+            f.data.items[item] = (f.data.items[item] || 0) + 1;
+            DB.save(f.uid, f.data);
+            logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+          }
+          // 清除世界Boss
+          WorldBossManager._boss = null;
+          WorldBossManager.save();
+        } else {
+          const moneyEach = bossData.rewards.money[0] + Math.floor(Math.random() * (bossData.rewards.money[1] - bossData.rewards.money[0]));
+          const item = bossData.rewards.items[Math.floor(Math.random() * bossData.rewards.items.length)];
+          for (const f of fighters) {
+            f.data.money = (f.data.money || 0) + moneyEach;
+            f.data.items = f.data.items || {};
+            f.data.items[item] = (f.data.items[item] || 0) + 1;
+            DB.save(f.uid, f.data);
+            logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+          }
         }
-        return reply(logs.slice(0, 20).join('\n'));
+        return reply(logs.slice(0, 25).join('\n'));
       } else {
-        logs.push(`\n【失败】被${dungeon.boss}击败...`);
-        return reply(logs.slice(0, 20).join('\n'));
+        if (isWorldBoss) {
+          // 更新世界Boss血量
+          WorldBossManager._boss.currentHp = bossHp;
+          // 记录伤害
+          for (const f of fighters) {
+            WorldBossManager._boss.damageDealt[f.uid] = (WorldBossManager._boss.damageDealt[f.uid] || 0) + Math.floor(totalDamage / fighters.length);
+          }
+          WorldBossManager.save();
+          logs.push(`\n【撤退】对${bossData.name}造成${totalDamage}点伤害`);
+          logs.push(`Boss剩余HP: ${bossHp}/${bossData.maxHp}`);
+        } else {
+          logs.push(`\n【失败】被${bossData.name}击败...`);
+        }
+        return reply(logs.slice(0, 25).join('\n'));
       }
     }
     return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
@@ -4595,7 +4654,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.5',
+  version: '3.7.6',
   ext,
 
   DB: {
