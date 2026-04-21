@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.7.1
+// @version     3.7.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.7.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.7.2');
   seal.ext.register(ext);
 }
 
@@ -542,8 +542,10 @@ const DUNGEONS = {
 const WorldBossManager = {
   _boss: null,
   
-  // 刷新时间点（小时）: 每天12点、18点、22点刷新
+  // 刷新时间点（小时）: 每天12点、18点、22点可能刷新
   SPAWN_HOURS: [12, 18, 22],
+  // 刷新概率: 20%
+  SPAWN_CHANCE: 0.2,
 
   load() {
     if (this._boss) return this._boss;
@@ -570,31 +572,46 @@ const WorldBossManager = {
     const today = now.toDateString();
     
     // 检查是否在刷新时间点
-    const shouldSpawn = this.SPAWN_HOURS.includes(currentHour);
+    const shouldCheck = this.SPAWN_HOURS.includes(currentHour);
     
-    if (shouldSpawn && (!this._boss || this._boss.spawnDate !== today || this._boss.spawnHour !== currentHour)) {
-      // 生成新的世界Boss
-      const bosses = [
-        { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
-        { name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
-        { name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
-      ];
-      const boss = bosses[Math.floor(Math.random() * bosses.length)];
-      this._boss = {
-        ...boss,
-        maxHp: boss.hp,
-        currentHp: boss.hp,
-        spawnTime: Date.now(),
-        spawnDate: today,
-        spawnHour: currentHour,
-        damageDealt: {},
-        killers: [],
-      };
-      this.save();
-      return { spawned: true, boss: this._boss };
+    // 如果当前有Boss，直接返回
+    if (this._boss) {
+      return { spawned: false, boss: this._boss };
     }
     
-    return { spawned: false, boss: this._boss };
+    // 检查是否已经尝试过这个时间点
+    const lastAttemptKey = `${today}_${currentHour}`;
+    const lastAttempt = ext.storageGet('worldBoss_attempt');
+    
+    if (shouldCheck && lastAttempt !== lastAttemptKey) {
+      // 记录本次尝试
+      ext.storageSet('worldBoss_attempt', lastAttemptKey);
+      
+      // 概率判定是否刷新
+      if (Math.random() < this.SPAWN_CHANCE) {
+        // 生成新的世界Boss
+        const bosses = [
+          { name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
+          { name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
+          { name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
+        ];
+        const boss = bosses[Math.floor(Math.random() * bosses.length)];
+        this._boss = {
+          ...boss,
+          maxHp: boss.hp,
+          currentHp: boss.hp,
+          spawnTime: Date.now(),
+          spawnDate: today,
+          spawnHour: currentHour,
+          damageDealt: {},
+          killers: [],
+        };
+        this.save();
+        return { spawned: true, boss: this._boss };
+      }
+    }
+    
+    return { spawned: false, boss: null };
   },
 
   // 获取下次刷新时间
@@ -2273,8 +2290,9 @@ const HELP_PAGES = {
 .宠物 世界Boss 攻击 <宠物编号> - 攻击Boss
 .宠物 世界Boss 排行 - 查看伤害排行
 
-【世界Boss刷新时间】
-每天 12:00、18:00、22:00 自动刷新
+【世界Boss刷新规则】
+刷新时间: 每天 12:00、18:00、22:00
+刷新概率: 20%（大部分时候不会出现）
 
 【世界Boss】
 世界之树·尤格德拉 HP:50000
@@ -4548,7 +4566,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.7.1',
+  version: '3.7.2',
   ext,
 
   DB: {
