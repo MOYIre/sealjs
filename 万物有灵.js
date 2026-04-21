@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.6.24
+// @version     3.6.25
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.6.24');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.6.25');
   seal.ext.register(ext);
 }
 
@@ -2310,7 +2310,7 @@ cmd.solve = (ctx, msg, argv) => {
 
       // 玩家战斗单位
       playerFighter = {
-        name: '你',
+        name: myName || '你',
         hp: playerCombatAttrs.hp,
         maxHp: playerCombatAttrs.hp,
         atk: playerCombatAttrs.atk,
@@ -2325,13 +2325,13 @@ cmd.solve = (ctx, msg, argv) => {
         playerBuffs: playerBuffs,
       };
 
-      fighterInfo = `【双人出战】${pet.name} + 你`;
+      fighterInfo = `【双人出战】${pet.name} + ${myName || '你'}`;
       isPlayerFight = false;
     } else if (data.pets.length > 0 && (!petIdx || petIdx === '肉身')) {
       // 有宠物但选择肉身，提示可选
       fighterInfo = `【肉身出战】(你有${data.pets.length}只宠物，可指定编号让宠物出战)`;
       fighter = {
-        name: '你',
+        name: myName || '你',
         hp: playerCombatAttrs.hp,
         maxHp: playerCombatAttrs.hp,
         atk: playerCombatAttrs.atk,
@@ -2349,7 +2349,7 @@ cmd.solve = (ctx, msg, argv) => {
       // 没有宠物，肉身出战
       fighterInfo = `【肉身出战】`;
       fighter = {
-        name: '你',
+        name: myName || '你',
         hp: playerCombatAttrs.hp,
         maxHp: playerCombatAttrs.hp,
         atk: playerCombatAttrs.atk,
@@ -2934,7 +2934,7 @@ cmd.solve = (ctx, msg, argv) => {
 
     // 己方玩家战斗单位
     const player1Fighter = {
-      name: '你',
+      name: myName || '你',
       hp: playerCombatAttrs.hp,
       maxHp: playerCombatAttrs.hp,
       atk: playerCombatAttrs.atk,
@@ -3028,8 +3028,8 @@ cmd.solve = (ctx, msg, argv) => {
       const result = Battle.run(pet1Copy, pet2, player1Fighter, player2Fighter);
       // 显示格式：【双人PVP】我的宠物 + 我 vs 对方宠物 + 对方昵称
       const vsTitle = player2Fighter
-        ? `【双人PVP】${pet1.name} + 你 vs ${pet2.name} + ${targetName}`
-        : `【双人PVP】${pet1.name} + 你 vs ${pet2.name}`;
+        ? `【双人PVP】${pet1.name} + ${myName || '你'} vs ${pet2.name} + ${targetName}`
+        : `【双人PVP】${pet1.name} + ${myName || '你'} vs ${pet2.name}`;
       const logs = [vsTitle];
 
       // 日志截断：按回合截断，确保回合完整性
@@ -4012,7 +4012,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.6.24',
+  version: '3.6.25',
   ext,
 
   DB: {
