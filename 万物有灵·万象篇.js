@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.3
+// @version     3.1.16
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.4');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.16');
   seal.ext.register(ext);
 }
 
@@ -46,6 +46,13 @@ const TaskNotifier = {
   // 检查并通知已完成的任务
   checkAndNotify(main) {
     const now = Date.now();
+
+    // 清理过期的用户上下文（超过1小时未活动）
+    for (const uid of Object.keys(this.userContexts)) {
+      if (now - (this.userContexts[uid].lastCheck || 0) > 3600000) {
+        delete this.userContexts[uid];
+      }
+    }
 
     for (const uid of Object.keys(this.userContexts)) {
       try {
@@ -398,12 +405,19 @@ function cleanExpired() {
   Object.keys(marketData.listings).forEach(id => {
     if (marketData.listings[id].expire < now) {
       const item = marketData.listings[id];
+      delete marketData.listings[id];
       const main = getMain();
       if (main) {
-        const sellerData = main.DB.get(item.sellerId);
-        if (sellerData.storage.length < 15) { sellerData.storage.push(item.pet); main.DB.save(item.sellerId, sellerData); }
+        try {
+          const sellerData = main.DB.get(item.sellerId);
+          if (sellerData && sellerData.storage && sellerData.storage.length < 15) {
+            sellerData.storage.push(item.pet);
+            main.DB.save(item.sellerId, sellerData);
+          }
+        } catch (e) {
+          console.log('[万物有灵-万象篇] 归还过期宠物失败:', e);
+        }
       }
-      delete marketData.listings[id];
     }
   });
   saveMarket();
@@ -415,7 +429,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.4', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.16', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -440,29 +454,45 @@ function init() {
     if (pet.rarity === '传说') { unlockAchievement(uid, 'first_legend'); if (achData.stats.captureCount === 1) unlockAchievement(uid, 'lucky'); }
     if (pet.rarity === '超稀有') unlockAchievement(uid, 'first_super');
     DB.achievement.save(uid, achData);
-  }, 'wanwu-all', '图鉴');
+  }, 'wanwu-all', '万象篇');
 
   main.on('battle', ({ uid, winner, draw, isNPC, targetUid }) => {
-    if (draw || !winner) return;
+    if (draw) return;
+    
     const data = DB.achievement.get(uid);
-    data.stats.battleWins++;
-    if (!isNPC) data.stats.pvpWins++;
-    DB.achievement.save(uid, data);
-    if (data.stats.battleWins >= 10) unlockAchievement(uid, 'battle_win_10');
-    if (data.stats.battleWins >= 50) unlockAchievement(uid, 'battle_win_50');
-    if (data.stats.battleWins >= 100) unlockAchievement(uid, 'battle_win_100');
-    if (!isNPC && data.stats.pvpWins === 1) unlockAchievement(uid, 'pvp_first_win');
-    if (!isNPC && data.stats.pvpWins >= 10) unlockAchievement(uid, 'pvp_win_10');
+    // winner是布尔值：true表示当前玩家获胜
+    if (winner) {
+      data.stats.battleWins++;
+      if (!isNPC) data.stats.pvpWins++;
+      DB.achievement.save(uid, data);
+      if (data.stats.battleWins >= 10) unlockAchievement(uid, 'battle_win_10');
+      if (data.stats.battleWins >= 50) unlockAchievement(uid, 'battle_win_50');
+      if (data.stats.battleWins >= 100) unlockAchievement(uid, 'battle_win_100');
+      if (!isNPC && data.stats.pvpWins === 1) unlockAchievement(uid, 'pvp_first_win');
+      if (!isNPC && data.stats.pvpWins >= 10) unlockAchievement(uid, 'pvp_win_10');
+    }
+    
     // 竞技场积分
     if (!isNPC && targetUid) {
       const extData = DB.ext.get(uid);
       const targetData = DB.ext.get(targetUid);
-      const change = winner ? Math.floor(Math.random() * 31) + 20 : Math.floor(Math.random() * 21) + 10;
-      if (winner) { extData.arenaRank = (extData.arenaRank || 1000) + change; extData.arenaWins++; targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - change); }
-      else { extData.arenaRank = Math.max(0, (extData.arenaRank || 1000) - change); targetData.arenaRank = (targetData.arenaRank || 1000) + change; }
-      DB.ext.save(uid, extData); DB.ext.save(targetUid, targetData);
+      if (extData && targetData) {
+        // 积分变化基于双方分差计算，更公平
+        const baseChange = 25;
+        const ratingDiff = (extData.arenaRank || 1000) - (targetData.arenaRank || 1000);
+        const change = Math.max(10, Math.min(50, baseChange + Math.floor(ratingDiff / 20)));
+        if (winner) {
+          extData.arenaRank = (extData.arenaRank || 1000) + change;
+          extData.arenaWins++;
+          targetData.arenaRank = Math.max(0, (targetData.arenaRank || 1000) - change);
+        } else {
+          extData.arenaRank = Math.max(0, (extData.arenaRank || 1000) - change);
+          targetData.arenaRank = (targetData.arenaRank || 1000) + change;
+        }
+        DB.ext.save(uid, extData); DB.ext.save(targetUid, targetData);
+      }
     }
-  }, 'wanwu-all', '图鉴');
+  }, 'wanwu-all', '万象篇');
 
   main.on('feed', ({ uid, pet }) => {
     if (!pet) return;
@@ -471,29 +501,29 @@ function init() {
     else data.stats.feedStreak = { petId: pet.id, count: 1 };
     if (data.stats.feedStreak.count >= 10) unlockAchievement(uid, 'feeder');
     DB.achievement.save(uid, data);
-  }, 'wanwu-all', '图鉴');
+  }, 'wanwu-all', '万象篇');
 
-  main.on('levelup', ({ uid, newLevel }) => { if (newLevel >= 50) unlockAchievement(uid, 'level_max'); }, 'wanwu-all', '图鉴');
-  main.on('evolve', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all', '图鉴');
-  main.on('breed', ({ uid }) => unlockAchievement(uid, 'breed_first'), 'wanwu-all', '图鉴');
+  main.on('levelup', ({ uid, newLevel }) => { if (newLevel >= 50) unlockAchievement(uid, 'level_max'); }, 'wanwu-all', '万象篇');
+  main.on('evolve', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all', '万象篇');
+  main.on('breed', ({ uid }) => unlockAchievement(uid, 'breed_first'), 'wanwu-all', '万象篇');
 
   // ========== 图鉴 ==========
-  main.registerCommand('图鉴', (ctx, msg, p) => {
+  main.registerCommand('捕捉统计', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
     const entries = Object.entries(data.pokedex || {});
-    if (!entries.length) return p.reply('【宠物图鉴】\n尚未发现任何宠物种族');
-    const lines = ['【宠物图鉴】', `已发现: ${entries.length}种`];
+    if (!entries.length) return p.reply('【捕捉统计】\n尚未捕捉任何宠物');
+    const lines = ['【捕捉统计】', `已捕捉: ${entries.length}种`];
     entries.sort((a, b) => b[1].count - a[1].count).slice(0, 15).forEach(([s, i]) => lines.push(`${s}: ${i.count}次`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看图鉴', 'wanwu-all', '图鉴');
+  }, '查看捕捉统计', 'wanwu-all', '万象篇');
 
   // ========== 竞技场 ==========
   main.registerCommand('竞技场', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
     p.reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看竞技场', 'wanwu-all', '图鉴');
+  }, '查看竞技场', 'wanwu-all', '万象篇');
 
   // ========== 成就 ==========
   main.registerCommand('成就', (ctx, msg, p) => {
@@ -504,7 +534,7 @@ function init() {
     unlocked.slice(0, 10).forEach(([id]) => { const ach = ACHIEVEMENTS[id]; if (ach) lines.push(`${ach.mark} ${ach.name}`); });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看成就', 'wanwu-all', '图鉴');
+  }, '查看成就', 'wanwu-all', '万象篇');
 
   main.registerCommand('成就列表', (ctx, msg, p) => {
     const data = DB.achievement.get(p.uid);
@@ -512,21 +542,21 @@ function init() {
     Object.entries(ACHIEVEMENTS).forEach(([id, ach]) => lines.push(`${data.unlocked[id] ? '[v]' : '[ ]'} ${ach.name} - ${ach.desc}`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看所有成就', 'wanwu-all', '图鉴');
+  }, '查看所有成就', 'wanwu-all', '万象篇');
 
   // ========== 装备商店 ==========
-  main.registerCommand('装备商店', (ctx, msg, p) => {
+  main.registerCommand('宠物装备商店', (ctx, msg, p) => {
     const mainData = main.DB.get(p.uid);
-    const lines = ['【装备商店】', `金币: ${mainData.money}`];
+    const lines = ['【宠物装备商店】', `金币: ${mainData.money}`];
     Object.entries(EQUIPS).forEach(([name, eq]) => {
       const e = []; if (eq.atk) e.push(`攻+${eq.atk}`); if (eq.def) e.push(`防+${eq.def}`); if (eq.hp) e.push(`血+${eq.hp}`); if (eq.spd) e.push(`速+${eq.spd}`);
       lines.push(`[${EQUIP_TYPES[eq.type].name}] ${name}: ${eq.cost}金 (${e.join(',')})`);
     });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看装备商店', 'wanwu-all', '图鉴');
+  }, '查看宠物装备商店', 'wanwu-all', '万象篇');
 
-  main.registerCommand('购买装备', (ctx, msg, p) => {
+  main.registerCommand('购买宠物装备', (ctx, msg, p) => {
     const name = p.p1; if (!name) return p.reply('请指定装备名称');
     const eq = EQUIPS[name]; if (!eq) return p.reply('未知装备');
     const mainData = main.DB.get(p.uid);
@@ -535,57 +565,88 @@ function init() {
     const data = DB.equip.get(p.uid); data.bag[name] = (data.bag[name] || 0) + 1; DB.equip.save(p.uid, data);
     p.reply(`购买成功！获得 ${name}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '购买装备', 'wanwu-all', '图鉴');
+  }, '购买宠物装备', 'wanwu-all', '万象篇');
 
-  main.registerCommand('装备背包', (ctx, msg, p) => {
+  main.registerCommand('宠物装备背包', (ctx, msg, p) => {
     const data = DB.equip.get(p.uid);
     const items = Object.entries(data.bag).filter(([, c]) => c > 0);
     if (!items.length) return p.reply('【装备背包】\n空');
     const lines = ['【装备背包】']; items.forEach(([n, c]) => lines.push(`${n} x${c}`));
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看装备背包', 'wanwu-all', '图鉴');
+  }, '查看宠物装备背包', 'wanwu-all', '万象篇');
 
-  main.registerCommand('装备', (ctx, msg, p) => {
+  main.registerCommand('穿戴装备', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), equipName = p.p2;
-    if (!petIdx || !equipName) return p.reply('用法: .宠物 装备 <编号> <装备名>');
+    if (!petIdx || !equipName) return p.reply('用法: .宠物 穿戴装备 <编号> <装备名>');
     const mainData = main.DB.get(p.uid);
     const pet = mainData.pets[petIdx - 1]; if (!pet) return p.reply('宠物不存在');
     const data = DB.equip.get(p.uid); if (!data.bag[equipName]) return p.reply('没有这件装备');
     const eq = EQUIPS[equipName]; if (!eq) return p.reply('未知装备');
     const slot = EQUIP_TYPES[eq.type].slot;
     const equipped = data.equipped[pet.id] || {};
-    if (equipped[slot]) data.bag[equipped[slot]] = (data.bag[equipped[slot]] || 0) + 1;
-    equipped[slot] = equipName; data.equipped[pet.id] = equipped; data.bag[equipName]--;
+    
+    // 卸下旧装备：返还背包并扣除属性
+    if (equipped[slot]) {
+      const oldName = equipped[slot];
+      const oldEq = EQUIPS[oldName];
+      if (oldEq) {
+        if (oldEq.atk) pet.atk = Math.max(1, (pet.atk || 10) - oldEq.atk);
+        if (oldEq.def) pet.def = Math.max(1, (pet.def || 10) - oldEq.def);
+        if (oldEq.hp) { pet.maxHp = Math.max(10, (pet.maxHp || 50) - oldEq.hp); pet.hp = Math.min(pet.hp, pet.maxHp); }
+        if (oldEq.spd) pet.spd = Math.max(1, (pet.spd || 100) - oldEq.spd);
+      }
+      data.bag[oldName] = (data.bag[oldName] || 0) + 1;
+    }
+    
+    // 穿上新装备：扣除背包并应用属性
+    equipped[slot] = equipName;
+    data.equipped[pet.id] = equipped;
+    data.bag[equipName]--;
+    if (data.bag[equipName] <= 0) delete data.bag[equipName];
+    if (eq.atk) pet.atk = (pet.atk || 10) + eq.atk;
+    if (eq.def) pet.def = (pet.def || 10) + eq.def;
+    if (eq.hp) { pet.maxHp = (pet.maxHp || 50) + eq.hp; pet.hp = Math.min(pet.hp + eq.hp, pet.maxHp); }
+    if (eq.spd) pet.spd = (pet.spd || 100) + eq.spd;
+    
     DB.equip.save(p.uid, data);
-    p.reply(`${pet.name} 穿戴了 ${equipName}`);
+    main.DB.save(p.uid, mainData);
+    p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '穿戴装备', 'wanwu-all', '图鉴');
+  }, '宠物穿戴装备', 'wanwu-all', '万象篇');
 
-  // ========== 技能书 ==========
-  main.registerCommand('技能书', (ctx, msg, p) => {
+  // ========== 宠物技能书 ==========
+  main.registerCommand('宠物技能书', (ctx, msg, p) => {
     const data = DB.skillbook.get(p.uid);
     const items = Object.entries(data.books).filter(([, c]) => c > 0);
     if (!items.length) return p.reply('【技能书】\n暂无\n探险打工有机会获得');
     const lines = ['【技能书】']; items.forEach(([n, c]) => { const b = SKILL_BOOKS[n]; lines.push(`${n} x${c} -> ${b.skill}`); });
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看技能书', 'wanwu-all', '图鉴');
+  }, '查看宠物技能书', 'wanwu-all', '万象篇');
 
-  main.registerCommand('学习技能', (ctx, msg, p) => {
+  main.registerCommand('宠物学习技能', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), bookName = p.p2;
-    if (!petIdx || !bookName) return p.reply('用法: .宠物 学习技能 <编号> <技能书名>');
+    if (!petIdx || !bookName) return p.reply('用法: .宠物 宠物学习技能 <编号> <技能书名>');
     const mainData = main.DB.get(p.uid);
     const pet = mainData.pets[petIdx - 1]; if (!pet) return p.reply('宠物不存在');
-    const data = DB.skillbook.get(p.uid); if (!data.books[bookName]) return p.reply('没有这本技能书');
+    const data = DB.skillbook.get(p.uid);
+    if (!data.books[bookName] || data.books[bookName] <= 0) return p.reply('没有这本技能书');
     const book = SKILL_BOOKS[bookName]; if (!book) return p.reply('未知技能书');
-    if (book.element && pet.element !== book.element) return p.reply('属性不匹配');
-    if (pet.skills.includes(book.skill)) return p.reply('已学会');
-    pet.skills.push(book.skill); data.books[bookName]--;
+    // 属性匹配检查：技能书有属性要求时，宠物必须有对应属性
+    if (book.element && pet.element !== book.element) {
+      return p.reply(`属性不匹配：${bookName}需要${book.element}属性宠物，当前宠物是${pet.element || '无属性'}`);
+    }
+    if (pet.skills && pet.skills.includes(book.skill)) return p.reply('已学会该技能');
+    pet.skills = pet.skills || [];
+    if (pet.skills.length >= 4) return p.reply('技能已满(最多4个)，请先遗忘一个技能');
+    pet.skills.push(book.skill);
+    data.books[bookName]--;
+    if (data.books[bookName] <= 0) delete data.books[bookName];
     main.DB.save(p.uid, mainData); DB.skillbook.save(p.uid, data);
     p.reply(`${pet.name} 学会了 ${book.skill}！`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '使用技能书', 'wanwu-all', '图鉴');
+  }, '宠物学习技能书', 'wanwu-all', '万象篇');
 
   // ========== 市场 ==========
   main.registerCommand('市场', (ctx, msg, p) => {
@@ -600,7 +661,7 @@ function init() {
     lines.push('.宠物 购买宠物 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看市场', 'wanwu-all', '图鉴');
+  }, '查看市场', 'wanwu-all', '万象篇');
 
   main.registerCommand('挂售', (ctx, msg, p) => {
     const petNum = parseInt(p.p1), price = parseInt(p.p2);
@@ -622,11 +683,11 @@ function init() {
     }
     main.DB.save(p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    marketData.listings[listingId] = { pet, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
+    marketData.listings[listingId] = { pet: JSON.parse(JSON.stringify(pet)), price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
     saveMarket();
     p.reply(`已挂售 ${pet.name} ${price}金 #${listingId.slice(-4)}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '挂售宠物', 'wanwu-all', '图鉴');
+  }, '挂售宠物', 'wanwu-all', '万象篇');
 
   main.registerCommand('购买宠物', (ctx, msg, p) => {
     const shortId = p.p1; if (!shortId) return p.reply('用法: .宠物 购买宠物 <编号>');
@@ -637,16 +698,28 @@ function init() {
     if (item.sellerId === p.uid) return p.reply('不能买自己的');
     const mainData = main.DB.get(p.uid);
     if (mainData.money < item.price) return p.reply(`金币不足 ${item.price}`);
+    
+    // 检查宠物容量
+    const maxPets = main.Config?.maxPets || 3;
+    const maxStorage = mainData.maxStorage || 15;
+    mainData.storage = mainData.storage || [];
+    if (mainData.pets.length >= maxPets && mainData.storage.length >= maxStorage) {
+      return p.reply(`宠物和仓库已满(${maxPets + maxStorage}只上限)，无法购买`);
+    }
+    
     mainData.money -= item.price;
-    if (mainData.pets.length < 3) mainData.pets.push(item.pet); else mainData.storage.push(item.pet);
+    if (mainData.pets.length < maxPets) mainData.pets.push(item.pet);
+    else mainData.storage.push(item.pet);
     main.DB.save(p.uid, mainData);
     const sellerData = main.DB.get(item.sellerId);
-    sellerData.money = (sellerData.money || 0) + Math.floor(item.price * 0.95);
-    main.DB.save(item.sellerId, sellerData);
+    if (sellerData) {
+      sellerData.money = (sellerData.money || 0) + Math.floor(item.price * 0.95);
+      main.DB.save(item.sellerId, sellerData);
+    }
     delete marketData.listings[listingId]; saveMarket();
     p.reply(`购买成功！获得 ${item.pet.name}`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '购买宠物', 'wanwu-all', '图鉴');
+  }, '购买宠物', 'wanwu-all', '万象篇');
 
   // ========== 生灵保护机构 ==========
   main.registerCommand('机构', (ctx, msg, p) => {
@@ -681,7 +754,7 @@ function init() {
     lines.push('\n.宠物 领养 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看生灵保护机构', 'wanwu-all', '图鉴');
+  }, '查看生灵保护机构', 'wanwu-all', '万象篇');
 
   main.registerCommand('领养', (ctx, msg, p) => {
     const shortId = p.p1;
@@ -711,7 +784,7 @@ function init() {
 
     p.reply(`【领养成功】\n获得 ${item.pet.name}\n花费 ${item.price} 金币`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '从生灵保护机构领养', 'wanwu-all', '图鉴');
+  }, '从生灵保护机构领养', 'wanwu-all', '万象篇');
 
   // ========== 季节 ==========
   main.registerCommand('季节', (ctx, msg, p) => {
@@ -722,7 +795,7 @@ function init() {
     if (festival) lines.push(`[活动] ${festival.name}进行中`);
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看季节', 'wanwu-all', '图鉴');
+  }, '查看季节', 'wanwu-all', '万象篇');
 
   // ========== 探险系统 ==========
   main.registerCommand('探险', (ctx, msg, p) => {
@@ -747,7 +820,7 @@ function init() {
     TaskNotifier.register(p.uid, ctx, msg);
     p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${EXT_CONFIG.exploreTime}分钟后返回，完成后将自动通知`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '派宠物探险', 'wanwu-all', '探险');
+  }, '派宠物探险', 'wanwu-all', '万象篇');
 
   main.registerCommand('探险状态', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
@@ -756,7 +829,8 @@ function init() {
     let changed = false;
 
     for (const e of (data.explore || [])) {
-      if (e.endTime <= now) {
+      // 只处理已完成且未通知的任务
+      if (e.endTime <= now && !e.notified) {
         const area = EXPLORE_AREAS.find(a => a.name === e.area);
         if (area) {
           const found = findPetById(p, e.petId);
@@ -771,19 +845,20 @@ function init() {
             p.data.food[food] = (p.data.food[food] || 0) + 1;
             r += `获得 ${food} x1`;
             lines.push(r);
+            e.notified = true;
             changed = true;
           }
         }
-      } else {
+      } else if (e.endTime > now) {
         const remain = Math.ceil((e.endTime - now) / 60000);
         lines.push(`${e.area}: 剩余${remain}分钟`);
       }
     }
-    if (changed) { data.explore = (data.explore || []).filter(e => e.endTime > now); DB.ext.save(p.uid, data); p.save(); }
+    if (changed) { data.explore = (data.explore || []).filter(e => e.endTime > now || !e.notified); DB.ext.save(p.uid, data); p.save(); }
     if (lines.length === 1) lines.push('没有进行中的探险');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看探险状态', 'wanwu-all', '探险');
+  }, '查看探险状态', 'wanwu-all', '万象篇');
 
   // ========== 打工系统 ==========
   main.registerCommand('打工', (ctx, msg, p) => {
@@ -808,7 +883,7 @@ function init() {
     TaskNotifier.register(p.uid, ctx, msg);
     p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${EXT_CONFIG.workTime}分钟后完成，完成后将自动通知`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '派宠物打工', 'wanwu-all', '探险');
+  }, '派宠物打工', 'wanwu-all', '万象篇');
 
   main.registerCommand('打工状态', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
@@ -817,7 +892,8 @@ function init() {
     let changed = false;
 
     for (const w of (data.work || [])) {
-      if (w.endTime <= now) {
+      // 只处理已完成且未通知的任务
+      if (w.endTime <= now && !w.notified) {
         const work = WORK_TYPES.find(wt => wt.name === w.work);
         if (work) {
           const found = findPetById(p, w.petId);
@@ -826,19 +902,20 @@ function init() {
             const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
             p.data.money += gold;
             lines.push(`${pet.name} 完成${work.name}，获得 ${gold} 金币`);
+            w.notified = true;
             changed = true;
           }
         }
-      } else {
+      } else if (w.endTime > now) {
         const remain = Math.ceil((w.endTime - now) / 60000);
         lines.push(`${w.work}: 剩余${remain}分钟`);
       }
     }
-    if (changed) { data.work = (data.work || []).filter(w => w.endTime > now); DB.ext.save(p.uid, data); p.save(); }
+    if (changed) { data.work = (data.work || []).filter(w => w.endTime > now || !w.notified); DB.ext.save(p.uid, data); p.save(); }
     if (lines.length === 1) lines.push('没有进行中的打工');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看打工状态', 'wanwu-all', '探险');
+  }, '查看打工状态', 'wanwu-all', '万象篇');
 
   console.log('[万物有灵-扩展合集] Mod已启用，任务通知系统运行中');
 }
