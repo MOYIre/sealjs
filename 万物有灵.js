@@ -1861,6 +1861,37 @@ const SKILLS = {
   '灵击': { power: 35, acc: 95, cost: 8, desc: '凝聚灵气发出攻击' },
   '灵刃': { power: 45, acc: 90, cost: 12, desc: '凝聚灵刃斩击敌人' },
   '吸血': { power: 50, acc: 90, cost: 15, effect: 'lifesteal', lifestealRate: 0.5, desc: '攻击并回复50%伤害' },
+
+  // 新增技能 - 连击/状态技能
+  '连击': { power: 40, acc: 90, cost: 12, desc: '连续攻击2次', hits: 2 },
+  '三连斩': { power: 35, acc: 85, cost: 18, desc: '连续攻击3次', hits: 3 },
+  '毒雾': { power: 30, acc: 95, cost: 15, effect: 'poison', desc: '附加中毒效果' },
+  '麻痹爪': { power: 50, acc: 85, cost: 12, effect: 'paralyze', desc: '30%麻痹敌人' },
+  '冰冻吐息': { power: 70, acc: 85, cost: 20, element: '水', effect: 'freeze', desc: '20%冻结敌人' },
+  '烈焰风暴': { power: 90, acc: 80, cost: 28, element: '火', desc: '火属性AOE' },
+  '雷霆万钧': { power: 100, acc: 75, cost: 35, element: '电', desc: '无视防御20%' },
+  '治愈之光': { power: 0, acc: 100, cost: 25, effect: 'heal', healRate: 0.3, desc: '恢复30%生命' },
+  '铁壁': { power: 0, acc: 100, cost: 10, effect: 'defend', desc: '防御+50%持续3回合' },
+  '狂暴': { power: 0, acc: 100, cost: 15, effect: 'berserk', desc: '攻击+30%，防御-20%' },
+
+  // 终极技能
+  '究极爆破': { power: 150, acc: 65, cost: 50, desc: '究极攻击技能' },
+  '灭世龙息': { power: 180, acc: 60, cost: 60, element: '火', desc: '龙族专属，无视防御' },
+  '凤凰涅槃': { power: 0, acc: 100, cost: 0, effect: 'revive', desc: '死亡时复活' },
+  '九尾魅惑': { power: 80, acc: 90, cost: 30, element: '超能', effect: 'charm', desc: '混乱敌人' },
+  '白虎之威': { power: 100, acc: 85, cost: 35, desc: '白虎专属，攻击提升' },
+  '玄武之盾': { power: 0, acc: 100, cost: 20, effect: 'shield', desc: '获得护盾' },
+  '朱雀之焰': { power: 120, acc: 80, cost: 40, element: '火', desc: '朱雀专属，灼烧敌人' },
+  '青龙之怒': { power: 130, acc: 75, cost: 45, element: '电', desc: '青龙专属，雷击敌人' },
+
+  // 神话技能
+  '神龙降临': { power: 200, acc: 70, cost: 80, desc: '神龙专属终极技' },
+  '不死神凤': { power: 0, acc: 100, cost: 0, effect: 'immortal', desc: '不死之身' },
+  '九首神威': { power: 180, acc: 75, cost: 70, desc: '九头蛇专属，九头齐攻' },
+  '泰坦之力': { power: 160, acc: 80, cost: 55, desc: '石像鬼专属，巨力一击' },
+  '生命之源': { power: 0, acc: 100, cost: 40, effect: 'heal', healRate: 0.5, desc: '恢复50%生命' },
+  '海神之怒': { power: 140, acc: 80, cost: 45, element: '水', desc: '海神专属，海啸攻击' },
+  '神座降临': { power: 220, acc: 65, cost: 90, element: '超能', desc: '天使专属，神圣审判' },
 };
 
 // 元素对应的初始技能
@@ -2226,6 +2257,39 @@ const PetFactory = {
       parents: null,
     };
 
+    // 根据稀有度添加额外技能
+    const skillPool = Object.keys(SKILLS);
+    const addRandomSkills = (count) => {
+      for (let i = 0; i < count; i++) {
+        const newSkill = skillPool[Math.floor(Math.random() * skillPool.length)];
+        if (!pet.skills.includes(newSkill) && pet.skills.length < 4) {
+          pet.skills.push(newSkill);
+        }
+      }
+    };
+
+    switch (rarity) {
+      case '普通':
+        addRandomSkills(Math.random() < 0.3 ? 1 : 0); // 30%概率获得1个额外技能
+        break;
+      case '稀有':
+        addRandomSkills(Math.random() < 0.5 ? 1 : 0); // 50%概率获得1个额外技能
+        break;
+      case '超稀有':
+        addRandomSkills(1 + (Math.random() < 0.3 ? 1 : 0)); // 1-2个额外技能
+        break;
+      case '传说':
+        addRandomSkills(2 + (Math.random() < 0.5 ? 1 : 0)); // 2-3个额外技能
+        break;
+      case '神话':
+        addRandomSkills(2 + (Math.random() < 0.5 ? 1 : 0)); // 2-3个额外技能
+        // 神话必定获得一个神话技能
+        const mythSkills = ['神龙降临', '不死神凤', '九首神威', '泰坦之力', '生命之源', '海神之怒', '神座降临'];
+        const mythSkill = mythSkills[Math.floor(Math.random() * mythSkills.length)];
+        if (!pet.skills.includes(mythSkill)) pet.skills.push(mythSkill);
+        break;
+    }
+
     // 自然变异系统（0.5%概率触发变异）
     if (Math.random() < 0.005) {
       pet.rarity = '异变';
@@ -2443,7 +2507,165 @@ const Battle = {
 
       // 普通攻击
       let dmg = this.calcDmg(a.atk || 10, d.def || 10, skill, a.level || 1, a.element, d.element, a.species, d.species, a.playerBuffs);
-      
+
+      // 物种特性动作系统
+      if (a.species) {
+        switch (a.species) {
+          case '猫':
+          case '猫':
+            // 猫科：10%概率闪避攻击并反击
+            if (Math.random() < 0.1) {
+              dmg = Math.floor(dmg * 1.3);
+              logs.push(`[猫科特性] ${a.name} 灵巧反击！伤害+30%`);
+            }
+            break;
+          case '犬':
+          case '犬':
+            // 犬科：血量低于50%时攻击+20%
+            if (a.hp / a.maxHp < 0.5) {
+              dmg = Math.floor(dmg * 1.2);
+              logs.push(`[犬科特性] ${a.name} 激怒！攻击+20%`);
+            }
+            break;
+          case '龙':
+          case '龙':
+            // 龙族：对所有元素技能伤害+15%
+            if (sk.element) {
+              dmg = Math.floor(dmg * 1.15);
+              logs.push(`[龙族特性] ${a.name} 龙威！元素伤害+15%`);
+            }
+            break;
+          case '蛇':
+          case '蛇':
+            // 蛇类：15%概率使敌人中毒
+            if (Math.random() < 0.15) {
+              d.poisoned = 3; // 中毒3回合
+              logs.push(`[蛇类特性] ${a.name} 注入毒液！敌人中毒3回合`);
+            }
+            break;
+          case '鸟':
+          case '鸟':
+            // 鸟类：速度+15%，闪避率+10%
+            if (Math.random() < 0.1) {
+              logs.push(`[鸟类特性] ${a.name} 灵巧闪避！`);
+              return; // 闪避本次攻击
+            }
+            break;
+          case '龟':
+          case '龟':
+            // 龟类：防御+25%，被攻击时有20%概率反弹10%伤害
+            if (Math.random() < 0.2) {
+              const reflectDmg = Math.floor(dmg * 0.1);
+              d.hp = Math.max(0, d.hp - reflectDmg);
+              logs.push(`[龟类特性] ${a.name} 反弹${reflectDmg}伤害！`);
+            }
+            break;
+          case '熊':
+          case '熊':
+            // 熊类：血量低于30%时攻击+40%
+            if (a.hp / a.maxHp < 0.3) {
+              dmg = Math.floor(dmg * 1.4);
+              logs.push(`[熊类特性] ${a.name} 狂暴！攻击+40%`);
+            }
+            break;
+          case '狐':
+          case '狐':
+            // 狐狸：15%概率使敌人混乱
+            if (Math.random() < 0.15) {
+              d.confused = 2;
+              logs.push(`[狐类特性] ${a.name} 魅惑！敌人混乱2回合`);
+            }
+            break;
+          case '狼':
+          case '狼':
+            // 狼类：对血量低于50%的敌人伤害+25%
+            if (d.hp / d.maxHp < 0.5) {
+              dmg = Math.floor(dmg * 1.25);
+              logs.push(`[狼类特性] ${a.name} 狩猎本能！伤害+25%`);
+            }
+            break;
+          case '虎':
+          case '虎':
+            // 虎类：暴击率+15%，暴击伤害+50%
+            if (Math.random() < 0.15) {
+              dmg = Math.floor(dmg * 2);
+              logs.push(`[虎类特性] ${a.name} 猛虎下山！暴击！`);
+            }
+            break;
+          case '狮':
+          case '狮':
+            // 狮类：首击伤害+30%
+            if (turn === 1) {
+              dmg = Math.floor(dmg * 1.3);
+              logs.push(`[狮类特性] ${a.name} 狮王威压！首击+30%`);
+            }
+            break;
+          case '鼠':
+          case '鼠':
+            // 鼠类：20%概率偷取敌人能量
+            if (Math.random() < 0.2 && d.energy) {
+              const steal = Math.min(20, d.energy);
+              d.energy -= steal;
+              a.energy = Math.min(a.maxEnergy, a.energy + steal);
+              logs.push(`[鼠类特性] ${a.name} 偷取${steal}能量！`);
+            }
+            break;
+          case '兔':
+          case '兔':
+            // 兔类：每回合有15%概率获得额外行动
+            if (Math.random() < 0.15) {
+              a.extraAction = true;
+              logs.push(`[兔类特性] ${a.name} 疾速！获得额外行动机会`);
+            }
+            break;
+          case '蛙':
+          case '蛙':
+            // 蛙类：水属性技能伤害+20%，有20%概率使敌人减速
+            if (sk.element === '水') {
+              dmg = Math.floor(dmg * 1.2);
+              logs.push(`[蛙类特性] ${a.name} 水之亲和！伤害+20%`);
+            }
+            if (Math.random() < 0.2) {
+              d.slowed = 2;
+              logs.push(`[蛙类特性] 敌人被减速！`);
+            }
+            break;
+          case '蜂':
+          case '蜂':
+            // 蜂类：连续攻击时伤害递增
+            if (a.lastAttacked === d.name) {
+              a.beeCombo = (a.beeCombo || 0) + 1;
+              dmg = Math.floor(dmg * (1 + a.beeCombo * 0.1));
+              logs.push(`[蜂类特性] 连击${a.beeCombo}次！伤害+${a.beeCombo * 10}%`);
+            }
+            break;
+          case '蜘蛛':
+          case '蜘蛛':
+            // 蜘蛛：10%概率使敌人无法行动1回合
+            if (Math.random() < 0.1) {
+              d.webbed = 1;
+              logs.push(`[蜘蛛特性] ${a.name} 蛛网束缚！敌人无法行动1回合`);
+            }
+            break;
+          case '蝙蝠':
+          case '蝙蝠':
+            // 蝙蝠：夜间战斗伤害+20%，吸血效果+30%
+            if (sk.effect === 'lifesteal') {
+              dmg = Math.floor(dmg * 1.3);
+              logs.push(`[蝙蝠特性] ${a.name} 吸血强化！`);
+            }
+            break;
+          case '蝎':
+          case '蝎':
+            // 蝎类：攻击附带毒素，每回合造成持续伤害
+            if (!d.scorpioPoison) {
+              d.scorpioPoison = 3;
+              logs.push(`[蝎类特性] ${a.name} 注入蝎毒！持续伤害3回合`);
+            }
+            break;
+        }
+      }
+
       // 蓄力加成
       if (a.isCharging) {
         dmg = Math.floor(dmg * 1.5);
@@ -2457,6 +2679,13 @@ const Battle = {
       }
       
       d.hp = Math.max(0, (d.hp || 0) - dmg);
+
+      // 神话护盾机制
+      if (d.mythicShield && d.mythicShield > 0 && d.hp <= 0) {
+        d.mythicShield--;
+        d.hp = Math.floor(d.maxHp * 0.3); // 恢复30%生命
+        logs.push(`【神话护盾】${d.name} 抵挡了致命一击！护盾剩余 ${d.mythicShield} 次`);
+      }
 
       // 生命链接：每回合恢复生命
       if (a.playerBuffs?.hpRegen && a.maxHp) {
@@ -2492,6 +2721,25 @@ const Battle = {
     const logs = [];
     try {
       let turn = 1;
+
+      // Boss/传说/神话特殊机制
+      const isBoss = p2.rarity === '传说' || p2.rarity === '神话' || p2.isBoss;
+      const isMyth = p2.rarity === '神话';
+
+      // Boss增益
+      if (isBoss) {
+        p2.maxHp = Math.floor(p2.maxHp * 1.5);
+        p2.hp = p2.maxHp;
+        p2.atk = Math.floor(p2.atk * 1.3);
+        p2.def = Math.floor(p2.def * 1.2);
+        logs.push(`【Boss战】遭遇强力敌人 ${p2.name}！属性大幅提升！`);
+      }
+
+      // 神话级特殊机制
+      if (isMyth) {
+        p2.mythicShield = 3; // 神话护盾：可以抵挡3次致命攻击
+        logs.push(`【神话降临】${p2.name} 拥有不死护盾！`);
+      }
 
     // ATB行动条系统
     const ACTION_THRESHOLD = 100;
