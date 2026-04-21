@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     3.8.0
+// @version     3.8.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '3.8.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '3.8.1');
   seal.ext.register(ext);
 }
 
@@ -2998,6 +2998,10 @@ cmd.solve = (ctx, msg, argv) => {
         if (eventResult.energy && !isPlayerFight) fighter.energy = Math.min(fighter.maxEnergy, fighter.energy + eventResult.energy);
         if (eventResult.energyFull && !isPlayerFight) fighter.energy = fighter.maxEnergy;
         if (eventResult.damage && !isPlayerFight) fighter.hp = Math.max(0, fighter.hp - eventResult.damage);
+        // 应用好感度奖励
+        if (eventResult.affection && !isPlayerFight) {
+          fighter.affection = Math.min(100, (fighter.affection || 50) + eventResult.affection);
+        }
       }
 
       const result = Battle.run(fighter, wildPet, playerFighter);
@@ -3063,6 +3067,10 @@ cmd.solve = (ctx, msg, argv) => {
             let finalExp = expGain;
             if (data.player.skills?.includes('驯兽术')) finalExp = Math.floor(finalExp * 1.1);
             pet.exp = (pet.exp || 0) + finalExp;
+            // 战斗胜利增加好感度
+            const natureData = NATURES[pet.nature] || {};
+            const affectionGain = Math.floor((2 + Math.floor(Math.random() * 4)) * (natureData.affectionMod || 1));
+            pet.affection = Math.min(100, (pet.affection || 50) + affectionGain);
             const expNeed = pet.level * 100;
             if (pet.exp >= expNeed) {
               pet.exp -= expNeed;
@@ -3374,13 +3382,18 @@ cmd.solve = (ctx, msg, argv) => {
     pet.atk += f.atk;
     pet.def += f.def;
     pet.energy = Math.min(pet.maxEnergy, pet.energy + f.energy);
+    
+    // 喂食增加好感度
+    const natureData = NATURES[pet.nature] || {};
+    const affectionGain = Math.floor((5 + Math.floor(Math.random() * 6)) * (natureData.affectionMod || 1));
+    pet.affection = Math.min(100, (pet.affection || 50) + affectionGain);
 
     // 更新任务进度
     QuestManager.updateProgress(data, 'feed');
 
     save();
     WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f });
-    return reply(`喂食成功！${pet.name} 的属性提升了\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
+    return reply(`喂食成功！${pet.name} 的属性提升了\n好感度+${affectionGain}\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
   }
 
   if (action === '改名') {
@@ -4997,7 +5010,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '3.8.0',
+  version: '3.8.1',
   ext,
 
   DB: {
