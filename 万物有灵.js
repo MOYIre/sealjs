@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.4
+// @version     4.0.5
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.5');
   seal.ext.register(ext);
 }
 
@@ -2513,6 +2513,12 @@ const Battle = {
         return;
       }
 
+      // 鱼类特性：防御方有5%概率闪避攻击
+      if (d.species === '鱼' && Math.random() < 0.05) {
+        logs.push(`[鱼类特性] ${d.name} 灵巧闪避了攻击！`);
+        return;
+      }
+
       const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
       const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
       const sk = SKILLS[skill] || SKILLS['冲撞'];
@@ -2730,21 +2736,12 @@ const Battle = {
             }
             break;
           case '凤凰雏':
-            // 凤凰雏：火属性伤害+25%，死亡时有20%概率复活30%生命
+            // 凤凰雏：火属性伤害+25%（复活在防御方触发）
             if (sk.element === '火') dmg = Math.floor(dmg * 1.25);
-            if (!a.hasRevived && a.hp <= 0 && Math.random() < 0.2) {
-              a.hp = Math.floor((a.maxHp || 100) * 0.3);
-              a.hasRevived = true;
-              logs.push(`[凤凰雏特性] ${a.name} 涅槃重生！恢复30%生命`);
-            }
             break;
           case '石像鬼':
-            // 石像鬼：防御+20%，受到伤害有15%概率反弹20%
-            if (Math.random() < 0.15) {
-              const reflect = Math.floor(dmg * 0.2);
-              d.hp = Math.max(0, (d.hp || 0) - reflect);
-              logs.push(`[石像鬼特性] ${a.name} 石皮反弹${reflect}伤害`);
-            }
+            // 石像鬼：受到伤害减少10%（反弹在防御方触发）
+            dmg = Math.floor(dmg * 0.9);
             break;
           case '树人':
             // 树人：每回合恢复5%生命，草属性伤害+15%
@@ -2834,8 +2831,11 @@ const Battle = {
             }
             break;
           case '蟹':
-            // 蟹类：防御+25%，受到伤害减少10%
-            dmg = Math.floor(dmg * 0.9);
+            // 蟹类：受到伤害减少10%（在防御方触发）
+            break;
+          case '鱼':
+            // 鱼类：水属性伤害+15%，闪避率+5%
+            if (sk.element === '水') dmg = Math.floor(dmg * 1.15);
             break;
         }
       }
@@ -2848,7 +2848,18 @@ const Battle = {
         dmg = Math.floor(dmg * 1.5);
         a.isCharging = false;
       }
-      
+
+      // 蛇颈龙临时防御提升
+      if (d.tempDefBoost) {
+        dmg = Math.floor(dmg * 0.7);
+        logs.push(`[蛇颈龙特性] ${d.name} 深海守护！伤害-30%`);
+      }
+
+      // 蟹类特性：受到伤害减少10%
+      if (d.species === '蟹') {
+        dmg = Math.floor(dmg * 0.9);
+      }
+
       // 检查对方是否在防御
       if (d.isDefending) {
         dmg = Math.floor(dmg * 0.5);
@@ -2856,6 +2867,27 @@ const Battle = {
       }
       
       d.hp = Math.max(0, (d.hp || 0) - dmg);
+
+      // 防御方特性（被攻击时触发）
+      // 羊类特性：被攻击时有20%概率使攻击者减速
+      if (d.species === '羊' && Math.random() < 0.2) {
+        a.slowed = 2;
+        logs.push(`[羊类特性] ${d.name} 的反击！攻击者被减速2回合`);
+      }
+
+      // 石像鬼特性：被攻击时有15%概率反弹20%伤害
+      if (d.species === '石像鬼' && Math.random() < 0.15) {
+        const reflect = Math.floor(dmg * 0.2);
+        a.hp = Math.max(0, (a.hp || 0) - reflect);
+        logs.push(`[石像鬼特性] ${d.name} 石皮反弹${reflect}伤害！`);
+      }
+
+      // 凤凰雏特性：死亡时有20%概率复活30%生命
+      if (d.species === '凤凰雏' && !d.hasRevived && d.hp <= 0 && Math.random() < 0.2) {
+        d.hp = Math.floor((d.maxHp || 100) * 0.3);
+        d.hasRevived = true;
+        logs.push(`[凤凰雏特性] ${d.name} 涅槃重生！恢复30%生命`);
+      }
 
       // 神话护盾机制
       if (d.mythicShield && d.mythicShield > 0 && d.hp <= 0) {
@@ -3015,6 +3047,13 @@ const Battle = {
         attacker._turn = turn;
 
         // 处理状态效果
+        // 眩晕状态：无法行动
+        if (attacker.stunned && attacker.stunned > 0) {
+          logs.push(`[眩晕] ${attacker.name} 处于眩晕状态，无法行动！`);
+          attacker.stunned--;
+          continue;
+        }
+
         // 束缚状态：无法行动
         if (attacker.webbed && attacker.webbed > 0) {
           logs.push(`[束缚] ${attacker.name} 被蛛网束缚，无法行动！`);
@@ -5864,7 +5903,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.4',
+  version: '4.0.5',
   ext,
 
   DB: {
