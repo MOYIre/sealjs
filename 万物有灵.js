@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.2.8
+// @version     4.3.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1776702928
+// @timestamp   1776702930
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.2.8');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.0');
   seal.ext.register(ext);
 }
 
@@ -95,7 +95,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.2.8' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.2.9' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -139,7 +139,29 @@ const WebUIReporter = {
       const mod = await res.json();
       if (!mod || !mod.content) return { ok: false, error: '内容为空' };
 
+      // 安全检查：禁止危险操作
+      const dangerousPatterns = [
+        /eval\s*\(/,
+        /Function\s*\(/,
+        /require\s*\(/,
+        /import\s+/,
+        /process\s*\./,
+        /__proto__/,
+      ];
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(mod.content)) {
+          return { ok: false, error: '脚本包含不允许的代码模式' };
+        }
+      }
+
+      // 检查文件大小限制
+      if (mod.content.length > 65536) {
+        return { ok: false, error: '脚本文件过大' };
+      }
+
       if (mod.type === 'script') {
+        // 安全警告：远程代码执行有风险
+        console.log(`[WebUI Reporter] 警告: 正在执行远程脚本 "${mod.name}"，请确保来源可信`);
         const fn = new Function('WanwuYouling', 'SPECIES', 'SKILLS', 'ITEMS', 'CONFIG', mod.content);
         fn(
           typeof WanwuYouling !== 'undefined' ? WanwuYouling : null,
@@ -230,16 +252,15 @@ if (typeof globalThis !== 'undefined') {
 }
 
 // 从存储加载 WebUI 配置
-  try {
-    const savedConfig = ext.storageGet('webui_config');
-    if (savedConfig) {
-      const cfg = JSON.parse(savedConfig);
-      WebUIReporter.init(cfg);
-    }
-  } catch (e) {
-    console.log('[万物有灵] 加载 WebUI 配置失败:', e);
+try {
+  const savedConfig = ext.storageGet('webui_config');
+  if (savedConfig) {
+    const cfg = JSON.parse(savedConfig);
+    WebUIReporter.init(cfg);
   }
-})();
+} catch (e) {
+  console.log('[万物有灵] 加载 WebUI 配置失败:', e);
+}
 
 const CONFIG = {
   maxPets: 3,
@@ -3878,7 +3899,7 @@ const HELP_PAGES = {
 .宠物 webui 补丁 - 拉取并应用补丁`,
 };
 
-cmd.solve = (ctx, msg, argv) => {
+cmd.solve = async (ctx, msg, argv) => {
   const uid = msg.sender.userId;
   const data = DB.get(uid);
 
@@ -6679,7 +6700,7 @@ cmd.solve = (ctx, msg, argv) => {
       const token = p3;
       WebUIReporter.init({ endpoint, token, enabled: false });
       ext.storageSet('webui_config', JSON.stringify({ endpoint, token, enabled: false }));
-      return reply(`【WebUI配置已保存】\n端点: ${endpoint}\nToken: ${token.slice(0, 8)}...\n\n使用 .宠物 webui 启用 开启上报`);
+      return reply(`【WebUI配置已保存】\n端点: ${endpoint}\nToken: ******（已隐藏）\n\n使用 .宠物 webui 启用 开启上报`);
     }
 
     // .宠物 webui 启用
@@ -6755,7 +6776,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.2.8',
+  version: '4.2.9',
   ext,
 
   DB: {
