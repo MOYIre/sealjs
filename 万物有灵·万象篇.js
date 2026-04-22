@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.18
+// @version     3.1.19
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -861,7 +861,15 @@ function init() {
             r += `获得 ${gold} 金币\n`;
             const food = area.foods[Math.floor(Math.random() * area.foods.length)];
             p.data.food[food] = (p.data.food[food] || 0) + 1;
-            r += `获得 ${food} x1`;
+            r += `获得 ${food} x1\n`;
+            // 技能书掉落（10%概率）
+            const skillBook = getRandomSkillDrop('explore', area.name);
+            if (skillBook && Math.random() < 0.1) {
+              const sbData = DB.skillbook.get(p.uid);
+              sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
+              DB.skillbook.save(p.uid, sbData);
+              r += `获得技能书【${skillBook}】x1`;
+            }
             lines.push(r);
             e.notified = true;
             changed = true;
@@ -919,7 +927,16 @@ function init() {
             const pet = found.pet;
             const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
             p.data.money += gold;
-            lines.push(`${pet.name} 完成${work.name}，获得 ${gold} 金币`);
+            let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币`;
+            // 技能书掉落（5%概率）
+            const skillBook = getRandomSkillDrop('work', work.name);
+            if (skillBook && Math.random() < 0.05) {
+              const sbData = DB.skillbook.get(p.uid);
+              sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
+              DB.skillbook.save(p.uid, sbData);
+              r += `\n获得技能书【${skillBook}】x1`;
+            }
+            lines.push(r);
             w.notified = true;
             changed = true;
           }
