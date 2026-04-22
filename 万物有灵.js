@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.3
+// @version     4.1.4
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.3');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.4');
   seal.ext.register(ext);
 }
 
@@ -1833,10 +1833,15 @@ const SKILLS = {
 
   // 元素技能 - 初级
   '烈焰': { power: 55, acc: 95, cost: 8, element: '火', desc: '火焰攻击' },
+  '火焰术': { power: 50, acc: 95, cost: 8, element: '火', desc: '基础火焰术' },
   '激流': { power: 55, acc: 95, cost: 8, element: '水', desc: '水流攻击' },
+  '水弹': { power: 50, acc: 95, cost: 8, element: '水', desc: '基础水弹' },
   '荆棘': { power: 55, acc: 95, cost: 8, element: '草', desc: '荆棘缠绕' },
+  '藤鞭': { power: 50, acc: 95, cost: 8, element: '草', desc: '基础藤鞭攻击' },
   '雷击': { power: 55, acc: 95, cost: 8, element: '电', desc: '雷电攻击' },
+  '闪电': { power: 50, acc: 95, cost: 8, element: '电', desc: '基础闪电' },
   '落石': { power: 60, acc: 90, cost: 10, element: '岩石', desc: '岩石砸击' },
+  '猛击': { power: 55, acc: 95, cost: 8, element: '岩石', desc: '基础岩石攻击' },
   '念力': { power: 50, acc: 100, cost: 10, element: '超能', desc: '精神攻击，必中' },
 
   // 元素技能 - 中级
@@ -1882,7 +1887,7 @@ const SKILLS = {
   '冰冻吐息': { power: 70, acc: 85, cost: 20, element: '水', effect: 'freeze', desc: '20%冻结敌人' },
   '烈焰风暴': { power: 90, acc: 80, cost: 28, element: '火', desc: '火属性AOE' },
   '雷霆万钧': { power: 100, acc: 75, cost: 35, element: '电', desc: '无视防御20%' },
-  '治愈之光': { power: 0, acc: 100, cost: 25, effect: 'heal', healRate: 0.3, desc: '恢复30%生命' },
+  '治愈之光': { power: 0, acc: 100, cost: 25, effect: 'heal', healRate: 0.3, element: '超能', desc: '恢复30%生命' },
   '铁壁': { power: 0, acc: 100, cost: 10, effect: 'defend', desc: '防御+50%持续3回合' },
   '狂暴': { power: 0, acc: 100, cost: 15, effect: 'berserk', desc: '攻击+30%，防御-20%' },
 
@@ -1901,7 +1906,7 @@ const SKILLS = {
   '不死神凤': { power: 0, acc: 100, cost: 0, effect: 'immortal', desc: '不死之身' },
   '九首神威': { power: 180, acc: 75, cost: 70, desc: '九头蛇专属，九头齐攻' },
   '泰坦之力': { power: 160, acc: 80, cost: 55, desc: '石像鬼专属，巨力一击' },
-  '生命之源': { power: 0, acc: 100, cost: 40, effect: 'heal', healRate: 0.5, desc: '恢复50%生命' },
+  '生命之源': { power: 0, acc: 100, cost: 40, effect: 'heal', healRate: 0.5, element: '草', desc: '恢复50%生命' },
   '海神之怒': { power: 140, acc: 80, cost: 45, element: '水', desc: '海神专属，海啸攻击' },
   '神座降临': { power: 220, acc: 65, cost: 90, element: '超能', desc: '天使专属，神圣审判' },
 
@@ -6100,7 +6105,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.3',
+  version: '4.1.4',
   ext,
 
   DB: {
