@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.9
+// @version     4.2.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.2.0');
   seal.ext.register(ext);
 }
 
@@ -28,6 +28,7 @@ const CONFIG = {
   // 斗殴相关
   fightLogLimit: 20,
 };
+const MAIN_SCHEMA_VERSION = 1;
 
 // 游戏小贴士
 const GAME_TIPS = [
@@ -2028,8 +2029,14 @@ const PLAYER_SKILL_BOOKS = {
 const PLAYER_EXP_TABLE = [0, 100, 250, 500, 800, 1200, 1800, 2500, 3500, 5000];
 
 const DB = {
+  migrate(data) {
+    if (!data || typeof data !== 'object') return data;
+    if (!data.schemaVersion) data.schemaVersion = 1;
+    return data;
+  },
   get(userId) {
     const defaultData = {
+      schemaVersion: MAIN_SCHEMA_VERSION,
       pets: [], storage: [], money: 100, food: { '面包': 5 }, items: { '捉宠符咒': 5 }, maxStorage: 15,
       // 玩家属性
       player: {
@@ -2046,7 +2053,7 @@ const DB = {
       const d = ext.storageGet('u_' + userId);
       if (!d) return defaultData;
 
-      const data = JSON.parse(d);
+      const data = this.migrate(JSON.parse(d));
 
       // 兼容旧数据：检查是否原本没有storage字段
       const hadStorage = 'storage' in data;
@@ -2146,6 +2153,7 @@ const DB = {
   save(userId, data) {
     try {
       // 金币上限检查
+      data.schemaVersion = MAIN_SCHEMA_VERSION;
       if (data.money && data.money > CONFIG.maxMoney) {
         data.money = CONFIG.maxMoney;
       }
@@ -5810,24 +5818,15 @@ cmd.solve = (ctx, msg, argv) => {
     save();
 
     // 添加到保护机构市场
-    if (!WanwuYouling._shelterMarket) {
-      try {
-        const stored = ext.storageGet('shelterMarket');
-        WanwuYouling._shelterMarket = stored ? JSON.parse(stored) : {};
-      } catch (e) {
-        WanwuYouling._shelterMarket = {};
-      }
-    }
+    const shelterMarket = WanwuYouling.getShelterMarket();
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    WanwuYouling._shelterMarket[listingId] = {
+    shelterMarket[listingId] = {
       pet,
       price: sellPrice,
       time: Date.now(),
       expire: Date.now() + 24 * 60 * 60 * 1000,
     };
-    try {
-      ext.storageSet('shelterMarket', JSON.stringify(WanwuYouling._shelterMarket));
-    } catch (e) {}
+    WanwuYouling.saveShelterMarket(shelterMarket);
 
     return reply(`【生灵保护机构收购】\n${pet.name} → ${buyPrice}金币\n将以${sellPrice}金币上架，编号: #${listingId.slice(-4)}\n1天后放生\n.宠物 机构 查看`);
   }
@@ -6153,12 +6152,38 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.9',
+  version: '4.2.0',
   ext,
 
   DB: {
     get: (userId) => DB.get(userId),
     save: (userId, data) => DB.save(userId, data),
+  },
+
+  Tips: {
+    list: GAME_TIPS,
+    getRandom: () => getRandomTip(),
+  },
+
+  Storage: {
+    getJSON(key, defaultValue = null) {
+      try {
+        const raw = ext.storageGet(key);
+        if (!raw) return defaultValue;
+        return JSON.parse(raw);
+      } catch (e) {
+        return defaultValue;
+      }
+    },
+    setJSON(key, value) {
+      try {
+        ext.storageSet(key, JSON.stringify(value));
+        return true;
+      } catch (e) {
+        console.log('[万物有灵] 存储写入失败:', e);
+        return false;
+      }
+    },
   },
 
   Species: SPECIES,
@@ -6181,6 +6206,11 @@ const WanwuYouling = {
   },
 
   Utils: {
+    getUserData: (userId) => DB.get(userId),
+    saveUserData: (userId, data) => {
+      DB.save(userId, data);
+      return data;
+    },
     addPet: (userId, pet) => {
       const data = DB.get(userId);
       if (data.pets.length >= CONFIG.maxPets) return { success: false, error: '宠物已达上限' };
@@ -6188,23 +6218,78 @@ const WanwuYouling = {
       DB.save(userId, data);
       return { success: true, pet };
     },
+    addPetToAvailableSlot: (userId, pet) => {
+      const data = DB.get(userId);
+      data.storage = data.storage || [];
+      if (data.pets.length < CONFIG.maxPets) {
+        data.pets.push(pet);
+        DB.save(userId, data);
+        return { success: true, location: 'pets', pet };
+      }
+      if (data.storage.length < (data.maxStorage || CONFIG.maxStorage)) {
+        data.storage.push(pet);
+        DB.save(userId, data);
+        return { success: true, location: 'storage', pet };
+      }
+      return { success: false, error: '宠物和仓库已满' };
+    },
     removePet: (userId, petId) => {
       const data = DB.get(userId);
       const idx = data.pets.findIndex(p => p.id === petId);
-      if (idx === -1) return { success: false, error: '宠物不存在' };
-      const pet = data.pets.splice(idx, 1)[0];
+      if (idx !== -1) {
+        const pet = data.pets.splice(idx, 1)[0];
+        DB.save(userId, data);
+        return { success: true, pet, from: 'pets' };
+      }
+      data.storage = data.storage || [];
+      const storageIdx = data.storage.findIndex(p => p.id === petId);
+      if (storageIdx === -1) return { success: false, error: '宠物不存在' };
+      const pet = data.storage.splice(storageIdx, 1)[0];
       DB.save(userId, data);
-      return { success: true, pet };
+      return { success: true, pet, from: 'storage' };
+    },
+    removePetBySlot: (userId, slotType, index) => {
+      const data = DB.get(userId);
+      const list = slotType === 'storage' ? (data.storage || []) : data.pets;
+      if (index < 0 || index >= list.length) return { success: false, error: '宠物不存在' };
+      const pet = list.splice(index, 1)[0];
+      DB.save(userId, data);
+      return { success: true, pet, from: slotType === 'storage' ? 'storage' : 'pets' };
     },
     getPet: (userId, petId) => {
       const data = DB.get(userId);
-      return data.pets.find(p => p.id === petId) || null;
+      return data.pets.find(p => p.id === petId) || (data.storage || []).find(p => p.id === petId) || null;
+    },
+    getPetBySlot: (userId, slotType, index) => {
+      const data = DB.get(userId);
+      const list = slotType === 'storage' ? (data.storage || []) : data.pets;
+      return list[index] || null;
+    },
+    updatePetById: (userId, petId, updater) => {
+      const data = DB.get(userId);
+      const lists = [data.pets, data.storage || []];
+      for (const list of lists) {
+        const pet = list.find(p => p.id === petId);
+        if (pet) {
+          updater(pet, data);
+          DB.save(userId, data);
+          return { success: true, pet, data };
+        }
+      }
+      return { success: false, error: '宠物不存在' };
     },
     addMoney: (userId, amount) => {
       const data = DB.get(userId);
       data.money += amount;
       DB.save(userId, data);
       return data.money;
+    },
+    costMoney: (userId, amount) => {
+      const data = DB.get(userId);
+      if ((data.money || 0) < amount) return { success: false, error: '金币不足', money: data.money || 0 };
+      data.money -= amount;
+      DB.save(userId, data);
+      return { success: true, money: data.money };
     },
     addFood: (userId, foodName, count) => {
       const data = DB.get(userId);
@@ -6224,24 +6309,32 @@ const WanwuYouling = {
   Skills: SKILLS,
   Foods: FOODS,
 
-  //   市场数据管理  
+  //   市场数据管理
   _marketData: null,
   getMarketData() {
     if (!this._marketData) {
-      try {
-        const d = ext.storageGet('market_global');
-        if (d) this._marketData = JSON.parse(d);
-      } catch (e) {}
-      if (!this._marketData) this._marketData = { listings: {}, lastUpdate: 0 };
+      this._marketData = this.Storage.getJSON('market_global', { listings: {}, lastUpdate: 0 });
     }
     return this._marketData;
   },
   saveMarketData(data) {
     this._marketData = data;
-    try {
-      ext.storageSet('market_global', JSON.stringify(data));
-    } catch (e) {
-      console.log('[万物有灵] 市场数据保存失败:', e);
+    if (!this.Storage.setJSON('market_global', data)) {
+      console.log('[万物有灵] 市场数据保存失败');
+    }
+  },
+
+  _shelterMarket: null,
+  getShelterMarket() {
+    if (!this._shelterMarket) {
+      this._shelterMarket = this.Storage.getJSON('shelterMarket', {});
+    }
+    return this._shelterMarket;
+  },
+  saveShelterMarket(data) {
+    this._shelterMarket = data;
+    if (!this.Storage.setJSON('shelterMarket', data)) {
+      console.log('[万物有灵] 保护机构数据保存失败');
     }
   },
 

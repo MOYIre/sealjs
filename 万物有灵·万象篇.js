@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.24
+// @version     3.2.0
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,11 +10,11 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.24');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.0');
   seal.ext.register(ext);
 }
 
-// 游戏小贴士
+const EXT_SCHEMA_VERSION = 1;
 const GAME_TIPS = [
   '💡 每日首次喂食可获得双倍好感度',
   '💡 宠物好感度达到100时可触发进化',
@@ -33,7 +33,15 @@ const GAME_TIPS = [
   '💡 使用.宠物 help 查看完整命令列表',
 ];
 
+function getMain() {
+  if (typeof WanwuYouling !== 'undefined') return WanwuYouling;
+  if (typeof globalThis !== 'undefined' && globalThis.WanwuYouling) return globalThis.WanwuYouling;
+  return null;
+}
+
 function getRandomTip() {
+  const main = getMain();
+  if (main?.Tips?.getRandom) return main.Tips.getRandom();
   return GAME_TIPS[Math.floor(Math.random() * GAME_TIPS.length)];
 }
 
@@ -80,7 +88,7 @@ const TaskNotifier = {
     for (const uid of Object.keys(this.userContexts)) {
       try {
         const data = DB.ext.get(uid);
-        const userData = main.DB.get(uid);
+        const userData = getUserData(main, uid);
         if (!userData) continue;
 
         const notifications = [];
@@ -108,7 +116,7 @@ const TaskNotifier = {
         // 发送通知
         if (notifications.length > 0) {
           this.notify(uid, notifications.join('\n\n'));
-          main.DB.save(uid, userData);
+          saveUserData(main, uid, userData);
 
           // 清理已通知的任务
           data.explore = (data.explore || []).filter(e => e.endTime > now || !e.notified);
@@ -132,78 +140,133 @@ const TaskNotifier = {
 };
 
 // ==================== 通用工具 ====================
-function getMain() {
-  if (typeof WanwuYouling !== 'undefined') return WanwuYouling;
-  if (typeof globalThis !== 'undefined' && globalThis.WanwuYouling) return globalThis.WanwuYouling;
-  return null;
-}
-
 function waitForMain(cb, n = 10) {
   const m = getMain();
   if (m) cb(m);
   else if (n > 0) setTimeout(() => waitForMain(cb, n - 1), 500);
 }
 
+function getUserData(main, uid) {
+  return main?.Utils?.getUserData ? main.Utils.getUserData(uid) : main.DB.get(uid);
+}
+
+function saveUserData(main, uid, data) {
+  return main?.Utils?.saveUserData ? main.Utils.saveUserData(uid, data) : main.DB.save(uid, data);
+}
+
+function getPetCapacity(main, data) {
+  return {
+    maxPets: main?.Config?.maxPets || 3,
+    maxStorage: data?.maxStorage || main?.Config?.maxStorage || 15,
+  };
+}
+
+function getShelterMarket(main) {
+  if (main?.getShelterMarket) return main.getShelterMarket();
+  return main?._shelterMarket || {};
+}
+
+function saveShelterMarket(main, shelter) {
+  if (main?.saveShelterMarket) return main.saveShelterMarket(shelter);
+  main._shelterMarket = shelter;
+  return ext.storageSet('shelterMarket', JSON.stringify(shelter));
+}
+
+function getSharedStorage(main) {
+  return main?.Storage || null;
+}
+
 // ==================== 数据存储 ====================
 const DB = {
   ext: {
+    migrate(data) {
+      if (!data || typeof data !== 'object') return data;
+      if (!data.schemaVersion) data.schemaVersion = EXT_SCHEMA_VERSION;
+      return data;
+    },
     get(userId) {
-      const defaultData = { pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
+      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
       try {
         const d = ext.storageGet('e_' + userId);
         if (!d) return defaultData;
-        const data = JSON.parse(d);
+        const data = this.migrate(JSON.parse(d));
         return { ...defaultData, ...data };
       } catch { return defaultData; }
     },
-    save(userId, data) { ext.storageSet('e_' + userId, JSON.stringify(data)); },
+    save(userId, data) { data.schemaVersion = EXT_SCHEMA_VERSION; ext.storageSet('e_' + userId, JSON.stringify(data)); },
   },
   achievement: {
     get(userId) {
-      const defaultData = { unlocked: {}, stats: { captureCount: 0, battleWins: 0, pvpWins: 0, exploreCount: 0, workCount: 0, feedStreak: { petId: null, count: 0 }, fightLoseStreak: 0 } };
+      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, unlocked: {}, stats: { captureCount: 0, battleWins: 0, pvpWins: 0, exploreCount: 0, workCount: 0, feedStreak: { petId: null, count: 0 }, fightLoseStreak: 0 } };
       try {
         const d = ext.storageGet('ach_' + userId);
         if (!d) return defaultData;
         const data = JSON.parse(d);
+        data.schemaVersion = data.schemaVersion || EXT_SCHEMA_VERSION;
         data.unlocked = data.unlocked || {};
         data.stats = { ...defaultData.stats, ...data.stats };
         return data;
       } catch { return defaultData; }
     },
-    save(userId, data) { ext.storageSet('ach_' + userId, JSON.stringify(data)); },
+    save(userId, data) { data.schemaVersion = EXT_SCHEMA_VERSION; ext.storageSet('ach_' + userId, JSON.stringify(data)); },
   },
   equip: {
     get(userId) {
-      const defaultData = { bag: {}, equipped: {} };
+      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, bag: {}, equipped: {} };
       try {
         const d = ext.storageGet('eq_' + userId);
         if (!d) return defaultData;
-        return { ...defaultData, ...JSON.parse(d) };
+        const data = JSON.parse(d);
+        return { ...defaultData, ...data, schemaVersion: data.schemaVersion || EXT_SCHEMA_VERSION };
       } catch { return defaultData; }
     },
-    save(userId, data) { ext.storageSet('eq_' + userId, JSON.stringify(data)); },
+    save(userId, data) { data.schemaVersion = EXT_SCHEMA_VERSION; ext.storageSet('eq_' + userId, JSON.stringify(data)); },
   },
   skillbook: {
     get(userId) {
-      const defaultData = { books: {} };
+      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, books: {} };
       try {
         const d = ext.storageGet('sb_' + userId);
         if (!d) return defaultData;
-        return { ...defaultData, ...JSON.parse(d) };
+        const data = JSON.parse(d);
+        return { ...defaultData, ...data, schemaVersion: data.schemaVersion || EXT_SCHEMA_VERSION };
       } catch { return defaultData; }
     },
-    save(userId, data) { ext.storageSet('sb_' + userId, JSON.stringify(data)); },
+    save(userId, data) { data.schemaVersion = EXT_SCHEMA_VERSION; ext.storageSet('sb_' + userId, JSON.stringify(data)); },
   },
 };
 
 let marketData = { listings: {}, lastUpdate: 0 };
 function loadMarket() {
+  const main = getMain();
+  if (main?.getMarketData) {
+    marketData = main.getMarketData();
+    return marketData;
+  }
+  const sharedStorage = getSharedStorage(main);
+  if (sharedStorage?.getJSON) {
+    marketData = sharedStorage.getJSON('market_global', { listings: {}, lastUpdate: 0 });
+    return marketData;
+  }
   try {
     const d = ext.storageGet('market_global');
     if (d) marketData = JSON.parse(d);
   } catch { marketData = { listings: {}, lastUpdate: 0 }; }
+  return marketData;
 }
-function saveMarket() { ext.storageSet('market_global', JSON.stringify(marketData)); }
+function saveMarket() {
+  const main = getMain();
+  if (main?.saveMarketData) {
+    main.saveMarketData(marketData);
+    return;
+  }
+  const sharedStorage = getSharedStorage(main);
+  if (sharedStorage?.setJSON) {
+    sharedStorage.setJSON('market_global', marketData);
+    return;
+  }
+  ext.storageSet('market_global', JSON.stringify(marketData));
+}
 
 // ==================== 配置定义 ====================
 const EXT_CONFIG = {
@@ -457,10 +520,12 @@ function cleanExpired() {
       const main = getMain();
       if (main) {
         try {
-          const sellerData = main.DB.get(item.sellerId);
-          if (sellerData && sellerData.storage && sellerData.storage.length < 15) {
+          const sellerData = getUserData(main, item.sellerId);
+          const capacity = getPetCapacity(main, sellerData);
+          sellerData.storage = sellerData.storage || [];
+          if (sellerData && sellerData.storage.length < capacity.maxStorage) {
             sellerData.storage.push(item.pet);
-            main.DB.save(item.sellerId, sellerData);
+            saveUserData(main, item.sellerId, sellerData);
           }
         } catch (e) {
           console.log('[万物有灵-万象篇] 归还过期宠物失败:', e);
@@ -477,7 +542,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.24', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.0', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -603,7 +668,7 @@ function init() {
 
   // ========== 装备商店 ==========
   main.registerCommand('宠物装备商店', (ctx, msg, p) => {
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     const lines = ['【宠物装备商店】', `金币: ${mainData.money}`];
     Object.entries(EQUIPS).forEach(([name, eq]) => {
       const e = []; if (eq.atk) e.push(`攻+${eq.atk}`); if (eq.def) e.push(`防+${eq.def}`); if (eq.hp) e.push(`血+${eq.hp}`); if (eq.spd) e.push(`速+${eq.spd}`);
@@ -616,9 +681,9 @@ function init() {
   main.registerCommand('购买宠物装备', (ctx, msg, p) => {
     const name = p.p1; if (!name) return p.reply('请指定装备名称');
     const eq = EQUIPS[name]; if (!eq) return p.reply('未知装备');
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     if (mainData.money < eq.cost) return p.reply(`金币不足，需要 ${eq.cost}`);
-    mainData.money -= eq.cost; main.DB.save(p.uid, mainData);
+    mainData.money -= eq.cost; saveUserData(main, p.uid, mainData);
     const data = DB.equip.get(p.uid); data.bag[name] = (data.bag[name] || 0) + 1; DB.equip.save(p.uid, data);
     p.reply(`购买成功！获得 ${name}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -636,7 +701,7 @@ function init() {
   main.registerCommand('穿戴装备', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), equipName = p.p2;
     if (!petIdx || !equipName) return p.reply('用法: .宠物 穿戴装备 <编号> <装备名>');
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     if (!mainData.pets || !mainData.pets[petIdx - 1]) return p.reply('宠物不存在');
     const pet = mainData.pets[petIdx - 1];
     const data = DB.equip.get(p.uid); if (!data.bag[equipName]) return p.reply('没有这件装备');
@@ -668,7 +733,7 @@ function init() {
     if (eq.spd) pet.spd = (pet.spd || 100) + eq.spd;
     
     DB.equip.save(p.uid, data);
-    main.DB.save(p.uid, mainData);
+    saveUserData(main, p.uid, mainData);
     p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '宠物穿戴装备', 'wanwu-all', '万象篇');
@@ -686,7 +751,7 @@ function init() {
   main.registerCommand('宠物学习技能', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), bookName = p.p2;
     if (!petIdx || !bookName) return p.reply('用法: .宠物 宠物学习技能 <编号> <技能书名>');
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     if (!mainData.pets || !mainData.pets[petIdx - 1]) return p.reply('宠物不存在');
     const pet = mainData.pets[petIdx - 1];
     const data = DB.skillbook.get(p.uid);
@@ -702,7 +767,7 @@ function init() {
     pet.skills.push(book.skill);
     data.books[bookName]--;
     if (data.books[bookName] <= 0) delete data.books[bookName];
-    main.DB.save(p.uid, mainData); DB.skillbook.save(p.uid, data);
+    saveUserData(main, p.uid, mainData); DB.skillbook.save(p.uid, data);
     p.reply(`${pet.name} 学会了 ${book.skill}！\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '宠物学习技能书', 'wanwu-all', '万象篇');
@@ -725,7 +790,7 @@ function init() {
   main.registerCommand('挂售', (ctx, msg, p) => {
     const petNum = parseInt(p.p1), price = parseInt(p.p2);
     if (isNaN(petNum) || isNaN(price)) return p.reply('用法: .宠物 挂售 <宠物编号> <价格>\n编号: 1-3队伍, 4-18仓库');
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     let pet;
     if (petNum <= 3) {
       // 队伍宠物
@@ -740,7 +805,7 @@ function init() {
       pet = storage[storageIdx];
       storage.splice(storageIdx, 1);
     }
-    main.DB.save(p.uid, mainData);
+    saveUserData(main, p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     marketData.listings[listingId] = { pet: JSON.parse(JSON.stringify(pet)), price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
     saveMarket();
@@ -755,25 +820,22 @@ function init() {
     if (!listingId) return p.reply('未找到');
     const item = marketData.listings[listingId];
     if (item.sellerId === p.uid) return p.reply('不能买自己的');
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     if (mainData.money < item.price) return p.reply(`金币不足 ${item.price}`);
     
-    // 检查宠物容量
-    const maxPets = main.Config?.maxPets || 3;
-    const maxStorage = main.Config?.maxStorage || 15;
-    mainData.storage = mainData.storage || [];
-    if (mainData.pets.length >= maxPets && mainData.storage.length >= maxStorage) {
-      return p.reply(`宠物和仓库已满(${maxPets + maxStorage}只上限)，无法购买`);
+    const capacity = getPetCapacity(main, mainData);
+    if (mainData.pets.length >= capacity.maxPets && mainData.storage.length >= capacity.maxStorage) {
+      return p.reply(`宠物和仓库已满(${capacity.maxPets + capacity.maxStorage}只上限)，无法购买`);
     }
-    
+
     mainData.money -= item.price;
-    if (mainData.pets.length < maxPets) mainData.pets.push(item.pet);
+    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(item.pet);
     else mainData.storage.push(item.pet);
-    main.DB.save(p.uid, mainData);
-    const sellerData = main.DB.get(item.sellerId);
+    saveUserData(main, p.uid, mainData);
+    const sellerData = getUserData(main, item.sellerId);
     if (sellerData) {
       sellerData.money = (sellerData.money || 0) + Math.floor(item.price * 0.95);
-      main.DB.save(item.sellerId, sellerData);
+      saveUserData(main, item.sellerId, sellerData);
     }
     delete marketData.listings[listingId]; saveMarket();
     p.reply(`购买成功！获得 ${item.pet.name}\n${getRandomTip()}`);
@@ -782,7 +844,7 @@ function init() {
 
   // ========== 生灵保护机构 ==========
   main.registerCommand('机构', (ctx, msg, p) => {
-    const shelter = main._shelterMarket || {};
+    const shelter = getShelterMarket(main);
     // 清理过期（放生）
     const now = Date.now();
     let released = 0;
@@ -793,10 +855,7 @@ function init() {
       }
     }
     if (released > 0) {
-      main._shelterMarket = shelter;
-      try {
-        ext.storageSet('shelterMarket', JSON.stringify(shelter));
-      } catch (e) {}
+      saveShelterMarket(main, shelter);
     }
 
     const listings = Object.entries(shelter);
@@ -830,27 +889,26 @@ function init() {
     const shortId = p.p1;
     if (!shortId) return p.reply('用法: .宠物 领养 <编号>');
 
-    const shelter = main._shelterMarket || {};
+    const shelter = getShelterMarket(main);
     const listingId = Object.keys(shelter).find(id => id.slice(-4) === shortId);
     if (!listingId) return p.reply('未找到该宠物，可能已被领养或放生');
 
     const item = shelter[listingId];
-    const mainData = main.DB.get(p.uid);
+    const mainData = getUserData(main, p.uid);
     if (mainData.money < item.price) return p.reply(`金币不足，需要 ${item.price} 金币`);
 
     mainData.money -= item.price;
-    if (mainData.pets.length < 3) mainData.pets.push(item.pet);
+    const capacity = getPetCapacity(main, mainData);
+    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(item.pet);
     else {
       mainData.storage = mainData.storage || [];
+      if (mainData.storage.length >= capacity.maxStorage) return p.reply('仓库已满，无法领养');
       mainData.storage.push(item.pet);
     }
-    main.DB.save(p.uid, mainData);
+    saveUserData(main, p.uid, mainData);
 
     delete shelter[listingId];
-    main._shelterMarket = shelter;
-    try {
-      ext.storageSet('shelterMarket', JSON.stringify(shelter));
-    } catch (e) {}
+    saveShelterMarket(main, shelter);
 
     p.reply(`【领养成功】\n获得 ${item.pet.name}\n花费 ${item.price} 金币\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
