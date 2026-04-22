@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.2
+// @version     4.1.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.3');
   seal.ext.register(ext);
 }
 
@@ -1858,7 +1858,7 @@ const SKILLS = {
   // 功能技能
   '蓄力': { power: 0, acc: 100, cost: 5, effect: 'charge', desc: '下回合伤害x1.5' },
   '护盾': { power: 0, acc: 100, cost: 0, effect: 'defend', desc: '本回合伤害减半' },
-  '治愈': { power: 0, acc: 100, cost: 20, effect: 'heal', healRate: 0.15, desc: '恢复15%生命' },
+  '治愈': { power: 0, acc: 100, cost: 20, effect: 'heal', healRate: 0.15, element: '超能', desc: '恢复15%生命' },
   '灵击': { power: 35, acc: 95, cost: 8, desc: '凝聚灵气发出攻击' },
   '灵刃': { power: 45, acc: 90, cost: 12, desc: '凝聚灵刃斩击敌人' },
   '吸血': { power: 50, acc: 90, cost: 15, effect: 'lifesteal', lifestealRate: 0.5, desc: '攻击并回复50%伤害' },
@@ -6100,7 +6100,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.2',
+  version: '4.1.3',
   ext,
 
   DB: {
