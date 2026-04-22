@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.17
+// @version     3.1.18
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.17');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.18');
   seal.ext.register(ext);
 }
 
@@ -448,12 +448,17 @@ function init() {
     DB.ext.save(uid, data);
     const achData = DB.achievement.get(uid);
     achData.stats.captureCount++;
+    // 解锁成就时 unlockAchievement 内部会保存，无需再次保存
     if (achData.stats.captureCount === 1) unlockAchievement(uid, 'first_capture');
     if (achData.stats.captureCount >= 10) unlockAchievement(uid, 'capture_10');
     if (achData.stats.captureCount >= 50) unlockAchievement(uid, 'capture_50');
     if (pet.rarity === '传说') { unlockAchievement(uid, 'first_legend'); if (achData.stats.captureCount === 1) unlockAchievement(uid, 'lucky'); }
     if (pet.rarity === '超稀有') unlockAchievement(uid, 'first_super');
-    DB.achievement.save(uid, achData);
+    // 只有未解锁成就时才需要保存（stats已更新）
+    if (achData.stats.captureCount > 0 && achData.stats.captureCount % 10 !== 0) {
+      // 非成就解锁节点，手动保存stats
+      DB.achievement.save(uid, achData);
+    }
   }, 'wanwu-all', '万象篇');
 
   main.on('battle', ({ uid, winner, draw, isNPC, targetUid }) => {
@@ -580,7 +585,8 @@ function init() {
     const petIdx = parseInt(p.p1), equipName = p.p2;
     if (!petIdx || !equipName) return p.reply('用法: .宠物 穿戴装备 <编号> <装备名>');
     const mainData = main.DB.get(p.uid);
-    const pet = mainData.pets[petIdx - 1]; if (!pet) return p.reply('宠物不存在');
+    if (!mainData.pets || !mainData.pets[petIdx - 1]) return p.reply('宠物不存在');
+    const pet = mainData.pets[petIdx - 1];
     const data = DB.equip.get(p.uid); if (!data.bag[equipName]) return p.reply('没有这件装备');
     const eq = EQUIPS[equipName]; if (!eq) return p.reply('未知装备');
     const slot = EQUIP_TYPES[eq.type].slot;
@@ -629,7 +635,8 @@ function init() {
     const petIdx = parseInt(p.p1), bookName = p.p2;
     if (!petIdx || !bookName) return p.reply('用法: .宠物 宠物学习技能 <编号> <技能书名>');
     const mainData = main.DB.get(p.uid);
-    const pet = mainData.pets[petIdx - 1]; if (!pet) return p.reply('宠物不存在');
+    if (!mainData.pets || !mainData.pets[petIdx - 1]) return p.reply('宠物不存在');
+    const pet = mainData.pets[petIdx - 1];
     const data = DB.skillbook.get(p.uid);
     if (!data.books[bookName] || data.books[bookName] <= 0) return p.reply('没有这本技能书');
     const book = SKILL_BOOKS[bookName]; if (!book) return p.reply('未知技能书');
@@ -701,7 +708,7 @@ function init() {
     
     // 检查宠物容量
     const maxPets = main.Config?.maxPets || 3;
-    const maxStorage = mainData.maxStorage || 15;
+    const maxStorage = main.Config?.maxStorage || 15;
     mainData.storage = mainData.storage || [];
     if (mainData.pets.length >= maxPets && mainData.storage.length >= maxStorage) {
       return p.reply(`宠物和仓库已满(${maxPets + maxStorage}只上限)，无法购买`);
