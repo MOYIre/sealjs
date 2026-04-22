@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.2.0
+// @version     4.2.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.2.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.2.1');
   seal.ext.register(ext);
 }
 
@@ -3565,8 +3565,7 @@ const HELP_PAGES = {
 
   mod: `【Mod命令】
 .宠物 mod - 查看已安装Mod
-.宠物 mod <名称> - 查看Mod详情
-.宠物 mod <名称> on/off - 启用/禁用`,
+.宠物 mod <名称> - 查看Mod详情`,
 };
 
 cmd.solve = (ctx, msg, argv) => {
@@ -6079,13 +6078,12 @@ cmd.solve = (ctx, msg, argv) => {
     return reply(lines.join('\n'));
   }
 
-  //   Mod管理  
+  //   Mod管理
   if (action === 'mod') {
     const mods = WanwuYouling.getMods();
-    if (!mods.length) return reply('【Mod管理】\n没有已安装的Mod');
+    if (!mods.length) return reply('【Mod信息】\n没有已注册的扩展');
 
-    // 查看单个Mod详情
-    if (p1 && !p2) {
+    if (p1) {
       const mod = mods.find(m => m.id === p1 || m.name === p1);
       if (!mod) return reply(`未找到Mod: ${p1}`);
       const lines = [
@@ -6093,36 +6091,20 @@ cmd.solve = (ctx, msg, argv) => {
         `ID: ${mod.id}`,
         `版本: ${mod.version}`,
         `作者: ${mod.author}`,
-        `状态: ${mod.enabled ? '已启用' : '已禁用'}`,
+        `状态: ${mod.state === 'active' ? '已加载' : mod.state}`,
       ];
       if (mod.description) lines.push(`描述: ${mod.description}`);
-      if (mod.dependencies?.length) lines.push(`依赖: ${mod.dependencies.join(', ')}`);
-      lines.push('', `启用: .宠物 mod ${mod.id} on`, `禁用: .宠物 mod ${mod.id} off`);
+      if (mod.dependencies?.length) lines.push(`依赖: ${mod.dependencies.map(dep => dep.id).join(', ')}`);
       return reply(lines.join('\n'));
     }
 
-    // 启用/禁用Mod
-    if (p1 && p2) {
-      const mod = mods.find(m => m.id === p1 || m.name === p1);
-      if (!mod) return reply(`未找到Mod: ${p1}`);
-      if (p2 === 'on') {
-        const result = WanwuYouling.enableMod(mod.id);
-        return reply(result.success ? `${mod.name} 已启用` : `启用失败: ${result.error}`);
-      } else if (p2 === 'off') {
-        const result = WanwuYouling.disableMod(mod.id);
-        return reply(result ? `${mod.name} 已禁用` : `禁用失败`);
-      }
-      return reply('用法: .宠物 mod <名称> on/off');
-    }
-
-    // 显示列表
-    const lines = ['【Mod管理】', ''];
+    const lines = ['【Mod信息】', ''];
     for (const mod of mods) {
-      const status = mod.enabled ? '[√]' : '[×]';
+      const status = mod.state === 'active' ? '[√]' : `[${mod.state || 'registered'}]`;
       lines.push(`${status} ${mod.name} v${mod.version} (${mod.author})`);
       if (mod.description) lines.push(`  ${mod.description}`);
     }
-    lines.push('', '查看详情: .宠物 mod <名称>', '启用/禁用: .宠物 mod <名称> on/off');
+    lines.push('', '查看详情: .宠物 mod <名称>');
     return reply(lines.join('\n'));
   }
 
@@ -6152,7 +6134,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.2.0',
+  version: '4.2.1',
   ext,
 
   DB: {
@@ -6338,17 +6320,94 @@ const WanwuYouling = {
     }
   },
 
-  //   Mod系统  
+  //   Mod系统
   _mods: {},           // 已注册的mod
   _extCommands: {},    // 扩展命令
   _hooks: {},          // 事件钩子
   _overrides: {},      // 函数覆写
+  _hookSeq: 0,
+  _listenerSeq: 0,
 
-  // 注册Mod
-  registerMod(meta) {
-    if (!meta.id) return false;
-    if (this._mods[meta.id]) {
-      console.log(`[万物有灵] Mod ${meta.id} 已存在，将被替换`);
+  _normalizeDependencies(dependencies = []) {
+    return (dependencies || []).map(dep => typeof dep === 'string' ? { id: dep } : dep).filter(dep => dep && dep.id);
+  },
+
+  _findDependents(modId) {
+    return Object.values(this._mods).filter(mod => (mod.dependencies || []).some(dep => dep.id === modId));
+  },
+
+  _detectDependencyCycle(modId, visited = new Set(), stack = new Set()) {
+    if (stack.has(modId)) return true;
+    if (visited.has(modId)) return false;
+    visited.add(modId);
+    stack.add(modId);
+    const mod = this._mods[modId];
+    if (mod) {
+      for (const dep of mod.dependencies || []) {
+        if (this._detectDependencyCycle(dep.id, visited, stack)) return true;
+      }
+    }
+    stack.delete(modId);
+    return false;
+  },
+
+  _clearModResources(modId) {
+    for (const [name, cmd] of Object.entries(this._extCommands)) {
+      if (cmd.modId === modId) delete this._extCommands[name];
+    }
+    for (const event of Object.keys(this._hooks)) {
+      this._hooks[event] = this._hooks[event].filter(h => h.modId !== modId);
+    }
+    for (const [name, stack] of Object.entries(this._overrides)) {
+      const nextStack = (stack || []).filter(item => item.modId !== modId);
+      if (nextStack.length > 0) this._overrides[name] = nextStack;
+      else delete this._overrides[name];
+    }
+  },
+
+  _activateMod(modId, api = null) {
+    const mod = this._mods[modId];
+    if (!mod) return { success: false, error: 'Mod不存在' };
+    if (mod.state === 'active') return { success: true, reloaded: false };
+    for (const dep of mod.dependencies || []) {
+      const depMod = this._mods[dep.id];
+      if (!depMod) return { success: false, error: `缺少依赖: ${dep.id}` };
+      const depResult = this._activateMod(dep.id);
+      if (!depResult.success) return depResult;
+    }
+    mod.state = 'activating';
+    if (api) mod.api = api;
+    try {
+      if (mod.api.onLoad) mod.api.onLoad();
+      mod.state = 'active';
+      return { success: true, reloaded: false };
+    } catch (e) {
+      this._clearModResources(modId);
+      mod.state = 'error';
+      console.log(`[万物有灵] Mod ${modId} 加载错误:`, e);
+      return { success: false, error: `加载失败: ${e.message || e}` };
+    }
+  },
+
+  // 注册Mod（注册即生效）
+  registerMod(meta, api = {}) {
+    if (!meta.id) return { success: false, error: 'Mod缺少id' };
+    const exists = this._mods[meta.id];
+    const previous = exists ? {
+      meta: {
+        id: exists.id,
+        name: exists.name,
+        version: exists.version,
+        author: exists.author,
+        description: exists.description,
+        dependencies: exists.dependencies,
+        hotReloadable: exists.hotReloadable,
+      },
+      api: exists.api,
+    } : null;
+    if (exists) {
+      const unloadResult = this.unregisterMod(meta.id, { force: true, silent: true });
+      if (!unloadResult.success) return unloadResult;
     }
     this._mods[meta.id] = {
       id: meta.id,
@@ -6356,60 +6415,69 @@ const WanwuYouling = {
       version: meta.version || '1.0.0',
       author: meta.author || '未知',
       description: meta.description || '',
-      dependencies: meta.dependencies || [],
-      enabled: false,
-      api: {},
+      dependencies: this._normalizeDependencies(meta.dependencies),
+      state: 'registered',
+      api: api || {},
+      hotReloadable: meta.hotReloadable !== false,
     };
-    return true;
+    if (this._detectDependencyCycle(meta.id)) {
+      delete this._mods[meta.id];
+      if (previous) this.registerMod(previous.meta, previous.api);
+      return { success: false, error: '检测到循环依赖' };
+    }
+    const result = this._activateMod(meta.id, api || {});
+    if (!result.success) {
+      delete this._mods[meta.id];
+      if (previous) this.registerMod(previous.meta, previous.api);
+      return result;
+    }
+    return { success: true, reloaded: !!exists };
   },
 
-  // 启用Mod
-  enableMod(modId, api = {}) {
+  // 兼容旧接口：视为重载/重新激活
+  enableMod(modId, api = null) {
     const mod = this._mods[modId];
     if (!mod) return { success: false, error: 'Mod不存在' };
-    
-    // 检查依赖
-    for (const dep of mod.dependencies) {
-      const depMod = this._mods[dep];
-      if (!depMod || !depMod.enabled) {
-        return { success: false, error: `缺少依赖: ${dep}` };
-      }
-    }
-    
-    mod.enabled = true;
-    mod.api = api;
-    
-    // 调用onEnable
-    if (api.onEnable) {
-      try { api.onEnable(); } catch (e) { console.log(`[万物有灵] Mod ${modId} onEnable错误:`, e); }
-    }
+    if (api) mod.api = api;
+    return this._activateMod(modId, api || mod.api);
+  },
 
+  reloadMod(modId, meta = null, api = null) {
+    const existing = this._mods[modId];
+    if (!existing) return { success: false, error: 'Mod不存在' };
+    const nextMeta = meta || {
+      id: existing.id,
+      name: existing.name,
+      version: existing.version,
+      author: existing.author,
+      description: existing.description,
+      dependencies: existing.dependencies,
+      hotReloadable: existing.hotReloadable,
+    };
+    return this.registerMod(nextMeta, api || existing.api);
+  },
+
+  // 注销/卸载Mod
+  unregisterMod(modId, options = {}) {
+    const mod = this._mods[modId];
+    if (!mod) return { success: false, error: 'Mod不存在' };
+    const dependents = this._findDependents(modId).filter(dep => dep.id !== modId);
+    if (!options.force && dependents.some(dep => dep.state === 'active')) {
+      return { success: false, error: `仍被依赖: ${dependents.filter(dep => dep.state === 'active').map(dep => dep.id).join(', ')}` };
+    }
+    if (mod.api.onUnload) {
+      try { mod.api.onUnload(); } catch (e) { console.log(`[万物有灵] Mod ${modId} onUnload错误:`, e); }
+    }
+    this._clearModResources(modId);
+    mod.state = 'unloaded';
+    mod.api = {};
+    delete this._mods[modId];
     return { success: true };
   },
 
-  // 禁用Mod
+  // 兼容旧接口：实际执行卸载
   disableMod(modId) {
-    const mod = this._mods[modId];
-    if (!mod) return false;
-
-    // 调用onDisable
-    if (mod.api.onDisable) {
-      try { mod.api.onDisable(); } catch (e) { console.log(`[万物有灵] Mod ${modId} onDisable错误:`, e); }
-    }
-    
-    // 清理命令
-    for (const [name, cmd] of Object.entries(this._extCommands)) {
-      if (cmd.modId === modId) delete this._extCommands[name];
-    }
-    
-    // 清理钩子
-    for (const event of Object.keys(this._hooks)) {
-      this._hooks[event] = this._hooks[event].filter(h => h.modId !== modId);
-    }
-    
-    mod.enabled = false;
-    mod.api = {};
-    return true;
+    return this.unregisterMod(modId, { force: false });
   },
 
   // 获取Mod
@@ -6419,11 +6487,18 @@ const WanwuYouling = {
 
   // 获取所有Mod
   getMods() {
-    return Object.values(this._mods);
+    return Object.values(this._mods).map(mod => ({
+      ...mod,
+      enabled: mod.state === 'active',
+    }));
   },
 
   // 注册命令
   registerCommand(name, handler, helpText, modId, category = '其他') {
+    const current = this._extCommands[name];
+    if (current && current.modId !== modId) {
+      console.log(`[万物有灵] 命令 ${name} 已被 ${current.modId} 注册，将被 ${modId} 覆盖`);
+    }
     this._extCommands[name] = { handler, helpText, modId, category };
   },
 
@@ -6452,32 +6527,60 @@ const WanwuYouling = {
     return Array.from(cats);
   },
 
-  // 订阅事件
-  on(event, handler, modId) {
-    if (!this._hooks[event]) this._hooks[event] = [];
-    handler.modId = modId;
-    // 防止重复注册
-    if (!this._hooks[event].includes(handler)) {
-      this._hooks[event].push(handler);
+  // 订阅事件（广播事件）
+  on(event, handler, modId, options = {}) {
+    if (typeof options === 'string') {
+      options = { key: options };
     }
+    if (!this._hooks[event]) this._hooks[event] = [];
+    const autoKey = `${modId}:${event}:${handler.name || 'anonymous'}:${++this._listenerSeq}`;
+    const key = options.key || autoKey;
+    this._hooks[event] = this._hooks[event].filter(h => !(h.modId === modId && h.key === key));
+    const record = {
+      id: ++this._hookSeq,
+      event,
+      modId,
+      key,
+      handler,
+      priority: options.priority || 0,
+      mode: options.mode || 'event',
+    };
+    this._hooks[event].push(record);
+    this._hooks[event].sort((a, b) => b.priority - a.priority || a.id - b.id);
+    return () => this.off(event, record.id);
   },
 
   // 取消订阅
-  off(event, handler) {
+  off(event, handlerOrId) {
     if (!this._hooks[event]) return;
-    this._hooks[event] = this._hooks[event].filter(h => h !== handler);
+    this._hooks[event] = this._hooks[event].filter(h => h.id !== handlerOrId && h.handler !== handlerOrId);
   },
 
-  // 触发事件
+  // 触发广播事件
   emit(event, data) {
+    if (!this._hooks[event]) return data;
+    for (const h of this._hooks[event]) {
+      if (h.mode !== 'event') continue;
+      try {
+        h.handler(data);
+      } catch (e) {
+        console.log(`[万物有灵] 事件${event}处理错误:`, e);
+      }
+    }
+    return data;
+  },
+
+  // 可变Hook管道
+  runHook(event, data) {
     if (!this._hooks[event]) return data;
     let result = data;
     for (const h of this._hooks[event]) {
+      if (h.mode !== 'hook') continue;
       try {
-        const r = h(result);
-        if (r !== undefined) result = r;
+        const next = h.handler(result);
+        if (next !== undefined) result = next;
       } catch (e) {
-        console.log(`[万物有灵] 事件${event}处理错误:`, e);
+        console.log(`[万物有灵] Hook ${event}处理错误:`, e);
       }
     }
     return result;
@@ -6485,19 +6588,28 @@ const WanwuYouling = {
 
   // 覆写函数
   override(name, fn, modId) {
-    this._overrides[name] = { fn, modId };
+    if (!this._overrides[name]) this._overrides[name] = [];
+    this._overrides[name].push({ fn, modId });
   },
 
   // 获取覆写
   getOverride(name) {
-    return this._overrides[name]?.fn;
+    const stack = this._overrides[name];
+    if (!stack || !stack.length) return undefined;
+    return stack[stack.length - 1].fn;
   },
 
   // 调用其他Mod API
   call(modId, method, ...args) {
     const mod = this._mods[modId];
-    if (!mod || !mod.enabled || !mod.api[method]) return undefined;
-    return mod.api[method](...args);
+    if (!mod) return { ok: false, error: 'mod_not_found' };
+    if (mod.state !== 'active') return { ok: false, error: 'mod_not_active' };
+    if (!mod.api[method]) return { ok: false, error: 'method_not_found' };
+    try {
+      return { ok: true, value: mod.api[method](...args) };
+    } catch (e) {
+      return { ok: false, error: 'call_failed', message: e.message || String(e) };
+    }
   },
 };
 
