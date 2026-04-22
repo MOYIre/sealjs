@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.9
+// @version     4.1.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.0');
   seal.ext.register(ext);
 }
 
@@ -1387,6 +1387,7 @@ const NATURES = {
   '坚韧': { desc: '生命+20%，攻击-10%', hpMod: 1.20, atkMod: 0.90 },
   '机智': { desc: '战斗金币+35%', goldMod: 1.35 },
   '慵懒': { desc: '精力恢复速度+100%', energyRegenMod: 2.0 },
+  '狡猾': { desc: '暴击率+15%，攻击-10%', critMod: 0.15, atkMod: 0.90 },
 };
 
 // 天赋系统
@@ -2480,6 +2481,11 @@ const Battle = {
 
     // 幸运天赋：暴击率+5%
     if (attacker?.talent === '幸运' && Math.random() < TALENTS['幸运'].critMod) {
+      dmg *= 1.5;
+    }
+
+    // 狡猾性格：暴击率+15%
+    if (attacker?.nature === '狡猾' && Math.random() < NATURES['狡猾'].critMod) {
       dmg *= 1.5;
     }
 
@@ -6051,7 +6057,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.9',
+  version: '4.1.0',
   ext,
 
   DB: {
