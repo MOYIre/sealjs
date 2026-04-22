@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.23
+// @version     3.1.24
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.23');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.24');
   seal.ext.register(ext);
 }
 
@@ -326,10 +326,11 @@ function getPetAnywhere(p, idx) {
   return null;
 }
 
-function findPetById(p, petId) {
-  let pet = p.data.pets.find(pt => pt.id === petId);
+function findPetById(playerData, petId) {
+  const root = playerData?.data || playerData;
+  let pet = (root?.pets || []).find(pt => pt.id === petId);
   if (pet) return { pet, from: 'team' };
-  pet = (p.data.storage || []).find(pt => pt.id === petId);
+  pet = (root?.storage || []).find(pt => pt.id === petId);
   if (pet) return { pet, from: 'storage' };
   return null;
 }
@@ -367,23 +368,24 @@ function getRandomSkillDrop(type, area) {
   return bookName;
 }
 
-function completeExploreTask(uid, p, data, task) {
+function completeExploreTask(uid, playerData, data, task) {
   const area = EXPLORE_AREAS.find(a => a.name === task.area);
   if (!area) return null;
-  const found = findPetById(p, task.petId);
+  const found = findPetById(playerData, task.petId);
   if (!found) return null;
   const pet = found.pet;
+  const root = playerData?.data || playerData;
   let r = `${pet.name} 从 ${area.name} 返回\n`;
   if (Math.random() < area.danger) {
     pet.hp = Math.max(1, pet.hp - 20);
     r += '遭遇危险受伤！\n';
   }
   const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
-  p.data.money = (p.data.money || 0) + gold;
+  root.money = (root.money || 0) + gold;
   r += `获得 ${gold} 金币\n`;
   const food = area.foods[Math.floor(Math.random() * area.foods.length)];
-  p.data.food = p.data.food || {};
-  p.data.food[food] = (p.data.food[food] || 0) + 1;
+  root.food = root.food || {};
+  root.food[food] = (root.food[food] || 0) + 1;
   r += `获得 ${food} x1`;
   const skillBook = getRandomSkillDrop('explore', area.name);
   if (skillBook && Math.random() < 0.1) {
@@ -400,14 +402,15 @@ function completeExploreTask(uid, p, data, task) {
   return `${r}\n${getRandomTip()}`;
 }
 
-function completeWorkTask(uid, p, data, task) {
+function completeWorkTask(uid, playerData, data, task) {
   const work = WORK_TYPES.find(wt => wt.name === task.work);
   if (!work) return null;
-  const found = findPetById(p, task.petId);
+  const found = findPetById(playerData, task.petId);
   if (!found) return null;
   const pet = found.pet;
+  const root = playerData?.data || playerData;
   const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
-  p.data.money = (p.data.money || 0) + gold;
+  root.money = (root.money || 0) + gold;
   let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币`;
   const skillBook = getRandomSkillDrop('work', work.name);
   if (skillBook && Math.random() < 0.05) {
@@ -474,7 +477,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.23', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.24', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);

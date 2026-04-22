@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.8
+// @version     4.1.9
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.8');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.9');
   seal.ext.register(ext);
 }
 
@@ -5152,6 +5152,7 @@ cmd.solve = (ctx, msg, argv) => {
   if (action === '进化') {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
+    const guardianKey = `${pet.species}:${pet.name}`;
     const evoChain = EVOLUTIONS[pet.species];
     if (!evoChain) return reply('该宠物无法进化');
 
@@ -5187,7 +5188,7 @@ cmd.solve = (ctx, msg, argv) => {
         // 好感度必须满值100
         if (affection < 100) return false;
         // 需要击败过守护者Boss
-        if (!data.guardianDefeated || !data.guardianDefeated[pet.species]) return false;
+        if (!data.guardianDefeated || !data.guardianDefeated[guardianKey]) return false;
       }
 
       return true;
@@ -5213,7 +5214,7 @@ cmd.solve = (ctx, msg, argv) => {
         const meetsAffection = !evo.condition?.affection || affection >= evo.condition.affection;
         // 第3阶额外条件
         const meetsStage3Affection = evo.stage !== 3 || affection >= 100;
-        const meetsGuardian = evo.stage !== 3 || (data.guardianDefeated && data.guardianDefeated[pet.species]);
+        const meetsGuardian = evo.stage !== 3 || (data.guardianDefeated && data.guardianDefeated[guardianKey]);
 
         let status = meetsLevel && meetsItem && meetsElement && meetsAffection && meetsStage3Affection && meetsGuardian ? '✓' : '✗';
         lines.push(`${status} ${evo.name} (Lv.${evo.level})`);
@@ -5238,6 +5239,8 @@ cmd.solve = (ctx, msg, argv) => {
       const oldName = pet.name;
       pet.name = evo.name;
       pet.evoStage = evo.stage;
+      pet.evolved = true;
+      pet.maxBattles = 30;
       if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
       if (evo.bonus.atk) pet.atk += evo.bonus.atk;
       if (evo.bonus.def) pet.def += evo.bonus.def;
@@ -5276,7 +5279,8 @@ cmd.solve = (ctx, msg, argv) => {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
     const choiceIdx = parseInt(p2) - 1;
-    
+    const guardianKey = `${pet.species}:${pet.name}`;
+
     // 重新获取可用进化
     const evoChain = EVOLUTIONS[pet.species];
     if (!evoChain) return reply('该宠物无法进化');
@@ -5298,6 +5302,10 @@ cmd.solve = (ctx, msg, argv) => {
         if (evo.condition.element && pet.element !== evo.condition.element) return false;
         if (evo.condition.affection && affection < evo.condition.affection) return false;
       }
+      if (evo.stage === 3) {
+        if (affection < 100) return false;
+        if (!data.guardianDefeated || !data.guardianDefeated[guardianKey]) return false;
+      }
       return true;
     });
 
@@ -5310,6 +5318,8 @@ cmd.solve = (ctx, msg, argv) => {
     const oldName = pet.name;
     pet.name = evo.name;
     pet.evoStage = evo.stage;
+    pet.evolved = true;
+    pet.maxBattles = CONFIG.maxPetBattles;
     if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
     if (evo.bonus.atk) pet.atk += evo.bonus.atk;
     if (evo.bonus.def) pet.def += evo.bonus.def;
@@ -5333,6 +5343,7 @@ cmd.solve = (ctx, msg, argv) => {
   if (action === '守护者' || action === '挑战守护者') {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
+    const guardianKey = `${pet.species}:${pet.name}`;
 
     const evoChain = EVOLUTIONS[pet.species];
     if (!evoChain) return reply('该宠物没有进化链');
@@ -5342,8 +5353,8 @@ cmd.solve = (ctx, msg, argv) => {
     if (!stage3Evo) return reply('该宠物没有终极进化形态');
 
     // 检查是否已经击败过守护者
-    if (data.guardianDefeated && data.guardianDefeated[pet.species]) {
-      return reply(`【守护者挑战】\n你已经击败过 ${pet.species} 的守护者，可以进行终极进化了！`);
+    if (data.guardianDefeated && data.guardianDefeated[guardianKey]) {
+      return reply(`【守护者挑战】\n你已经击败过 ${pet.name} 的守护者，可以进行终极进化了！`);
     }
 
     // 检查等级和好感度
@@ -5382,7 +5393,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (result.winner === fighter) {
       // 胜利
       if (!data.guardianDefeated) data.guardianDefeated = {};
-      data.guardianDefeated[pet.species] = true;
+      data.guardianDefeated[guardianKey] = true;
       // 同步战斗后的血量
       pet.hp = Math.max(1, fighter.hp);
       pet.energy = Math.max(0, fighter.energy);
@@ -6142,7 +6153,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.8',
+  version: '4.1.9',
   ext,
 
   DB: {
