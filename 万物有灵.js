@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.1
+// @version     4.1.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.2');
   seal.ext.register(ext);
 }
 
@@ -1864,15 +1864,15 @@ const SKILLS = {
   '吸血': { power: 50, acc: 90, cost: 15, effect: 'lifesteal', lifestealRate: 0.5, desc: '攻击并回复50%伤害' },
 
   // 治愈系技能
-  '祈祷': { power: 0, acc: 100, cost: 8, effect: 'heal', healRate: 0.08, desc: '虔诚祈祷，恢复8%生命' },
-  '治愈波': { power: 0, acc: 100, cost: 15, effect: 'heal', healRate: 0.2, desc: '治愈波动，恢复20%生命' },
-  '圣光术': { power: 0, acc: 100, cost: 22, effect: 'heal', healRate: 0.25, desc: '圣光治愈，恢复25%生命并净化' },
-  '生命之息': { power: 0, acc: 100, cost: 18, effect: 'regen', desc: '每回合恢复10%生命，持续3回合' },
+  '祈祷': { power: 0, acc: 100, cost: 8, effect: 'heal', healRate: 0.08, element: '超能', desc: '虔诚祈祷，恢复8%生命' },
+  '治愈波': { power: 0, acc: 100, cost: 15, effect: 'heal', healRate: 0.2, element: '超能', desc: '治愈波动，恢复20%生命' },
+  '圣光术': { power: 0, acc: 100, cost: 22, effect: 'heal', healRate: 0.25, element: '超能', desc: '圣光治愈，恢复25%生命' },
+  '生命之息': { power: 0, acc: 100, cost: 18, effect: 'regen', regenRate: 0.1, element: '草', desc: '每回合恢复10%生命，持续3回合' },
   '自然祝福': { power: 0, acc: 100, cost: 25, effect: 'heal', healRate: 0.35, element: '草', desc: '自然之力，恢复35%生命' },
-  '天使之吻': { power: 0, acc: 100, cost: 30, effect: 'heal', healRate: 0.4, desc: '天使的祝福，恢复40%生命' },
-  '圣灵守护': { power: 0, acc: 100, cost: 35, effect: 'shield', shieldCount: 2, desc: '获得2层护盾' },
+  '天使之吻': { power: 0, acc: 100, cost: 30, effect: 'heal', healRate: 0.4, element: '超能', desc: '天使的祝福，恢复40%生命' },
+  '圣灵守护': { power: 0, acc: 100, cost: 35, effect: 'shield', shieldCount: 2, element: '超能', desc: '获得2层护盾' },
   '生命绽放': { power: 0, acc: 100, cost: 45, effect: 'heal', healRate: 0.5, element: '草', desc: '生命绽放，恢复50%生命' },
-  '奇迹之光': { power: 0, acc: 100, cost: 50, effect: 'miracle', desc: '恢复60%生命，解除所有负面状态' },
+  '奇迹之光': { power: 0, acc: 100, cost: 50, effect: 'miracle', element: '超能', desc: '恢复60%生命，解除所有负面状态' },
 
   // 新增技能 - 连击/状态技能
   '连击': { power: 40, acc: 90, cost: 12, desc: '连续攻击2次', hits: 2 },
@@ -6100,7 +6100,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.1',
+  version: '4.1.2',
   ext,
 
   DB: {
