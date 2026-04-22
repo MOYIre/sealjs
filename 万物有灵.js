@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.0
+// @version     4.1.1
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.1');
   seal.ext.register(ext);
 }
 
@@ -1863,6 +1863,17 @@ const SKILLS = {
   '灵刃': { power: 45, acc: 90, cost: 12, desc: '凝聚灵刃斩击敌人' },
   '吸血': { power: 50, acc: 90, cost: 15, effect: 'lifesteal', lifestealRate: 0.5, desc: '攻击并回复50%伤害' },
 
+  // 治愈系技能
+  '祈祷': { power: 0, acc: 100, cost: 8, effect: 'heal', healRate: 0.08, desc: '虔诚祈祷，恢复8%生命' },
+  '治愈波': { power: 0, acc: 100, cost: 15, effect: 'heal', healRate: 0.2, desc: '治愈波动，恢复20%生命' },
+  '圣光术': { power: 0, acc: 100, cost: 22, effect: 'heal', healRate: 0.25, desc: '圣光治愈，恢复25%生命并净化' },
+  '生命之息': { power: 0, acc: 100, cost: 18, effect: 'regen', desc: '每回合恢复10%生命，持续3回合' },
+  '自然祝福': { power: 0, acc: 100, cost: 25, effect: 'heal', healRate: 0.35, element: '草', desc: '自然之力，恢复35%生命' },
+  '天使之吻': { power: 0, acc: 100, cost: 30, effect: 'heal', healRate: 0.4, desc: '天使的祝福，恢复40%生命' },
+  '圣灵守护': { power: 0, acc: 100, cost: 35, effect: 'shield', shieldCount: 2, desc: '获得2层护盾' },
+  '生命绽放': { power: 0, acc: 100, cost: 45, effect: 'heal', healRate: 0.5, element: '草', desc: '生命绽放，恢复50%生命' },
+  '奇迹之光': { power: 0, acc: 100, cost: 50, effect: 'miracle', desc: '恢复60%生命，解除所有负面状态' },
+
   // 新增技能 - 连击/状态技能
   '连击': { power: 40, acc: 90, cost: 12, desc: '连续攻击2次', hits: 2 },
   '三连斩': { power: 35, acc: 85, cost: 18, desc: '连续攻击3次', hits: 3 },
@@ -2563,6 +2574,30 @@ const Battle = {
         return;
       }
 
+      if (sk.effect === 'regen') {
+        // 再生：持续恢复生命
+        a.regen = 3; // 持续3回合
+        a.regenRate = sk.regenRate || 0.1;
+        logs.push(`${a.name} 使用 ${skill}，获得生命恢复效果！每回合恢复${Math.floor((a.regenRate || 0.1) * 100)}%生命，持续3回合`);
+        return;
+      }
+
+      if (sk.effect === 'miracle') {
+        // 奇迹：恢复生命+解除所有负面状态
+        const healAmount = Math.floor((a.maxHp || 100) * 0.6);
+        a.hp = Math.min(a.maxHp || 100, (a.hp || 0) + healAmount);
+        // 解除所有负面状态
+        a.poisoned = 0;
+        a.scorpioPoison = 0;
+        a.confused = 0;
+        a.stunned = 0;
+        a.frozen = 0;
+        a.webbed = 0;
+        a.slowed = 0;
+        logs.push(`${a.name} 使用 ${skill}，奇迹降临！恢复 ${healAmount} 生命，净化所有负面状态！`);
+        return;
+      }
+
       if (sk.effect === 'charge') {
         // 蓄力：下回合伤害提升
         a.isCharging = true;
@@ -3252,7 +3287,7 @@ const Battle = {
       const finalStatus = isBattleEnd();
       if (finalStatus.ended) break;
 
-      // 回合结束时处理持续伤害
+      // 回合结束时处理持续伤害和恢复
       const processDot = (unit, name) => {
         if (!unit || (unit.hp || 0) <= 0) return;
         // 中毒伤害
@@ -3268,6 +3303,14 @@ const Battle = {
           unit.hp = Math.max(0, unit.hp - scorpioDmg);
           logs.push(`[蝎毒] ${name} 受到 ${scorpioDmg} 蝎毒伤害！`);
           unit.scorpioPoison--;
+        }
+        // 再生效果：每回合恢复生命
+        if (unit.regen && unit.regen > 0) {
+          const regenRate = unit.regenRate || 0.1;
+          const regenAmount = Math.floor((unit.maxHp || 100) * regenRate);
+          unit.hp = Math.min(unit.maxHp || 100, unit.hp + regenAmount);
+          logs.push(`[再生] ${name} 恢复 ${regenAmount} 生命！`);
+          unit.regen--;
         }
       };
       processDot(p1, p1.name);
@@ -6057,7 +6100,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.0',
+  version: '4.1.1',
   ext,
 
   DB: {
