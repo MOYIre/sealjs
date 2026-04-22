@@ -1,18 +1,245 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.2.1
+// @version     4.2.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1776702927
+// @timestamp   1776702928
 // @license     Apache-2
 // @updateUrl   https://raw.gitcode.com/MOYIre/sealjs/raw/main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.2.1');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.2.8');
   seal.ext.register(ext);
 }
+
+/**
+ * WebUI 上报模块
+ * 支持数据同步到 WebUI 后端、Mod 安装管理
+ */
+const WebUIReporter = {
+  config: {
+    endpoint: '',
+    token: '',
+    enabled: false,
+    reportInterval: 60000,
+  },
+  _queue: [],
+  _timer: null,
+  _installedMods: null,
+
+  init(options = {}) {
+    this.config = { ...this.config, ...options };
+    if (this.config.enabled && this.config.endpoint) {
+      this._startPeriodicReport();
+      this._loadInstalledMods();
+      console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
+    }
+  },
+
+  _loadInstalledMods() {
+    try {
+      const saved = ext.storageGet('webui_installed_mods');
+      this._installedMods = saved ? JSON.parse(saved) : [];
+    } catch {
+      this._installedMods = [];
+    }
+  },
+
+  _saveInstalledMods() {
+    try {
+      ext.storageSet('webui_installed_mods', JSON.stringify(this._installedMods || []));
+    } catch (e) {
+      console.error('[WebUI Reporter] 保存已安装 Mod 失败:', e);
+    }
+  },
+
+  reportBattleLog(log) {
+    if (!this.config.enabled || !this.config.endpoint) return;
+    this._queue.push({
+      type: 'battle_log',
+      timestamp: Date.now(),
+      data: {
+        id: log.id || `battle_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        zone: log.zone || '未知',
+        actor: log.actor || '',
+        target: log.target || '',
+        result: log.result || '',
+        turns: log.turns || 0,
+        damage: log.damage || 0,
+        rewards: log.rewards || [],
+        tags: log.tags || [],
+      }
+    });
+    if (this._queue.length >= 50) this._flush();
+  },
+
+  reportPlayerData(uid, summary) {
+    if (!this.config.enabled || !this.config.endpoint) return;
+    this._queue.push({
+      type: 'player_data',
+      timestamp: Date.now(),
+      uid,
+      data: summary
+    });
+  },
+
+  async _flush() {
+    if (this._queue.length === 0) return;
+    const batch = this._queue.splice(0, this._queue.length);
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.token}`,
+        },
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.2.8' })
+      });
+      if (!res.ok) {
+        console.error('[WebUI Reporter] 上报失败:', res.status);
+        this._queue.unshift(...batch);
+      }
+    } catch (e) {
+      console.error('[WebUI Reporter] 上报异常:', e);
+      this._queue.unshift(...batch);
+    }
+  },
+
+  _startPeriodicReport() {
+    if (this._timer) clearInterval(this._timer);
+    this._timer = setInterval(() => {
+      if (this._queue.length > 0) this._flush();
+    }, this.config.reportInterval);
+  },
+
+  async fetchMods() {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/mods`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.mods || [];
+    } catch (e) {
+      console.error('[WebUI Reporter] 拉取 Mod 失败:', e);
+      return [];
+    }
+  },
+
+  async installMod(modId) {
+    if (!this.config.enabled || !this.config.endpoint) return { ok: false, error: '未启用' };
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/mods/${modId}`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return { ok: false, error: '获取失败' };
+      const mod = await res.json();
+      if (!mod || !mod.content) return { ok: false, error: '内容为空' };
+
+      if (mod.type === 'script') {
+        const fn = new Function('WanwuYouling', 'SPECIES', 'SKILLS', 'ITEMS', 'CONFIG', mod.content);
+        fn(
+          typeof WanwuYouling !== 'undefined' ? WanwuYouling : null,
+          typeof SPECIES !== 'undefined' ? SPECIES : {},
+          typeof SKILLS !== 'undefined' ? SKILLS : {},
+          typeof ITEMS !== 'undefined' ? ITEMS : {},
+          typeof CONFIG !== 'undefined' ? CONFIG : {}
+        );
+      }
+      if (!this._installedMods) this._loadInstalledMods();
+      if (!this._installedMods.includes(modId)) {
+        this._installedMods.push(modId);
+        this._saveInstalledMods();
+      }
+      return { ok: true, name: mod.name };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  uninstallMod(modId) {
+    if (!this._installedMods) this._loadInstalledMods();
+    const idx = this._installedMods.indexOf(modId);
+    if (idx > -1) {
+      this._installedMods.splice(idx, 1);
+      this._saveInstalledMods();
+    }
+    return { ok: true };
+  },
+
+  getInstalledMods() {
+    if (!this._installedMods) this._loadInstalledMods();
+    return this._installedMods || [];
+  },
+
+  async fetchPatches() {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/patch`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.data || []).filter(p => p.status === '生效中');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  applyPatch(patch) {
+    if (!patch || !patch.payload) return false;
+    try {
+      const payload = typeof patch.payload === 'string' ? JSON.parse(patch.payload) : patch.payload;
+      switch (patch.scope) {
+        case 'species':
+          if (payload.species && typeof SPECIES !== 'undefined') Object.assign(SPECIES, payload.species);
+          break;
+        case 'skills':
+          if (payload.skills && typeof SKILLS !== 'undefined') Object.assign(SKILLS, payload.skills);
+          break;
+        case 'items':
+          if (payload.items && typeof ITEMS !== 'undefined') Object.assign(ITEMS, payload.items);
+          break;
+        case 'config':
+          if (payload.config && typeof CONFIG !== 'undefined') Object.assign(CONFIG, payload.config);
+          break;
+      }
+      return true;
+    } catch (e) {
+      console.error('[WebUI Reporter] 应用补丁失败:', e);
+      return false;
+    }
+  },
+
+  getStatus() {
+    return {
+      enabled: this.config.enabled,
+      endpoint: this.config.endpoint,
+      queueSize: this._queue.length,
+      installedMods: this.getInstalledMods().length,
+    };
+  }
+};
+
+// 挂载到全局
+if (typeof globalThis !== 'undefined') {
+  globalThis.WebUIReporter = WebUIReporter;
+}
+
+// 从存储加载 WebUI 配置
+  try {
+    const savedConfig = ext.storageGet('webui_config');
+    if (savedConfig) {
+      const cfg = JSON.parse(savedConfig);
+      WebUIReporter.init(cfg);
+    }
+  } catch (e) {
+    console.log('[万物有灵] 加载 WebUI 配置失败:', e);
+  }
+})();
 
 const CONFIG = {
   maxPets: 3,
@@ -795,7 +1022,7 @@ const TeamManager = {
   get teams() { return this.load(); },
 
   // 创建队伍
-  createTeam(leaderUid, leaderName, dungeonName) {
+  createTeam(leaderUid, leaderName, dungeonName, difficulty = '普通') {
     this.load();
     const teamId = 'team_' + Date.now();
     this._teams[teamId] = {
@@ -803,12 +1030,13 @@ const TeamManager = {
       leader: leaderUid,
       leaderName: leaderName,
       dungeon: dungeonName,
+      difficulty,
       members: [{ uid: leaderUid, name: leaderName, petIdx: 0 }],
       status: 'recruiting', // recruiting, fighting, completed
       createdAt: Date.now(),
     };
     this.save();
-    return { success: true, teamId, msg: `队伍创建成功！\n.宠物 组队 加入 @${leaderName} 加入队伍` };
+    return { success: true, teamId, msg: `队伍创建成功！\n副本: ${dungeonName} [${difficulty}]\n.宠物 组队 加入 @${leaderName} 加入队伍` };
   },
 
   // 加入队伍
@@ -919,11 +1147,21 @@ const TeamManager = {
 };
 
 //   副本系统
+const DUNGEON_DIFFICULTIES = {
+  '普通': { hp: 1, atk: 1, def: 1, reward: 1, energyCost: 30 },
+  '困难': { hp: 1.35, atk: 1.25, def: 1.2, reward: 1.4, energyCost: 40 },
+  '噩梦': { hp: 1.8, atk: 1.55, def: 1.45, reward: 1.9, energyCost: 55 },
+};
+
 const DUNGEONS = {
   '迷雾深渊': { boss: '深渊领主', bossHp: 500, bossAtk: 80, bossDef: 30, rewards: { money: [100, 300], items: ['进化石'] } },
   '熔岩地狱': { boss: '炎魔', bossHp: 1000, bossAtk: 150, bossDef: 50, rewards: { money: [300, 600], items: ['龙之鳞'] } },
   '冰霜王座': { boss: '冰霜巨龙', bossHp: 2000, bossAtk: 200, bossDef: 80, rewards: { money: [500, 1000], items: ['龙之心'] } },
   '虚空裂隙': { boss: '虚空主宰', bossHp: 5000, bossAtk: 400, bossDef: 150, rewards: { money: [1000, 3000], items: ['神话召唤石'] } },
+  '森林回廊': { boss: '古树守卫', bossHp: 650, bossAtk: 95, bossDef: 38, rewards: { money: [180, 360], items: ['进化石', '宠物粮'] } },
+  '沙海遗墓': { boss: '黄沙咒灵', bossHp: 1200, bossAtk: 170, bossDef: 60, rewards: { money: [320, 680], items: ['高级进化石', '仙人掌汁'] } },
+  '雷鸣穹顶': { boss: '雷霆巨像', bossHp: 2600, bossAtk: 260, bossDef: 95, rewards: { money: [650, 1350], items: ['天赋果实', '山泉茶'] } },
+  '星辉神殿': { boss: '星辉圣兽', bossHp: 6200, bossAtk: 460, bossDef: 180, rewards: { money: [1400, 3600], items: ['神话召唤石', '星辉圣代', '龙之心'] } },
 };
 
 //   世界Boss系统
@@ -1448,8 +1686,8 @@ const FOOD_CHAIN = {
   '蜘蛛': ['鼠', '蝙蝠'],
   '蝎': ['鼠', '蜘蛛'],
   '蝙蝠': ['鼠'],
-  '龙': ['几乎所有生物'],
-  '恶魔': ['几乎所有生物'],
+  '龙': ['蛇', '鹿', '鸟', '鱼', '熊'],
+  '恶魔': ['精灵', '天使', '幽灵', '骷髅', '傀儡'],
 };
 
 // 栖息地偏好（某些种族在特定地区出现率更高）
@@ -1622,6 +1860,27 @@ const TOWNS = {
   'ruin_tower': { name: '遗迹塔', region: '遗迹', desc: '古代文明残留的神秘高塔', npcs: ['archaeologist', 'wizard', 'guardian'] },
 };
 
+const CITY_FOOD_SHOPS = {
+  'forest_village': ['面包', '苹果', '蜂蜜', '香草沙拉'],
+  'volcano_fortress': ['烤肉', '牛排', '火山辣肉', '龙息盛宴'],
+  'ocean_port': ['鱼干', '海鲜大餐', '冰镇果盘', '山泉茶'],
+  'desert_oasis': ['仙人掌汁', '炭烤玉米', '能量棒'],
+  'mountain_city': ['牛奶', '山泉茶', '坚果'],
+  'cave_hideout': ['咖啡', '暗影菌汤', '治疗药'],
+  'grassland_camp': ['宠物粮', '游牧拼盘', '鸡蛋'],
+  'ruin_tower': ['遗迹秘果', '星辉圣代', '生命药剂', '精力药剂'],
+};
+
+const NPC_SELLS_FOOD = {
+  'herbalist': ['生命药剂', '精力药剂'],
+  'merchant': ['宠物粮'],
+  'fisherman': ['面包', '烤肉', '海鲜大餐'],
+  'eagle_master': ['山泉茶'],
+  'shadow_dealer': ['暗影菌汤'],
+  'beast_tamer': ['宠物粮', '游牧拼盘'],
+  'wizard': ['遗迹秘果', '星辉圣代'],
+};
+
 // NPC定义
 const NPCS = {
   'elder': { name: '村长', desc: '年迈的村长，知晓许多秘密', type: 'quest' },
@@ -1677,6 +1936,12 @@ const QuestManager = {
     if (data.quests.lastDailyReset < today) {
       data.quests.daily = {};
       data.quests.lastDailyReset = today;
+      data.feedTracker = {};
+      data.feedDaily = { date: today, firstBonusClaimed: false };
+    }
+    if (!data.feedTracker) data.feedTracker = {};
+    if (!data.feedDaily || data.feedDaily.date !== today) {
+      data.feedDaily = { date: today, firstBonusClaimed: false };
     }
   },
 
@@ -1835,20 +2100,35 @@ const RARITY_MARK = { '普通': '☆', '稀有': '★', '超稀有': '★★', '
 const ELEMENT_MARK = { '火': '[火]', '水': '[水]', '草': '[草]', '电': '[电]', '岩石': '[岩]', '超能': '[灵]' };
 
 const FOODS = {
-  '面包': { hp: 5, atk: 0, def: 0, energy: 10, cost: 10 },
-  '烤肉': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30 },
-  '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 20 },
-  '药水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40 },
-  '牛奶': { hp: 10, atk: 0, def: 2, energy: 15, cost: 15 },
-  '鸡蛋': { hp: 8, atk: 1, def: 1, energy: 12, cost: 12 },
-  '苹果': { hp: 5, atk: 0, def: 0, energy: 20, cost: 8 },
-  '鱼干': { hp: 12, atk: 1, def: 1, energy: 15, cost: 18 },
-  '蜂蜜': { hp: 15, atk: 0, def: 0, energy: 30, cost: 25 },
-  '蘑菇': { hp: 0, atk: 3, def: 0, energy: 10, cost: 20 },
-  '坚果': { hp: 0, atk: 0, def: 5, energy: 5, cost: 15 },
-  '牛排': { hp: 25, atk: 3, def: 3, energy: 30, cost: 50 },
-  '能量棒': { hp: 0, atk: 0, def: 0, energy: 80, cost: 35 },
-  '治疗药': { hp: 80, atk: 0, def: 0, energy: 0, cost: 60 },
+  '面包': { hp: 5, atk: 0, def: 0, energy: 10, cost: 10, affection: [3, 4] },
+  '烤肉': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30, affection: [5, 6] },
+  '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 24, affection: [2, 3] },
+  '药水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40, affection: [2, 3] },
+  '牛奶': { hp: 10, atk: 0, def: 2, energy: 15, cost: 15, affection: [4, 5] },
+  '鸡蛋': { hp: 8, atk: 1, def: 1, energy: 12, cost: 12, affection: [4, 5] },
+  '苹果': { hp: 5, atk: 0, def: 0, energy: 20, cost: 10, affection: [3, 4] },
+  '鱼干': { hp: 12, atk: 1, def: 1, energy: 15, cost: 18, affection: [4, 5] },
+  '蜂蜜': { hp: 15, atk: 0, def: 0, energy: 30, cost: 25, affection: [5, 6] },
+  '蘑菇': { hp: 0, atk: 3, def: 0, energy: 10, cost: 20, affection: [3, 4] },
+  '坚果': { hp: 0, atk: 0, def: 5, energy: 5, cost: 15, affection: [3, 4] },
+  '牛排': { hp: 25, atk: 3, def: 3, energy: 30, cost: 50, affection: [6, 8] },
+  '能量棒': { hp: 0, atk: 0, def: 0, energy: 80, cost: 40, affection: [2, 3] },
+  '治疗药': { hp: 80, atk: 0, def: 0, energy: 0, cost: 60, affection: [1, 2] },
+  '宠物粮': { hp: 12, atk: 0, def: 0, energy: 18, cost: 16, affection: [4, 5] },
+  '生命药剂': { hp: 120, atk: 0, def: 0, energy: 0, cost: 90, affection: [2, 3] },
+  '精力药剂': { hp: 0, atk: 0, def: 0, energy: 120, cost: 95, affection: [2, 3] },
+  '海鲜大餐': { hp: 30, atk: 2, def: 2, energy: 40, cost: 65, affection: [6, 8] },
+  '香草沙拉': { hp: 18, atk: 0, def: 1, energy: 28, cost: 28, affection: [5, 6] },
+  '炭烤玉米': { hp: 10, atk: 1, def: 1, energy: 22, cost: 20, affection: [4, 5] },
+  '火山辣肉': { hp: 20, atk: 4, def: 1, energy: 25, cost: 55, affection: [5, 7] },
+  '冰镇果盘': { hp: 14, atk: 0, def: 0, energy: 45, cost: 32, affection: [5, 6] },
+  '仙人掌汁': { hp: 8, atk: 0, def: 2, energy: 35, cost: 26, affection: [4, 5] },
+  '山泉茶': { hp: 12, atk: 0, def: 1, energy: 38, cost: 30, affection: [4, 6] },
+  '暗影菌汤': { hp: 16, atk: 2, def: 2, energy: 30, cost: 42, affection: [5, 6] },
+  '游牧拼盘': { hp: 22, atk: 2, def: 3, energy: 24, cost: 48, affection: [5, 7] },
+  '遗迹秘果': { hp: 18, atk: 3, def: 1, energy: 36, cost: 58, affection: [6, 8] },
+  '星辉圣代': { hp: 20, atk: 2, def: 2, energy: 50, cost: 88, affection: [7, 9] },
+  '龙息盛宴': { hp: 35, atk: 5, def: 4, energy: 45, cost: 128, affection: [8, 10] },
 };
 
 const SKILLS = {
@@ -2038,6 +2318,8 @@ const DB = {
     const defaultData = {
       schemaVersion: MAIN_SCHEMA_VERSION,
       pets: [], storage: [], money: 100, food: { '面包': 5 }, items: { '捉宠符咒': 5 }, maxStorage: 15,
+      feedTracker: {},
+      feedDaily: { date: 0, firstBonusClaimed: false },
       // 玩家属性
       player: {
         level: 1, exp: 0,
@@ -2048,6 +2330,8 @@ const DB = {
         dailyTrain: 0, lastTrainDate: '',
       },
       playerItems: {},  // 玩家装备和技能书
+      currentTown: '',
+      currentShopNpc: '',
     };
     try {
       const d = ext.storageGet('u_' + userId);
@@ -2063,14 +2347,19 @@ const DB = {
       data.food = data.food || { '面包': 5 };
       data.items = data.items || {};
       data.maxStorage = data.maxStorage || 15;
+      data.feedTracker = data.feedTracker || {};
+      data.feedDaily = data.feedDaily || { date: 0, firstBonusClaimed: false };
+      data.currentTown = data.currentTown || '';
+      data.currentShopNpc = data.currentShopNpc || '';
 
       // 如果是旧数据格式且pets超过上限，移入仓库
       if (!hadStorage && data.pets.length > CONFIG.maxPets) {
         data.storage = data.pets.splice(CONFIG.maxPets);
       }
 
-      // 为旧宠物添加性别字段
+      // 为旧宠物补齐必要字段
       for (const pet of data.pets) {
+        if (!pet.id) pet.id = DB.genId();
         if (!pet.gender) pet.gender = Math.random() < 0.5 ? '♂' : '♀';
         if (!pet.parents) pet.parents = null;
         // 更新旧宠物的初始技能
@@ -2079,6 +2368,7 @@ const DB = {
         }
       }
       for (const pet of data.storage) {
+        if (!pet.id) pet.id = DB.genId();
         if (!pet.gender) pet.gender = Math.random() < 0.5 ? '♂' : '♀';
         if (!pet.parents) pet.parents = null;
         // 更新旧宠物的初始技能
@@ -2513,10 +2803,10 @@ const Battle = {
       dmg *= 0.75; // 被克制时伤害降低25%
     }
 
-    // 食物链克制（捕食者对猎物伤害+25%）
+    // 食物链克制（捕食者对猎物伤害+20%）
     if (atkSpecies && defSpecies && FOOD_CHAIN[atkSpecies]) {
-      if (FOOD_CHAIN[atkSpecies].includes(defSpecies) || FOOD_CHAIN[atkSpecies].includes('几乎所有生物')) {
-        dmg *= 1.25;
+      if (FOOD_CHAIN[atkSpecies].includes(defSpecies)) {
+        dmg *= 1.2;
       }
     }
 
@@ -2683,10 +2973,10 @@ const Battle = {
             }
             break;
           case '龙':
-            // 龙族：对所有元素技能伤害+15%
+            // 龙族：对所有元素技能伤害+10%
             if (sk.element) {
-              dmg = Math.floor(dmg * 1.15);
-              logs.push(`[龙族特性] ${a.name} 龙威！元素伤害+15%`);
+              dmg = Math.floor(dmg * 1.1);
+              logs.push(`[龙族特性] ${a.name} 龙威！元素伤害+10%`);
             }
             break;
           case '蛇':
@@ -2725,10 +3015,10 @@ const Battle = {
             }
             break;
           case '虎':
-            // 虎类：暴击率+15%，暴击伤害+50%
+            // 虎类：15%概率造成1.8倍伤害
             if (Math.random() < 0.15) {
-              dmg = Math.floor(dmg * 2);
-              logs.push(`[虎类特性] ${a.name} 猛虎下山！暴击！`);
+              dmg = Math.floor(dmg * 1.8);
+              logs.push(`[虎类特性] ${a.name} 猛虎下山！重创敌人！`);
             }
             break;
           case '狮':
@@ -2823,9 +3113,9 @@ const Battle = {
             }
             break;
           case '九头蛇':
-            // 九头蛇：每次攻击有30%概率追加一次50%伤害
-            if (Math.random() < 0.3) {
-              const extraDmg = Math.floor(dmg * 0.5);
+            // 九头蛇：每次攻击有20%概率追加一次40%伤害
+            if (Math.random() < 0.2) {
+              const extraDmg = Math.floor(dmg * 0.4);
               d.hp = Math.max(0, (d.hp || 0) - extraDmg);
               logs.push(`[九头蛇特性] ${a.name} 多头攻击！追加${extraDmg}伤害`);
             }
@@ -2854,8 +3144,8 @@ const Battle = {
             }
             break;
           case '天使':
-            // 天使：攻击有20%概率造成神圣伤害（无视防御）
-            if (Math.random() < 0.2) {
+            // 天使：攻击有15%概率造成神圣伤害（无视防御）
+            if (Math.random() < 0.15) {
               dmg = Math.floor(dmg * 1.3);
               logs.push(`[天使特性] ${a.name} 神圣审判！伤害+30%`);
             }
@@ -2883,8 +3173,8 @@ const Battle = {
             // (在防御时生效)
             break;
           case '猪':
-            // 猪类：生命+20%，攻击有15%概率造成双倍伤害
-            if (Math.random() < 0.15) {
+            // 猪类：生命+20%，攻击有10%概率造成双倍伤害
+            if (Math.random() < 0.1) {
               dmg *= 2;
               logs.push(`[猪类特性] ${a.name} 蛮力暴击！双倍伤害`);
             }
@@ -2909,10 +3199,10 @@ const Battle = {
             a.lastTarget = d.name;
             break;
           case '螳螂':
-            // 螳螂：暴击率+20%，暴击伤害+50%
-            if (Math.random() < 0.2) {
-              dmg = Math.floor(dmg * 2);
-              logs.push(`[螳螂特性] ${a.name} 刀刃暴击！`);
+            // 螳螂：15%概率造成1.8倍伤害
+            if (Math.random() < 0.15) {
+              dmg = Math.floor(dmg * 1.8);
+              logs.push(`[螳螂特性] ${a.name} 刀刃重击！`);
             }
             break;
           case '哥布林':
@@ -2992,10 +3282,10 @@ const Battle = {
         dmg = Math.floor(dmg * (1 + d.berserkDef));
       }
 
-      // 蛇颈龙特性：生命低于50%时受到伤害减少30%
+      // 蛇颈龙特性：生命低于50%时受到伤害减少20%
       if (d.species === '蛇颈龙' && d.maxHp && d.hp / d.maxHp < 0.5) {
-        dmg = Math.floor(dmg * 0.7);
-        logs.push(`[蛇颈龙特性] ${d.name} 深海守护！伤害-30%`);
+        dmg = Math.floor(dmg * 0.8);
+        logs.push(`[蛇颈龙特性] ${d.name} 深海守护！伤害-20%`);
       }
 
       // 蟹类特性：受到伤害减少10%
@@ -3412,7 +3702,7 @@ const HELP_PAGES = {
   战斗: `【战斗命令】
 .宠物 捉宠 [编号] [地区] - 捕捉野外宠物
 .宠物 对战 <编号> @人 - PVP对战
-.宠物 喂食 <编号> <食物> - 喂食恢复
+.宠物 喂食 <编号|全部> <食物> [数量] - 喂食恢复
 .宠物 学习 <编号> - 学习技能
 
 【精力自动恢复】
@@ -3459,14 +3749,21 @@ const HELP_PAGES = {
 .宠物 装备 <编号> <宠物编号> - 给宠物穿装备
 .宠物 图鉴 - 查看图鉴收集进度
 .宠物 排行 - 查看排行榜
-.宠物 副本 [副本名] [宠物编号] - 挑战副本Boss
+.宠物 副本 [副本名] [难度] [宠物编号] - 挑战副本Boss
 .宠物 神话 - 查看神话宠物
 
 【副本系统】
 迷雾深渊 - 深渊领主 HP:500
 熔岩地狱 - 炎魔 HP:1000
 冰霜王座 - 冰霜巨龙 HP:2000
-虚空裂隙 - 虚空主宰 HP:5000`,
+虚空裂隙 - 虚空主宰 HP:5000
+森林回廊 - 古树守卫 HP:650
+沙海遗墓 - 黄沙咒灵 HP:1200
+雷鸣穹顶 - 雷霆巨像 HP:2600
+星辉神殿 - 星辉圣兽 HP:6200
+
+【副本难度】
+普通 / 困难 / 噩梦`,
 
   进化: `【进化系统】
 .宠物 进化 <编号> - 查看进化预览/进化
@@ -3492,7 +3789,7 @@ const HELP_PAGES = {
 
   组队: `【组队系统】
 .宠物 组队 - 查看队伍状态/招募列表
-.宠物 组队 创建 <副本名/世界Boss> - 创建队伍
+.宠物 组队 创建 <副本名/世界Boss> [难度] - 创建队伍
 .宠物 组队 加入 @队长 - 加入队伍
 .宠物 组队 设宠 <编号> - 设置出战宠物
 .宠物 组队 开始 - 开始战斗(队长)
@@ -3506,7 +3803,9 @@ const HELP_PAGES = {
 
 【可挑战目标】
 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙
-世界Boss(需Boss存在时)`,
+森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿
+世界Boss(需Boss存在时)
+难度支持: 普通 / 困难 / 噩梦`,
 
   世界Boss: `【世界Boss系统】
 .宠物 世界Boss - 查看Boss状态
@@ -3565,7 +3864,18 @@ const HELP_PAGES = {
 
   mod: `【Mod命令】
 .宠物 mod - 查看已安装Mod
-.宠物 mod <名称> - 查看Mod详情`,
+.宠物 mod <名称> - 查看Mod详情
+.宠物 mod 列表 - 查看WebUI可用Mod
+.宠物 mod 安装 <名称> - 从WebUI安装Mod
+.宠物 mod 卸载 <名称> - 卸载Mod`,
+
+  webui: `【WebUI命令】
+.宠物 webui - 查看WebUI状态
+.宠物 webui 配置 <端点> <Token> - 配置WebUI
+.宠物 webui 启用 - 启用WebUI上报
+.宠物 webui 禁用 - 禁用WebUI上报
+.宠物 webui 同步 - 立即同步数据
+.宠物 webui 补丁 - 拉取并应用补丁`,
 };
 
 cmd.solve = (ctx, msg, argv) => {
@@ -3597,6 +3907,7 @@ cmd.solve = (ctx, msg, argv) => {
   const action = actionFromCmd || args[0] || '';
   const p1 = actionFromCmd ? args[0] : args[1] || '';
   const p2 = actionFromCmd ? args.slice(1).join(' ') : args.slice(2).join(' ') || '';
+  const p3 = actionFromCmd ? args[2] || '' : args[3] || '';
 
   // 从 argv.atInfo 获取@用户（SealDice已解析好）
   const atInfo = argv.atInfo || argv.at || [];
@@ -3851,7 +4162,7 @@ cmd.solve = (ctx, msg, argv) => {
       const minLevel = Math.max(1, playerMaxLevel - 2);
       const maxLevel = Math.max(5, playerMaxLevel + 2);
       wildPet.level = Math.floor(Math.random() * (maxLevel - minLevel + 1)) + minLevel;
-      // 根据等级提升属性 (v3.6.11: 1-5级弱, 6级以上大幅增强平衡双人出战)
+      // 根据等级提升属性 (v4.2.5: 平滑野怪成长曲线)
       for (let i = 1; i < wildPet.level; i++) {
         if (i < 5) {
           // 1-5级：正常成长（新手友好）
@@ -3859,10 +4170,10 @@ cmd.solve = (ctx, msg, argv) => {
           wildPet.atk += 3;
           wildPet.def += 3;
         } else {
-          // 6级以上：大幅增强（HP+150%, ATK+200%）
-          wildPet.maxHp += 20;
-          wildPet.atk += 10;
-          wildPet.def += 6;
+          // 6级以上：中幅成长，避免断层
+          wildPet.maxHp += 14;
+          wildPet.atk += 6;
+          wildPet.def += 4;
         }
         wildPet.hp = wildPet.maxHp;
       }
@@ -4416,32 +4727,123 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '喂食') {
-    const pet = getPet(p1);
+    QuestManager.initPlayerQuests(data);
+    const FEED_STAT_CAP = 30;
+    const feedArgs = actionFromCmd ? args : args.slice(1);
+    const feedTarget = feedArgs[1] || '';
+    const foodName = feedArgs[2] || '';
+    const feedCountArg = feedArgs[3] || '';
+    if (!foodName || !FOODS[foodName]) return reply(`未知食物，可用: ${Object.keys(FOODS).join('、')}`);
+    const totalFood = data.food[foodName] || 0;
+    if (totalFood <= 0) return reply(`你没有 ${foodName}，发送 .宠物 背包 查看拥有的食物`);
+
+    const getAffectionGain = (pet, count, mode = 'single') => {
+      const food = FOODS[foodName];
+      const [minGain, maxGain] = food.affection || [3, 6];
+      const natureData = NATURES[pet.nature] || {};
+      const trackerKey = pet.id;
+      let trackerCount = data.feedTracker[trackerKey] || 0;
+      let totalGain = 0;
+      let firstFeedBonus = false;
+
+      for (let i = 0; i < count; i++) {
+        const baseGain = minGain + Math.floor(Math.random() * (maxGain - minGain + 1));
+        let gain = Math.floor(baseGain * (natureData.affectionMod || 1));
+        const feedIndex = trackerCount + i + 1;
+        let rate = 1;
+        if (feedIndex >= 3 && feedIndex <= 5) rate = 0.8;
+        else if (feedIndex >= 6) rate = 0.6;
+        if (mode === 'all') rate *= 0.85;
+        gain = Math.max(1, Math.floor(gain * rate));
+        if (!data.feedDaily.firstBonusClaimed) {
+          gain *= 2;
+          data.feedDaily.firstBonusClaimed = true;
+          firstFeedBonus = true;
+        }
+        totalGain += gain;
+      }
+
+      data.feedTracker[trackerKey] = trackerCount + count;
+      return { affectionGain: totalGain, firstFeedBonus };
+    };
+
+    const applyFeedStatGrowth = (pet, food, count) => {
+      pet.feedStats = pet.feedStats || { atk: 0, def: 0 };
+      let atkGain = 0;
+      let defGain = 0;
+      for (let i = 0; i < count; i++) {
+        if (food.atk > 0 && pet.feedStats.atk < FEED_STAT_CAP) {
+          const gain = Math.min(food.atk, FEED_STAT_CAP - pet.feedStats.atk);
+          pet.feedStats.atk += gain;
+          atkGain += gain;
+        }
+        if (food.def > 0 && pet.feedStats.def < FEED_STAT_CAP) {
+          const gain = Math.min(food.def, FEED_STAT_CAP - pet.feedStats.def);
+          pet.feedStats.def += gain;
+          defGain += gain;
+        }
+      }
+      pet.atk += atkGain;
+      pet.def += defGain;
+      return { atkGain, defGain, capped: atkGain < food.atk * count || defGain < food.def * count };
+    };
+
+    const feedPet = (pet, count, mode = 'single') => {
+      const f = FOODS[foodName];
+      pet.hp = Math.min(pet.maxHp, pet.hp + f.hp * count);
+      const statGain = applyFeedStatGrowth(pet, f, count);
+      pet.energy = Math.min(pet.maxEnergy, pet.energy + f.energy * count);
+
+      const { affectionGain, firstFeedBonus } = getAffectionGain(pet, count, mode);
+      pet.affection = Math.min(100, (pet.affection || 50) + affectionGain);
+      for (let i = 0; i < count; i++) QuestManager.updateProgress(data, 'feed');
+      WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f, count, mode });
+      return { affectionGain, foodData: f, firstFeedBonus, statGain };
+    };
+
+    if (feedTarget === '全部') {
+      if (!data.pets.length) return reply('你还没有队伍宠物');
+      let count = parseInt(feedCountArg);
+      if (!Number.isInteger(count) || count <= 0) count = 1;
+      const petCount = data.pets.length;
+      const maxBatch = Math.floor(totalFood / petCount);
+      if (maxBatch <= 0) return reply(`${foodName} 数量不足，至少需要 ${petCount} 个才能全部喂食一次`);
+      count = Math.min(count, maxBatch);
+      data.food[foodName] -= count * petCount;
+
+      const lines = [`全部喂食成功！所有队伍宠物都吃了 ${foodName} x${count}`];
+      let hasFirstBonus = false;
+      let hasCapReached = false;
+      data.pets.forEach((pet, idx) => {
+        const result = feedPet(pet, count, 'all');
+        if (result.firstFeedBonus) hasFirstBonus = true;
+        if (result.statGain.capped) hasCapReached = true;
+        const statTips = [];
+        if (result.statGain.atkGain > 0) statTips.push(`攻击+${result.statGain.atkGain}`);
+        if (result.statGain.defGain > 0) statTips.push(`防御+${result.statGain.defGain}`);
+        lines.push(`${idx + 1}. ${pet.name} 好感度+${result.affectionGain}${statTips.length ? ` (${statTips.join('，')})` : ''}`);
+      });
+      if (hasFirstBonus) lines.push('今日首次喂食双倍好感已触发');
+      if (hasCapReached) lines.push(`部分宠物的喂食攻防成长已达到上限（攻击/防御各最多+${FEED_STAT_CAP}）`);
+      save();
+      lines.push(getRandomTip());
+      return reply(lines.join('\n'));
+    }
+
+    const pet = getPet(feedTarget);
     if (!pet) return reply('请指定正确的宠物编号');
-    const foodName = p2;
-    if (!FOODS[foodName]) return reply(`未知食物，可用: ${Object.keys(FOODS).join('、')}`);
-    const food = data.food[foodName] || 0;
-    if (food <= 0) return reply(`你没有 ${foodName}，发送 .宠物 背包 查看拥有的食物`);
-    data.food[foodName]--;
-    const f = FOODS[foodName];
-    pet.hp = Math.min(pet.maxHp, pet.hp + f.hp);
-    pet.atk += f.atk;
-    pet.def += f.def;
-    pet.energy = Math.min(pet.maxEnergy, pet.energy + f.energy);
-    
-    // 喂食增加好感度
-    const natureData = NATURES[pet.nature] || {};
-    const affectionGain = Math.floor((5 + Math.floor(Math.random() * 6)) * (natureData.affectionMod || 1));
-    pet.affection = Math.min(100, (pet.affection || 50) + affectionGain);
 
-    // 更新任务进度
-    QuestManager.updateProgress(data, 'feed');
+    let count = parseInt(feedCountArg);
+    if (!Number.isInteger(count) || count <= 0) count = 1;
+    count = Math.min(count, totalFood);
+    data.food[foodName] -= count;
 
+    const result = feedPet(pet, count, 'single');
     save();
-    WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f });
-    return reply(`喂食成功！${pet.name} 的属性提升了\n好感度+${affectionGain}\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
+    const bonusText = result.firstFeedBonus ? '\n今日首次喂食双倍好感已触发' : '';
+    const capText = result.statGain.capped ? `\n该宠物的喂食攻防成长已接近或达到上限（攻击/防御各最多+${FEED_STAT_CAP}）` : '';
+    return reply(`喂食成功！${pet.name} 吃了 ${foodName} x${count}\n好感度+${result.affectionGain}${bonusText}${capText}\n${PetFactory.info(pet, parseInt(feedTarget) - 1)}\n${getRandomTip()}`);
   }
-
   if (action === '改名') {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
@@ -4763,6 +5165,19 @@ cmd.solve = (ctx, msg, argv) => {
         mode: isNPC ? 'wild' : 'pvp',
         playerMode: pet1 && pet1.isPlayer ? 'body' : 'pet'
       });
+
+      // 上报战斗日志到WebUI
+      if (WebUIReporter.config.enabled) {
+        WebUIReporter.reportBattleLog({
+          zone: isNPC ? '野外' : 'PVP',
+          actor: myName || uid,
+          target: targetName || targetUid || 'NPC',
+          result: result.draw ? 'draw' : (result.winner === pet1Copy ? 'win' : 'lose'),
+          turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+          tags: isNPC ? ['野生'] : ['PVP'],
+        });
+      }
+
       reply(logs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 对战错误:', e);
@@ -4904,8 +5319,11 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '商店') {
-    const lines = ['【宠物商店】', `你的金币: ${data.money}`, '', '【食物】'];
-    for (const [name, f] of Object.entries(FOODS)) {
+    const lines = ['【宠物商店】', `你的金币: ${data.money}`, '', '【基础食物】'];
+    const basicFoods = ['面包', '苹果', '鸡蛋', '牛奶', '鱼干', '蜂蜜', '药水', '治疗药', '宠物粮'];
+    for (const name of basicFoods) {
+      const f = FOODS[name];
+      if (!f) continue;
       const effects = [];
       if (f.hp) effects.push(`生命+${f.hp}`);
       if (f.atk) effects.push(`攻击+${f.atk}`);
@@ -4913,10 +5331,13 @@ cmd.solve = (ctx, msg, argv) => {
       if (f.energy) effects.push(`精力+${f.energy}`);
       lines.push(`${name}: ${f.cost}金币 (${effects.join(', ')})`);
     }
-    lines.push('', '【道具】');
+    lines.push('', '【基础道具】');
     for (const [name, item] of Object.entries(ITEMS)) {
       lines.push(`${name}: ${item.cost}金币 (${item.desc})`);
     }
+    lines.push('', '【城市特产】');
+    lines.push('发送 .宠物 城镇 [城镇名] 查看当地专属食物');
+    lines.push('发送 .宠物 NPC [NPC名] 查看城市商店');
     lines.push('', '使用 .宠物 购买 <物品/道具> [数量] 购买');
     lines.push('使用 .宠物 道具 查看拥有的道具');
     lines.push('使用 .宠物 使用 <道具> [宠物编号] 使用道具');
@@ -4924,11 +5345,23 @@ cmd.solve = (ctx, msg, argv) => {
   }
 
   if (action === '购买') {
-    const item = p1;
-    const count = Math.max(1, parseInt(p2) || 1);
+    const buyArgs = actionFromCmd ? args : args.slice(1);
+    const item = buyArgs[1] || '';
+    const count = Math.max(1, parseInt(buyArgs[2]) || 1);
+
+    const cityFoodSet = new Set(Object.values(CITY_FOOD_SHOPS).flat());
+    const basicFoods = new Set(['面包', '苹果', '鸡蛋', '牛奶', '鱼干', '蜂蜜', '药水', '治疗药', '宠物粮']);
+    const currentTownFoods = data.currentTown ? new Set(CITY_FOOD_SHOPS[data.currentTown] || []) : new Set();
+    const currentNpcFoods = data.currentShopNpc ? new Set(NPC_SELLS_FOOD[data.currentShopNpc] || []) : new Set();
+    const canBuyFromLocalShop = currentTownFoods.has(item) || currentNpcFoods.has(item);
 
     // 检查是食物还是道具
     if (FOODS[item]) {
+      if (cityFoodSet.has(item) && !basicFoods.has(item) && !canBuyFromLocalShop) {
+        const townId = Object.keys(CITY_FOOD_SHOPS).find(id => CITY_FOOD_SHOPS[id].includes(item));
+        const townName = TOWNS[townId]?.name || '对应城镇';
+        return reply(`${item} 是城市特产，请先前往 ${townName} 查看当地商店后再购买`);
+      }
       const cost = FOODS[item].cost * count;
       if (data.money < cost) return reply(`金币不足，需要 ${cost} 金币`);
       data.money -= cost;
@@ -5079,6 +5512,10 @@ cmd.solve = (ctx, msg, argv) => {
     const townId = Object.keys(TOWNS).find(id => TOWNS[id].name.includes(p1) || id.includes(p1));
     if (!townId) return reply('未找到该城镇');
 
+    data.currentTown = townId;
+    data.currentShopNpc = '';
+    save();
+
     const town = TOWNS[townId];
     const region = REGIONS[town.region];
     const lines = [
@@ -5090,12 +5527,15 @@ cmd.solve = (ctx, msg, argv) => {
     ];
     for (const npcId of town.npcs) {
       const npc = NPCS[npcId];
-      lines.push(`• ${npc.name}: ${npc.desc}`);
+      lines.push('• ' + npc.name + ': ' + npc.desc);
       if (npc.type === 'shop' && npc.sells) {
-        lines.push(`  出售: ${npc.sells.join('、')}`);
+        const townFoods = CITY_FOOD_SHOPS[townId] || [];
+        const preview = [...new Set([...npc.sells, ...townFoods])];
+        lines.push(`  出售: ${preview.join('、')}`);
       }
     }
-    lines.push('', '使用 .宠物 NPC [NPC名] 与NPC交互');
+    lines.push('', '你已抵达该城镇，可直接购买本城特产');
+    lines.push('使用 .宠物 NPC [NPC名] 与NPC交互');
     return reply(lines.join('\n'));
   }
 
@@ -5112,12 +5552,34 @@ cmd.solve = (ctx, msg, argv) => {
     if (npc.type === 'shop') {
       // 商店NPC
       if (!npc.sells) return reply(`${npc.name} 暂无商品出售`);
+      const townId = Object.keys(TOWNS).find(id => TOWNS[id].npcs.includes(npcId));
+      if (townId) data.currentTown = townId;
+      data.currentShopNpc = npcId;
+      save();
+
+      const cityFoods = townId ? (CITY_FOOD_SHOPS[townId] || []) : [];
       const lines = [`【${npc.name}的商店】`];
       for (const item of npc.sells) {
-        const price = ITEMS[item]?.price || 50;
+        const food = FOODS[item];
+        const baseItem = ITEMS[item];
+        const price = food?.cost ?? baseItem?.cost;
+        if (!price) continue;
         lines.push(`• ${item}: ${price}金币`);
       }
-      lines.push('', `使用 .宠物 购买 [物品名] 购买`);
+      if (cityFoods.length > 0) {
+        lines.push('', '【本城特产】');
+        for (const item of cityFoods) {
+          const food = FOODS[item];
+          if (!food) continue;
+          const effects = [];
+          if (food.hp) effects.push(`生命+${food.hp}`);
+          if (food.atk) effects.push(`攻击+${food.atk}`);
+          if (food.def) effects.push(`防御+${food.def}`);
+          if (food.energy) effects.push(`精力+${food.energy}`);
+          lines.push(`• ${item}: ${food.cost}金币 (${effects.join(', ')})`);
+        }
+      }
+      lines.push('', '已进入当地商店，可直接使用 .宠物 购买 [物品名] [数量]');
       return reply(lines.join('\n'));
     } else {
       // 任务NPC
@@ -5498,53 +5960,61 @@ cmd.solve = (ctx, msg, argv) => {
       for (const [n, d] of Object.entries(DUNGEONS)) {
         lines.push(`${n} - Boss:${d.boss} HP:${d.bossHp} ATK:${d.bossAtk}`);
       }
-      lines.push('\n单人挑战: .宠物 副本 <副本名> <宠物编号>');
-      lines.push('组队挑战: .宠物 组队 创建 <副本名>');
+      lines.push('', '【难度】普通 / 困难 / 噩梦');
+      lines.push('单人挑战: .宠物 副本 <副本名> [难度] [宠物编号]');
+      lines.push('组队挑战: .宠物 组队 创建 <副本名> [难度]');
       return reply(lines.join('\n'));
     }
-    const pet = getPet(p2 || '1');
+
+    const difficultyName = DUNGEON_DIFFICULTIES[p2] ? p2 : '普通';
+    const difficulty = DUNGEON_DIFFICULTIES[difficultyName];
+    const petArg = DUNGEON_DIFFICULTIES[p2] ? p3 : p2;
+    const pet = getPet(petArg || '1');
     if (!pet) return reply('请指定宠物编号');
     const dungeon = DUNGEONS[p1];
     if (!dungeon) return reply('副本不存在');
     if (pet.hp <= 0) return reply('宠物已阵亡，请先复活');
-    if (pet.energy < 30) return reply('精力不足(需要30)');
+    if (pet.energy < difficulty.energyCost) return reply(`精力不足(需要${difficulty.energyCost})`);
 
-    pet.energy -= 30;
-    
-    // 完整Boss战斗
-    let bossHp = dungeon.bossHp;
+    pet.energy -= difficulty.energyCost;
+
+    const bossName = `${dungeon.boss}[${difficultyName}]`;
+    let bossHp = Math.floor(dungeon.bossHp * difficulty.hp);
+    const bossAtk = Math.floor(dungeon.bossAtk * difficulty.atk);
+    const bossDef = Math.floor(dungeon.bossDef * difficulty.def);
     let petHp = pet.hp;
-    const logs = [`【${dungeon.boss}战斗】`, `${pet.name} vs ${dungeon.boss}`];
+    const logs = [`【${bossName}战斗】`, `${pet.name} vs ${bossName}`];
     let round = 0;
-    
+
     while (bossHp > 0 && petHp > 0 && round < 20) {
       round++;
-      const petDamage = Math.max(1, pet.atk - dungeon.bossDef + Math.floor(Math.random() * 20));
+      const petDamage = Math.max(1, pet.atk - bossDef + Math.floor(Math.random() * 20));
       bossHp -= petDamage;
       logs.push(`第${round}回合: ${pet.name}造成${petDamage}伤害`);
       if (bossHp <= 0) break;
-      const bossDamage = Math.max(1, dungeon.bossAtk - pet.def + Math.floor(Math.random() * 30));
+      const bossDamage = Math.max(1, bossAtk - pet.def + Math.floor(Math.random() * 30));
       petHp -= bossDamage;
-      logs.push(`${dungeon.boss}反击造成${bossDamage}伤害`);
+      logs.push(`${bossName}反击造成${bossDamage}伤害`);
     }
-    
+
     pet.hp = Math.max(1, petHp);
-    
+
     if (bossHp <= 0) {
-      const money = dungeon.rewards.money[0] + Math.floor(Math.random() * (dungeon.rewards.money[1] - dungeon.rewards.money[0]));
+      const minMoney = Math.floor(dungeon.rewards.money[0] * difficulty.reward);
+      const maxMoney = Math.floor(dungeon.rewards.money[1] * difficulty.reward);
+      const money = minMoney + Math.floor(Math.random() * Math.max(1, maxMoney - minMoney + 1));
       const item = dungeon.rewards.items[Math.floor(Math.random() * dungeon.rewards.items.length)];
       data.money += money;
       data.items[item] = (data.items[item] || 0) + 1;
       save();
-      logs.push(`【胜利】击败${dungeon.boss}！获得: ${money}金币, ${item}`);
+      logs.push(`【胜利】击败${bossName}！获得: ${money}金币, ${item}`);
       return reply(logs.slice(0, 15).join('\n'));
     } else {
       save();
-      logs.push(`【失败】被${dungeon.boss}击败...`);
+      logs.push(`【失败】被${bossName}击败...`);
       return reply(logs.slice(0, 15).join('\n'));
     }
   }
-
   //   公会系统
   if (action === '公会' || action === 'guild') {
     if (!p1) return reply(GuildManager.getGuildInfo(data) + '\n\n用法: .宠物 公会 [创建/加入/退出] [名称]');
@@ -5571,7 +6041,8 @@ cmd.solve = (ctx, msg, argv) => {
     if (!p1) {
       const myTeam = TeamManager.getUserTeam(uid);
       if (myTeam) {
-        const lines = [`【当前队伍】副本: ${myTeam.dungeon}`];
+        const difficultyText = myTeam.difficulty || '普通';
+        const lines = [`【当前队伍】副本: ${myTeam.dungeon} [${difficultyText}]`];
         myTeam.members.forEach((m, i) => lines.push(`${i + 1}. ${m.name} (宠物${m.petIdx + 1})`));
         lines.push(`\n状态: ${myTeam.status === 'recruiting' ? '招募中' : '战斗中'}`);
         lines.push('.宠物 组队 设宠 <编号> - 设置出战宠物');
@@ -5581,23 +6052,24 @@ cmd.solve = (ctx, msg, argv) => {
       }
       const teams = TeamManager.getRecruitingTeams();
       if (teams.length === 0) {
-        return reply('暂无招募中的队伍\n.宠物 组队 创建 <副本名> - 创建队伍');
+        return reply('暂无招募中的队伍\n.宠物 组队 创建 <副本名> [难度] - 创建队伍');
       }
       const lines = ['【招募中的队伍】'];
-      teams.forEach(t => lines.push(`${t.dungeon} - 队长:${t.leaderName} (${t.members.length}/4)`));
+      teams.forEach(t => lines.push(`${t.dungeon} [${t.difficulty || '普通'}] - 队长:${t.leaderName} (${t.members.length}/4)`));
       lines.push('\n.宠物 组队 加入 @队长 - 加入队伍');
-      lines.push('.宠物 组队 创建 <副本名> - 创建队伍');
+      lines.push('.宠物 组队 创建 <副本名> [难度] - 创建队伍');
       return reply(lines.join('\n'));
     }
     if (p1 === '创建') {
-      if (!p2) return reply('用法: .宠物 组队 创建 <副本名/世界Boss>');
+      if (!p2) return reply('用法: .宠物 组队 创建 <副本名/世界Boss> [难度]');
+      const teamDifficulty = DUNGEON_DIFFICULTIES[p3] ? p3 : '普通';
       // 检查是否是世界Boss或普通副本
-      if (p2 !== '世界Boss' && !DUNGEONS[p2]) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/世界Boss');
+      if (p2 !== '世界Boss' && !DUNGEONS[p2]) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿/世界Boss');
       if (p2 === '世界Boss') {
         const spawnResult = WorldBossManager.checkAndSpawn();
         if (!spawnResult.boss) return reply('当前没有世界Boss');
       }
-      const result = TeamManager.createTeam(uid, myName || '玩家', p2);
+      const result = TeamManager.createTeam(uid, myName || '玩家', p2, teamDifficulty);
       return reply(result.msg);
     }
     if (p1 === '加入') {
@@ -5627,11 +6099,13 @@ cmd.solve = (ctx, msg, argv) => {
       const myTeam = TeamManager.getUserTeam(uid);
       if (!myTeam) return reply('你不在任何队伍中');
       if (myTeam.leader !== uid) return reply('只有队长可以开始战斗');
-      
+
       // 检查是世界Boss还是普通副本
       const isWorldBoss = myTeam.dungeon === '世界Boss';
+      const difficultyName = myTeam.difficulty || '普通';
+      const difficulty = DUNGEON_DIFFICULTIES[difficultyName] || DUNGEON_DIFFICULTIES['普通'];
       let bossData = null;
-      
+
       if (isWorldBoss) {
         const spawnResult = WorldBossManager.checkAndSpawn();
         if (!spawnResult.boss) return reply('当前没有世界Boss');
@@ -5643,8 +6117,22 @@ cmd.solve = (ctx, msg, argv) => {
           maxHp: spawnResult.boss.maxHp,
         };
       } else {
-        bossData = DUNGEONS[myTeam.dungeon];
-        if (!bossData) return reply('副本不存在');
+        const baseDungeon = DUNGEONS[myTeam.dungeon];
+        if (!baseDungeon) return reply('副本不存在');
+        bossData = {
+          ...baseDungeon,
+          name: `${baseDungeon.boss}[${difficultyName}]`,
+          bossHp: Math.floor(baseDungeon.bossHp * difficulty.hp),
+          bossAtk: Math.floor(baseDungeon.bossAtk * difficulty.atk),
+          bossDef: Math.floor(baseDungeon.bossDef * difficulty.def),
+          rewards: {
+            ...baseDungeon.rewards,
+            money: [
+              Math.floor(baseDungeon.rewards.money[0] * difficulty.reward),
+              Math.floor(baseDungeon.rewards.money[1] * difficulty.reward),
+            ],
+          },
+        };
       }
 
       const fighters = [];
@@ -5656,16 +6144,25 @@ cmd.solve = (ctx, msg, argv) => {
           if (!pet) {
             pet = PetFactory.getStrongestPet(memberData.pets);
           }
-          if (pet && pet.hp > 0 && pet.energy >= 20) {
-            pet.energy -= 20;
+          const energyCost = isWorldBoss ? 20 : difficulty.energyCost;
+          if (pet && pet.hp > 0 && pet.energy >= energyCost) {
+            pet.energy -= energyCost;
             fighters.push({ pet, name: member.name, uid: member.uid, data: memberData });
           }
         }
       }
       if (fighters.length === 0) return reply('没有可出战的宠物');
 
-      let bossHp = bossData.bossHp;
-      const logs = [`【组队${isWorldBoss ? '世界Boss' : '副本'}】${myTeam.dungeon}`, `队伍 vs ${bossData.name}`];
+      const teamSize = fighters.length;
+      const hpScale = isWorldBoss ? 1 : (1 + Math.max(0, teamSize - 1) * 0.5);
+      let bossHp = Math.floor(bossData.bossHp * hpScale);
+      const bossMaxHp = Math.floor((isWorldBoss ? bossData.maxHp : bossData.bossHp) * hpScale);
+      const logs = [
+        `【组队${isWorldBoss ? '世界Boss' : '副本'}】${myTeam.dungeon}${isWorldBoss ? '' : ` [${difficultyName}]`}`,
+        `队伍 vs ${bossData.name}`,
+        `参战人数: ${teamSize}人，敌方生命倍率 x${hpScale.toFixed(1)}`,
+        `敌方生命: ${bossHp}/${bossMaxHp}`,
+      ];
       let round = 0;
       let totalDamage = 0;
 
@@ -5694,7 +6191,7 @@ cmd.solve = (ctx, msg, argv) => {
 
       if (bossHp <= 0) {
         logs.push(`\n【胜利】击败${bossData.name}！`);
-        
+
         if (isWorldBoss) {
           // 世界Boss奖励更丰富
           const moneyEach = 3000 + Math.floor(Math.random() * 5000);
@@ -5711,7 +6208,7 @@ cmd.solve = (ctx, msg, argv) => {
           WorldBossManager._boss = null;
           WorldBossManager.save();
         } else {
-          const moneyEach = bossData.rewards.money[0] + Math.floor(Math.random() * (bossData.rewards.money[1] - bossData.rewards.money[0]));
+          const moneyEach = bossData.rewards.money[0] + Math.floor(Math.random() * Math.max(1, bossData.rewards.money[1] - bossData.rewards.money[0] + 1));
           const item = bossData.rewards.items[Math.floor(Math.random() * bossData.rewards.items.length)];
           for (const f of fighters) {
             f.data.money = (f.data.money || 0) + moneyEach;
@@ -5741,7 +6238,6 @@ cmd.solve = (ctx, msg, argv) => {
     }
     return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
   }
-
   //   世界Boss系统
   if (action === '世界Boss' || action === 'worldboss') {
     // 检查并自动刷新世界Boss
@@ -6081,7 +6577,54 @@ cmd.solve = (ctx, msg, argv) => {
   //   Mod管理
   if (action === 'mod') {
     const mods = WanwuYouling.getMods();
-    if (!mods.length) return reply('【Mod信息】\n没有已注册的扩展');
+
+    // .宠物 mod 列表 - 查看WebUI可用Mod
+    if (p1 === '列表' || p1 === 'list') {
+      if (!WebUIReporter.config.enabled) {
+        return reply('【WebUI未启用】\n请先配置并启用WebUI:\n.宠物 webui 配置 <端点> <Token>\n.宠物 webui 启用');
+      }
+      reply('正在从WebUI拉取Mod列表...');
+      const webMods = await WebUIReporter.fetchMods();
+      if (!webMods.length) {
+        return reply('【WebUI Mod列表】\n暂无可用Mod');
+      }
+      const installed = WebUIReporter.getInstalledMods();
+      const lines = ['【WebUI Mod列表】', ''];
+      for (const mod of webMods) {
+        const isInstalled = installed.includes(mod.id);
+        const status = isInstalled ? '[已安装]' : '[可安装]';
+        lines.push(`${status} ${mod.name} (${mod.type})`);
+        lines.push(`  ID: ${mod.id}`);
+        if (mod.description) lines.push(`  ${mod.description}`);
+        lines.push('');
+      }
+      lines.push('安装: .宠物 mod 安装 <ID>');
+      return reply(lines.join('\n'));
+    }
+
+    // .宠物 mod 安装 <名称> - 从WebUI安装Mod
+    if (p1 === '安装' || p1 === 'install') {
+      if (!p2) return reply('用法: .宠物 mod 安装 <Mod名称或ID>');
+      if (!WebUIReporter.config.enabled) {
+        return reply('【WebUI未启用】\n请先配置并启用WebUI');
+      }
+      reply(`正在安装Mod: ${p2}...`);
+      const result = await WebUIReporter.installMod(p2);
+      if (result.ok) {
+        return reply(`【Mod安装成功】\n${result.name || p2} 已安装并激活`);
+      }
+      return reply(`【Mod安装失败】\n错误: ${result.error}`);
+    }
+
+    // .宠物 mod 卸载 <名称> - 卸载Mod
+    if (p1 === '卸载' || p1 === 'uninstall') {
+      if (!p2) return reply('用法: .宠物 mod 卸载 <Mod名称或ID>');
+      WebUIReporter.uninstallMod(p2);
+      return reply(`【Mod已卸载】\n${p2}\n注意: 脚本类Mod需要重启才能完全移除`);
+    }
+
+    // .宠物 mod - 显示已注册Mod
+    if (!mods.length) return reply('【Mod信息】\n没有已注册的扩展\n\n使用 .宠物 mod 列表 查看WebUI可用Mod');
 
     if (p1) {
       const mod = mods.find(m => m.id === p1 || m.name === p1);
@@ -6105,7 +6648,85 @@ cmd.solve = (ctx, msg, argv) => {
       if (mod.description) lines.push(`  ${mod.description}`);
     }
     lines.push('', '查看详情: .宠物 mod <名称>');
+    lines.push('WebUI Mod: .宠物 mod 列表');
     return reply(lines.join('\n'));
+  }
+
+  //   WebUI管理
+  if (action === 'webui') {
+    // .宠物 webui - 查看状态
+    if (!p1) {
+      const status = WebUIReporter.getStatus();
+      const lines = ['【WebUI状态】', ''];
+      lines.push(`状态: ${status.enabled ? '已启用' : '未启用'}`);
+      lines.push(`端点: ${status.endpoint || '未配置'}`);
+      lines.push(`队列: ${status.queueSize} 条待发送`);
+      lines.push(`已安装Mod: ${status.installedMods} 个`);
+      lines.push('', '命令:');
+      lines.push('.宠物 webui 配置 <端点> <Token>');
+      lines.push('.宠物 webui 启用/禁用');
+      lines.push('.宠物 webui 同步');
+      lines.push('.宠物 webui 补丁');
+      return reply(lines.join('\n'));
+    }
+
+    // .宠物 webui 配置 <端点> <Token>
+    if (p1 === '配置' || p1 === 'config') {
+      if (!p2 || !p3) {
+        return reply('用法: .宠物 webui 配置 <端点> <Token>\n示例: .宠物 webui 配置 https://wwyl.xiaocui.icu my-token-123');
+      }
+      const endpoint = p2.endsWith('/') ? p2.slice(0, -1) : p2;
+      const token = p3;
+      WebUIReporter.init({ endpoint, token, enabled: false });
+      ext.storageSet('webui_config', JSON.stringify({ endpoint, token, enabled: false }));
+      return reply(`【WebUI配置已保存】\n端点: ${endpoint}\nToken: ${token.slice(0, 8)}...\n\n使用 .宠物 webui 启用 开启上报`);
+    }
+
+    // .宠物 webui 启用
+    if (p1 === '启用' || p1 === 'enable') {
+      if (!WebUIReporter.config.endpoint) {
+        return reply('请先配置WebUI端点:\n.宠物 webui 配置 <端点> <Token>');
+      }
+      WebUIReporter.config.enabled = true;
+      ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
+      return reply('【WebUI已启用】\n数据将自动上报到: ' + WebUIReporter.config.endpoint);
+    }
+
+    // .宠物 webui 禁用
+    if (p1 === '禁用' || p1 === 'disable') {
+      WebUIReporter.config.enabled = false;
+      ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
+      return reply('【WebUI已禁用】');
+    }
+
+    // .宠物 webui 同步 - 立即同步
+    if (p1 === '同步' || p1 === 'sync') {
+      if (!WebUIReporter.config.enabled) {
+        return reply('WebUI未启用');
+      }
+      await WebUIReporter._flush();
+      return reply('【数据已同步】');
+    }
+
+    // .宠物 webui 补丁 - 拉取并应用补丁
+    if (p1 === '补丁' || p1 === 'patch') {
+      if (!WebUIReporter.config.enabled) {
+        return reply('WebUI未启用');
+      }
+      reply('正在拉取补丁...');
+      const patches = await WebUIReporter.fetchPatches();
+      if (!patches.length) {
+        return reply('【补丁】暂无生效中的补丁');
+      }
+      const lines = ['【补丁应用结果】', ''];
+      for (const patch of patches) {
+        const success = WebUIReporter.applyPatch(patch);
+        lines.push(`${success ? '✓' : '✗'} ${patch.name} (${patch.scope})`);
+      }
+      return reply(lines.join('\n'));
+    }
+
+    return reply('未知命令\n使用 .宠物 help webui 查看帮助');
   }
 
   // 未知命令提示
@@ -6134,7 +6755,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.2.1',
+  version: '4.2.8',
   ext,
 
   DB: {
