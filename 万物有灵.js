@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.3
+// @version     4.0.4
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.3');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.4');
   seal.ext.register(ext);
 }
 
@@ -2501,6 +2501,18 @@ const Battle = {
         return;
       }
 
+      // 鸟类特性：防御方有10%概率闪避攻击
+      if (d.species === '鸟' && Math.random() < 0.1) {
+        logs.push(`[鸟类特性] ${d.name} 灵巧闪避了攻击！`);
+        return;
+      }
+
+      // 鹿类特性：防御方有15%概率闪避攻击
+      if (d.species === '鹿' && Math.random() < 0.15) {
+        logs.push(`[鹿类特性] ${d.name} 灵巧闪避了攻击！`);
+        return;
+      }
+
       const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
       const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
       const sk = SKILLS[skill] || SKILLS['冲撞'];
@@ -2555,7 +2567,7 @@ const Battle = {
             break;
           case '犬':
             // 犬科：血量低于50%时攻击+20%
-            if (a.hp / a.maxHp < 0.5) {
+            if (a.maxHp && a.hp / a.maxHp < 0.5) {
               dmg = Math.floor(dmg * 1.2);
               logs.push(`[犬科特性] ${a.name} 激怒！攻击+20%`);
             }
@@ -2575,11 +2587,8 @@ const Battle = {
             }
             break;
           case '鸟':
-            // 鸟类：速度+15%，闪避率+10%
-            if (Math.random() < 0.1) {
-              logs.push(`[鸟类特性] ${a.name} 灵巧闪避！`);
-              return; // 闪避本次攻击
-            }
+            // 鸟类：闪避率+10%（在防御方检查时生效）
+            // 此处不处理，移到防御方检查
             break;
           case '龟':
             // 龟类：防御+25%，被攻击时有20%概率反弹10%伤害
@@ -2591,7 +2600,7 @@ const Battle = {
             break;
           case '熊':
             // 熊类：血量低于30%时攻击+40%
-            if (a.hp / a.maxHp < 0.3) {
+            if (a.maxHp && a.hp / a.maxHp < 0.3) {
               dmg = Math.floor(dmg * 1.4);
               logs.push(`[熊类特性] ${a.name} 狂暴！攻击+40%`);
             }
@@ -2605,7 +2614,7 @@ const Battle = {
             break;
           case '狼':
             // 狼类：对血量低于50%的敌人伤害+25%
-            if (d.hp / d.maxHp < 0.5) {
+            if (d.maxHp && d.hp / d.maxHp < 0.5) {
               dmg = Math.floor(dmg * 1.25);
               logs.push(`[狼类特性] ${a.name} 狩猎本能！伤害+25%`);
             }
@@ -2680,8 +2689,159 @@ const Battle = {
               logs.push(`[蝎类特性] ${a.name} 注入蝎毒！持续伤害3回合`);
             }
             break;
+          // 新增物种特性
+          case '鹤':
+            // 鹤类：攻击有15%概率使敌人减速，对水属性伤害+15%
+            if (Math.random() < 0.15) {
+              d.slowed = 2;
+              logs.push(`[鹤类特性] ${a.name} 优雅之舞！敌人减速2回合`);
+            }
+            if (d.element === '水') dmg = Math.floor(dmg * 1.15);
+            break;
+          case '蛇颈龙':
+            // 蛇颈龙：水属性伤害+20%，生命低于50%时防御+30%
+            if (sk.element === '水') dmg = Math.floor(dmg * 1.2);
+            if (a.maxHp && a.hp / a.maxHp < 0.5) {
+              a.tempDefBoost = true;
+              logs.push(`[蛇颈龙特性] ${a.name} 深海守护！防御提升`);
+            }
+            break;
+          case '翼龙':
+            // 翼龙：速度+20%，首回合伤害+25%
+            if (a._turn === 1) {
+              dmg = Math.floor(dmg * 1.25);
+              logs.push(`[翼龙特性] ${a.name} 俯冲攻击！首回合伤害+25%`);
+            }
+            break;
+          case '独角兽':
+            // 独角兽：攻击有20%概率治愈自己10%生命
+            if (Math.random() < 0.2 && a.maxHp) {
+              const heal = Math.floor(a.maxHp * 0.1);
+              a.hp = Math.min(a.maxHp, a.hp + heal);
+              logs.push(`[独角兽特性] ${a.name} 治愈之角！恢复${heal}生命`);
+            }
+            break;
+          case '九头蛇':
+            // 九头蛇：每次攻击有30%概率追加一次50%伤害
+            if (Math.random() < 0.3) {
+              const extraDmg = Math.floor(dmg * 0.5);
+              d.hp = Math.max(0, (d.hp || 0) - extraDmg);
+              logs.push(`[九头蛇特性] ${a.name} 多头攻击！追加${extraDmg}伤害`);
+            }
+            break;
+          case '凤凰雏':
+            // 凤凰雏：火属性伤害+25%，死亡时有20%概率复活30%生命
+            if (sk.element === '火') dmg = Math.floor(dmg * 1.25);
+            if (!a.hasRevived && a.hp <= 0 && Math.random() < 0.2) {
+              a.hp = Math.floor((a.maxHp || 100) * 0.3);
+              a.hasRevived = true;
+              logs.push(`[凤凰雏特性] ${a.name} 涅槃重生！恢复30%生命`);
+            }
+            break;
+          case '石像鬼':
+            // 石像鬼：防御+20%，受到伤害有15%概率反弹20%
+            if (Math.random() < 0.15) {
+              const reflect = Math.floor(dmg * 0.2);
+              d.hp = Math.max(0, (d.hp || 0) - reflect);
+              logs.push(`[石像鬼特性] ${a.name} 石皮反弹${reflect}伤害`);
+            }
+            break;
+          case '树人':
+            // 树人：每回合恢复5%生命，草属性伤害+15%
+            if (a.maxHp) {
+              const regen = Math.floor(a.maxHp * 0.05);
+              a.hp = Math.min(a.maxHp, a.hp + regen);
+            }
+            if (sk.element === '草') dmg = Math.floor(dmg * 1.15);
+            break;
+          case '美人鱼':
+            // 美人鱼：水属性伤害+20%，攻击有15%概率使敌人混乱
+            if (sk.element === '水') dmg = Math.floor(dmg * 1.2);
+            if (Math.random() < 0.15) {
+              d.confused = 2;
+              logs.push(`[美人鱼特性] ${a.name} 魅惑之歌！敌人混乱`);
+            }
+            break;
+          case '天使':
+            // 天使：攻击有20%概率造成神圣伤害（无视防御）
+            if (Math.random() < 0.2) {
+              dmg = Math.floor(dmg * 1.3);
+              logs.push(`[天使特性] ${a.name} 神圣审判！伤害+30%`);
+            }
+            break;
+          // 补全其他已有物种特性
+          case '豹':
+            // 豹类：速度+25%，对血量低于30%的敌人伤害+20%
+            if (d.maxHp && d.hp / d.maxHp < 0.3) {
+              dmg = Math.floor(dmg * 1.2);
+              logs.push(`[豹类特性] ${a.name} 狩猎本能！伤害+20%`);
+            }
+            break;
+          case '牛':
+            // 牛类：生命+15%，攻击有10%概率眩晕敌人1回合
+            if (Math.random() < 0.1) {
+              d.stunned = 1;
+              logs.push(`[牛类特性] ${a.name} 蛮力冲撞！敌人眩晕`);
+            }
+            break;
+          case '马':
+            // 马类：速度+20%，首回合必定先手
+            if (a._turn === 1) {
+              logs.push(`[马类特性] ${a.name} 疾风先手！`);
+            }
+            break;
+          case '羊':
+            // 羊类：被攻击时有20%概率使攻击者减速
+            // (在防御时生效)
+            break;
+          case '猪':
+            // 猪类：生命+20%，攻击有15%概率造成双倍伤害
+            if (Math.random() < 0.15) {
+              dmg *= 2;
+              logs.push(`[猪类特性] ${a.name} 蛮力暴击！双倍伤害`);
+            }
+            break;
+          case '鹰':
+            // 鹰类：对飞行/鸟类伤害+30%，暴击率+10%
+            if (Math.random() < 0.1) {
+              dmg = Math.floor(dmg * 1.5);
+              logs.push(`[鹰类特性] ${a.name} 锐利鹰眼！暴击`);
+            }
+            break;
+          case '鹿':
+            // 鹿类：闪避率+15%（在防御方检查时生效）
+            break;
+          case '猿':
+            // 猿类：攻击+15%，连续攻击同一目标伤害递增
+            if (a.lastTarget === d.name) {
+              a.comboCount = (a.comboCount || 0) + 1;
+              dmg = Math.floor(dmg * (1 + a.comboCount * 0.1));
+              logs.push(`[猿类特性] 连击${a.comboCount}次！`);
+            }
+            a.lastTarget = d.name;
+            break;
+          case '螳螂':
+            // 螳螂：暴击率+20%，暴击伤害+50%
+            if (Math.random() < 0.2) {
+              dmg = Math.floor(dmg * 2);
+              logs.push(`[螳螂特性] ${a.name} 刀刃暴击！`);
+            }
+            break;
+          case '哥布林':
+            // 哥布林：战斗金币+50%，攻击有10%概率偷取敌人金币
+            if (Math.random() < 0.1) {
+              logs.push(`[哥布林特性] ${a.name} 贪婪偷窃！`);
+            }
+            break;
+          case '蟹':
+            // 蟹类：防御+25%，受到伤害减少10%
+            dmg = Math.floor(dmg * 0.9);
+            break;
         }
       }
+
+      // 记录攻击目标供蜂类/猿类特性使用
+      a.lastAttacked = d.name;
 
       // 蓄力加成
       if (a.isCharging) {
@@ -2777,11 +2937,15 @@ const Battle = {
     const spd2Ally = p2Ally ? (p2Ally.spd || 100) : 0;
 
     const getAllActionOrder = () => {
-      // 累积行动值
-      atb1 += spd1;
-      atb2 += spd2;
-      if (p1Ally) atb1Ally += spd1Ally;
-      if (p2Ally) atb2Ally += spd2Ally;
+      // 累积行动值（减速效果减少50%行动值）
+      const getSpd = (unit, baseSpd) => {
+        if (unit.slowed && unit.slowed > 0) return Math.floor(baseSpd * 0.5);
+        return baseSpd;
+      };
+      atb1 += getSpd(p1, spd1);
+      atb2 += getSpd(p2, spd2);
+      if (p1Ally) atb1Ally += getSpd(p1Ally, spd1Ally);
+      if (p2Ally) atb2Ally += getSpd(p2Ally, spd2Ally);
 
       const actions = [];
 
@@ -2876,6 +3040,16 @@ const Battle = {
         else if (action.atbKey === 'atb2Ally') atb2Ally -= ACTION_THRESHOLD;
 
         this.attack(attacker, defender, logs, attacker.isPlayer);
+
+        // 兔类额外行动
+        if (attacker.extraAction) {
+          logs.push(`[额外行动] ${attacker.name} 再次行动！`);
+          attacker.extraAction = false;
+          this.attack(attacker, defender, logs, attacker.isPlayer);
+        }
+
+        // 减速状态递减
+        if (attacker.slowed && attacker.slowed > 0) attacker.slowed--;
 
         // 检查战斗是否结束
         const afterStatus = isBattleEnd();
@@ -5690,7 +5864,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.3',
+  version: '4.0.4',
   ext,
 
   DB: {
