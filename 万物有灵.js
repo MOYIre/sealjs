@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.4
+// @version     4.1.5
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.5');
   seal.ext.register(ext);
 }
 
@@ -28,6 +28,30 @@ const CONFIG = {
   // 斗殴相关
   fightLogLimit: 20,
 };
+
+// 游戏小贴士
+const GAME_TIPS = [
+  '💡 每日首次喂食可获得双倍好感度',
+  '💡 宠物好感度达到100时可触发进化',
+  '💡 不同性格会影响宠物的属性成长',
+  '💡 天赋可以大幅提升宠物的战斗能力',
+  '💡 稀有宠物有更高的基础属性',
+  '💡 战斗时注意属性克制，可造成额外伤害',
+  '💡 宠物血量越低，捕捉成功率越高',
+  '💡 探险和打工可以获得技能书',
+  '💡 训练师装备可以提升宠物属性',
+  '💡 组队副本需要多人配合才能通关',
+  '💡 世界Boss每天12:00、18:00、22:00刷新',
+  '💡 神话宠物拥有专属技能',
+  '💡 育种可以继承父母的优秀基因',
+  '💡 宠物达到50级可挑战守护者',
+  '💡 使用.宠物 帮助 查看完整命令列表',
+];
+
+// 随机获取一条tips
+function getRandomTip() {
+  return GAME_TIPS[Math.floor(Math.random() * GAME_TIPS.length)];
+}
 
 //   种族定义  
 const SPECIES = {
@@ -4292,6 +4316,10 @@ cmd.solve = (ctx, msg, argv) => {
         save();
       }
 
+      // 捕捉成功时显示tips
+      if (captureSuccess) {
+        logs.push(getRandomTip());
+      }
       reply(logs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 捉宠错误:', e);
@@ -4404,7 +4432,7 @@ cmd.solve = (ctx, msg, argv) => {
 
     save();
     WanwuYouling.emit('feed', { uid, pet, food: foodName, foodData: f });
-    return reply(`喂食成功！${pet.name} 的属性提升了\n好感度+${affectionGain}\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
+    return reply(`喂食成功！${pet.name} 的属性提升了\n好感度+${affectionGain}\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
   }
 
   if (action === '改名') {
@@ -4806,6 +4834,7 @@ cmd.solve = (ctx, msg, argv) => {
     babies.forEach((child, i) => {
       lines.push(`获得 ${RARITY_MARK[child.rarity]}${ELEMENT_MARK[child.element]} ${child.name}(${child.species})`);
     });
+    lines.push(getRandomTip());
     return reply(lines.join('\n'));
   }
 
@@ -5216,7 +5245,7 @@ cmd.solve = (ctx, msg, argv) => {
       }
       save();
       WanwuYouling.emit('evolution', { uid, pet, oldSpecies: oldName, newSpecies: pet.name });
-      return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
+      return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
     }
 
     // 多个选项，显示分支选择
@@ -5289,7 +5318,7 @@ cmd.solve = (ctx, msg, argv) => {
     }
     save();
     WanwuYouling.emit('evolution', { uid, pet, oldSpecies: oldName, newSpecies: pet.name });
-    return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}`);
+    return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
   }
 
   //   守护者挑战系统（第3阶进化前置条件）
@@ -6105,7 +6134,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.4',
+  version: '4.1.5',
   ext,
 
   DB: {

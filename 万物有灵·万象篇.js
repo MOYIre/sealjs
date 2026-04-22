@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.19
+// @version     3.1.20
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,8 +10,31 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.18');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.19');
   seal.ext.register(ext);
+}
+
+// 游戏小贴士
+const GAME_TIPS = [
+  '💡 每日首次喂食可获得双倍好感度',
+  '💡 宠物好感度达到100时可触发进化',
+  '💡 不同性格会影响宠物的属性成长',
+  '💡 天赋可以大幅提升宠物的战斗能力',
+  '💡 稀有宠物有更高的基础属性',
+  '💡 战斗时注意属性克制，可造成额外伤害',
+  '💡 宠物血量越低，捕捉成功率越高',
+  '💡 探险和打工可以获得技能书',
+  '💡 训练师装备可以提升宠物属性',
+  '💡 组队副本需要多人配合才能通关',
+  '💡 世界Boss每天12:00、18:00、22:00刷新',
+  '💡 神话宠物拥有专属技能',
+  '💡 育种可以继承父母的优秀基因',
+  '💡 宠物达到50级可挑战守护者',
+  '💡 使用.宠物 帮助 查看完整命令列表',
+];
+
+function getRandomTip() {
+  return GAME_TIPS[Math.floor(Math.random() * GAME_TIPS.length)];
 }
 
 // ==================== 任务通知系统 ====================
@@ -870,6 +893,7 @@ function init() {
               DB.skillbook.save(p.uid, sbData);
               r += `获得技能书【${skillBook}】x1`;
             }
+            r += `\n${getRandomTip()}`;
             lines.push(r);
             e.notified = true;
             changed = true;
@@ -936,6 +960,7 @@ function init() {
               DB.skillbook.save(p.uid, sbData);
               r += `\n获得技能书【${skillBook}】x1`;
             }
+            r += `\n${getRandomTip()}`;
             lines.push(r);
             w.notified = true;
             changed = true;
