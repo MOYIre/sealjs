@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.6
+// @version     4.1.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.7');
   seal.ext.register(ext);
 }
 
@@ -45,7 +45,7 @@ const GAME_TIPS = [
   '💡 神话宠物拥有专属技能',
   '💡 育种可以继承父母的优秀基因',
   '💡 宠物达到50级可挑战守护者',
-  '💡 使用.宠物 帮助 查看完整命令列表',
+  '💡 使用.宠物 help 查看完整命令列表',
 ];
 
 // 随机获取一条tips
@@ -6134,7 +6134,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.6',
+  version: '4.1.7',
   ext,
 
   DB: {

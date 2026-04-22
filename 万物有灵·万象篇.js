@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.21
+// @version     3.1.22
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.21');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.22');
   seal.ext.register(ext);
 }
 
@@ -30,7 +30,7 @@ const GAME_TIPS = [
   '💡 神话宠物拥有专属技能',
   '💡 育种可以继承父母的优秀基因',
   '💡 宠物达到50级可挑战守护者',
-  '💡 使用.宠物 帮助 查看完整命令列表',
+  '💡 使用.宠物 help 查看完整命令列表',
 ];
 
 function getRandomTip() {
@@ -89,31 +89,8 @@ const TaskNotifier = {
         if (data.explore && data.explore.length > 0) {
           for (const e of data.explore) {
             if (e.endTime <= now && !e.notified) {
-              const area = EXPLORE_AREAS.find(a => a.name === e.area);
-              if (area) {
-                const pet = [...(userData.pets || []), ...(userData.storage || [])].find(p => p.id === e.petId);
-                if (pet) {
-                  let r = `【探险完成】\n${pet.name} 从 ${area.name} 返回\n`;
-
-                  // 计算奖励
-                  if (Math.random() < area.danger) {
-                    pet.hp = Math.max(1, pet.hp - 20);
-                    r += '遭遇危险受伤！\n';
-                  }
-
-                  const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
-                  userData.money = (userData.money || 0) + gold;
-                  r += `获得 ${gold} 金币\n`;
-
-                  const food = area.foods[Math.floor(Math.random() * area.foods.length)];
-                  userData.food = userData.food || {};
-                  userData.food[food] = (userData.food[food] || 0) + 1;
-                  r += `获得 ${food} x1`;
-
-                  notifications.push(r);
-                  e.notified = true;
-                }
-              }
+              const result = completeExploreTask(uid, userData, data, e);
+              if (result) notifications.push(`【探险完成】\n${result}`);
             }
           }
         }
@@ -122,17 +99,8 @@ const TaskNotifier = {
         if (data.work && data.work.length > 0) {
           for (const w of data.work) {
             if (w.endTime <= now && !w.notified) {
-              const work = WORK_TYPES.find(wt => wt.name === w.work);
-              if (work) {
-                const pet = [...(userData.pets || []), ...(userData.storage || [])].find(p => p.id === w.petId);
-                if (pet) {
-                  const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
-                  userData.money = (userData.money || 0) + gold;
-
-                  notifications.push(`【打工完成】\n${pet.name} 完成${work.name}\n获得 ${gold} 金币`);
-                  w.notified = true;
-                }
-              }
+              const result = completeWorkTask(uid, userData, data, w);
+              if (result) notifications.push(`【打工完成】\n${result}`);
             }
           }
         }
@@ -402,6 +370,63 @@ function getRandomSkillDrop(type, area) {
   return bookName;
 }
 
+function completeExploreTask(uid, p, data, task) {
+  const area = EXPLORE_AREAS.find(a => a.name === task.area);
+  if (!area) return null;
+  const found = findPetById(p, task.petId);
+  if (!found) return null;
+  const pet = found.pet;
+  let r = `${pet.name} 从 ${area.name} 返回\n`;
+  if (Math.random() < area.danger) {
+    pet.hp = Math.max(1, pet.hp - 20);
+    r += '遭遇危险受伤！\n';
+  }
+  const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
+  p.data.money = (p.data.money || 0) + gold;
+  r += `获得 ${gold} 金币\n`;
+  const food = area.foods[Math.floor(Math.random() * area.foods.length)];
+  p.data.food = p.data.food || {};
+  p.data.food[food] = (p.data.food[food] || 0) + 1;
+  r += `获得 ${food} x1`;
+  const skillBook = getRandomSkillDrop('explore', area.name);
+  if (skillBook && Math.random() < 0.1) {
+    const sbData = DB.skillbook.get(uid);
+    sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
+    DB.skillbook.save(uid, sbData);
+    r += `\n获得技能书【${skillBook}】x1`;
+  }
+  const achData = DB.achievement.get(uid);
+  achData.stats.exploreCount = (achData.stats.exploreCount || 0) + 1;
+  DB.achievement.save(uid, achData);
+  if (achData.stats.exploreCount >= 10) unlockAchievement(uid, 'explore_10');
+  task.notified = true;
+  return `${r}\n${getRandomTip()}`;
+}
+
+function completeWorkTask(uid, p, data, task) {
+  const work = WORK_TYPES.find(wt => wt.name === task.work);
+  if (!work) return null;
+  const found = findPetById(p, task.petId);
+  if (!found) return null;
+  const pet = found.pet;
+  const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
+  p.data.money = (p.data.money || 0) + gold;
+  let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币`;
+  const skillBook = getRandomSkillDrop('work', work.name);
+  if (skillBook && Math.random() < 0.05) {
+    const sbData = DB.skillbook.get(uid);
+    sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
+    DB.skillbook.save(uid, sbData);
+    r += `\n获得技能书【${skillBook}】x1`;
+  }
+  const achData = DB.achievement.get(uid);
+  achData.stats.workCount = (achData.stats.workCount || 0) + 1;
+  DB.achievement.save(uid, achData);
+  if (achData.stats.workCount >= 10) unlockAchievement(uid, 'work_10');
+  task.notified = true;
+  return `${r}\n${getRandomTip()}`;
+}
+
 function formatPet(pet) {
   const r = { '普通': '', '稀有': '*', '超稀有': '**', '传说': '***' }[pet.rarity] || '';
   const e = pet.element ? `[${pet.element}]` : '';
@@ -452,7 +477,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.21', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.22', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -872,32 +897,10 @@ function init() {
     for (const e of (data.explore || [])) {
       // 只处理已完成且未通知的任务
       if (e.endTime <= now && !e.notified) {
-        const area = EXPLORE_AREAS.find(a => a.name === e.area);
-        if (area) {
-          const found = findPetById(p, e.petId);
-          if (found) {
-            const pet = found.pet;
-            let r = `${pet.name} 从 ${area.name} 返回\n`;
-            if (Math.random() < area.danger) { pet.hp = Math.max(1, pet.hp - 20); r += '遭遇危险受伤！\n'; }
-            const gold = Math.floor(Math.random() * (area.gold[1] - area.gold[0] + 1)) + area.gold[0];
-            p.data.money += gold;
-            r += `获得 ${gold} 金币\n`;
-            const food = area.foods[Math.floor(Math.random() * area.foods.length)];
-            p.data.food[food] = (p.data.food[food] || 0) + 1;
-            r += `获得 ${food} x1\n`;
-            // 技能书掉落（10%概率）
-            const skillBook = getRandomSkillDrop('explore', area.name);
-            if (skillBook && Math.random() < 0.1) {
-              const sbData = DB.skillbook.get(p.uid);
-              sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
-              DB.skillbook.save(p.uid, sbData);
-              r += `获得技能书【${skillBook}】x1`;
-            }
-            r += `\n${getRandomTip()}`;
-            lines.push(r);
-            e.notified = true;
-            changed = true;
-          }
+        const result = completeExploreTask(p.uid, p, data, e);
+        if (result) {
+          lines.push(result);
+          changed = true;
         }
       } else if (e.endTime > now) {
         const remain = Math.ceil((e.endTime - now) / 60000);
@@ -944,27 +947,10 @@ function init() {
     for (const w of (data.work || [])) {
       // 只处理已完成且未通知的任务
       if (w.endTime <= now && !w.notified) {
-        const work = WORK_TYPES.find(wt => wt.name === w.work);
-        if (work) {
-          const found = findPetById(p, w.petId);
-          if (found) {
-            const pet = found.pet;
-            const gold = Math.floor(Math.random() * (work.gold[1] - work.gold[0] + 1)) + work.gold[0];
-            p.data.money += gold;
-            let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币`;
-            // 技能书掉落（5%概率）
-            const skillBook = getRandomSkillDrop('work', work.name);
-            if (skillBook && Math.random() < 0.05) {
-              const sbData = DB.skillbook.get(p.uid);
-              sbData.books[skillBook] = (sbData.books[skillBook] || 0) + 1;
-              DB.skillbook.save(p.uid, sbData);
-              r += `\n获得技能书【${skillBook}】x1`;
-            }
-            r += `\n${getRandomTip()}`;
-            lines.push(r);
-            w.notified = true;
-            changed = true;
-          }
+        const result = completeWorkTask(p.uid, p, data, w);
+        if (result) {
+          lines.push(result);
+          changed = true;
         }
       } else if (w.endTime > now) {
         const remain = Math.ceil((w.endTime - now) / 60000);
