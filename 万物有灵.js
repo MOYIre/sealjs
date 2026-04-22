@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.6
+// @version     4.0.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.7');
   seal.ext.register(ext);
 }
 
@@ -2741,8 +2741,7 @@ const Battle = {
             if (sk.element === '火') dmg = Math.floor(dmg * 1.25);
             break;
           case '石像鬼':
-            // 石像鬼：受到伤害减少10%（反弹在防御方触发）
-            dmg = Math.floor(dmg * 0.9);
+            // 石像鬼：受到伤害减少10%（减伤和反弹在防御方触发）
             break;
           case '树人':
             // 树人：每回合恢复5%生命，草属性伤害+15%
@@ -2823,9 +2822,12 @@ const Battle = {
             }
             break;
           case '哥布林':
-            // 哥布林：战斗金币+50%，攻击有10%概率偷取敌人金币
-            if (Math.random() < 0.1) {
-              logs.push(`[哥布林特性] ${a.name} 贪婪偷窃！`);
+            // 哥布林：攻击有15%概率偷取敌人10能量
+            if (Math.random() < 0.15 && d.energy) {
+              const stolen = Math.min(10, d.energy);
+              d.energy -= stolen;
+              a.energy = Math.min(a.maxEnergy || 100, (a.energy || 0) + stolen);
+              logs.push(`[哥布林特性] ${a.name} 贪婪偷窃！偷取${stolen}能量`);
             }
             break;
           case '蟹':
@@ -2837,11 +2839,7 @@ const Battle = {
             break;
           // 补全剩余物种特性
           case '史莱姆':
-            // 史莱姆：受到伤害减少10%，死亡时有10%概率分裂
-            if (Math.random() < 0.1 && a.hp <= 0) {
-              a.hp = Math.floor((a.maxHp || 50) * 0.3);
-              logs.push(`[史莱姆特性] ${a.name} 分裂重生！恢复30%生命`);
-            }
+            // 史莱姆：受到伤害减少10%（分裂在防御方触发）
             break;
           case '精灵':
             // 精灵：魔法伤害+20%，每回合恢复3%能量
@@ -2921,6 +2919,13 @@ const Battle = {
         dmg = Math.floor(dmg * 0.9);
       }
 
+      // 史莱姆特性：死亡时有10%概率分裂重生
+      if (d.species === '史莱姆' && !d.hasRevived && d.hp <= 0 && Math.random() < 0.1) {
+        d.hp = Math.floor((d.maxHp || 100) * 0.3);
+        d.hasRevived = true;
+        logs.push(`[史莱姆特性] ${d.name} 分裂重生！恢复30%生命`);
+      }
+
       // 骷髅特性：死亡时有15%概率复活20%生命
       if (d.species === '骷髅' && !d.hasRevived && d.hp <= 0 && Math.random() < 0.15) {
         d.hp = Math.floor((d.maxHp || 100) * 0.2);
@@ -2948,6 +2953,11 @@ const Battle = {
         const reflect = Math.floor(dmg * 0.2);
         a.hp = Math.max(0, (a.hp || 0) - reflect);
         logs.push(`[石像鬼特性] ${d.name} 石皮反弹${reflect}伤害！`);
+      }
+
+      // 石像鬼特性：受到伤害减少10%
+      if (d.species === '石像鬼') {
+        dmg = Math.floor(dmg * 0.9);
       }
 
       // 凤凰雏特性：死亡时有20%概率复活30%生命
@@ -5972,7 +5982,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.6',
+  version: '4.0.7',
   ext,
 
   DB: {
