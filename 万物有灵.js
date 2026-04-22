@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.8
+// @version     4.0.9
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.8');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.9');
   seal.ext.register(ext);
 }
 
@@ -2564,8 +2564,28 @@ const Battle = {
         return;
       }
 
+      if (sk.effect === 'berserk') {
+        // 狂暴：攻击+30%，防御-20%（持续到战斗结束）
+        a.berserkAtk = (a.berserkAtk || 0) + 0.3;
+        a.berserkDef = (a.berserkDef || 0) + 0.2;
+        logs.push(`${a.name} 使用 ${skill}，进入狂暴状态！攻击+30%，防御-20%`);
+        return;
+      }
+
+      if (sk.effect === 'shield') {
+        // 护盾：获得护盾，抵挡一次致命攻击
+        a.shield = (a.shield || 0) + (sk.shieldCount || 1);
+        logs.push(`${a.name} 使用 ${skill}，获得护盾！可抵挡${sk.shieldCount || 1}次致命攻击`);
+        return;
+      }
+
       // 普通攻击
       let dmg = this.calcDmg(a.atk || 10, d.def || 10, skill, a.level || 1, a.element, d.element, a.species, d.species, a.playerBuffs);
+
+      // 狂暴状态加成
+      if (a.berserkAtk) {
+        dmg = Math.floor(dmg * (1 + a.berserkAtk));
+      }
 
       // 物种特性动作系统
       if (a.species) {
@@ -2706,12 +2726,8 @@ const Battle = {
             if (d.element === '水') dmg = Math.floor(dmg * 1.15);
             break;
           case '蛇颈龙':
-            // 蛇颈龙：水属性伤害+20%，生命低于50%时防御+30%
+            // 蛇颈龙：水属性伤害+20%（防御加成在防御方触发）
             if (sk.element === '水') dmg = Math.floor(dmg * 1.2);
-            if (a.maxHp && a.hp / a.maxHp < 0.5) {
-              a.tempDefBoost = true;
-              logs.push(`[蛇颈龙特性] ${a.name} 深海守护！防御提升`);
-            }
             break;
           case '翼龙':
             // 翼龙：速度+20%，首回合伤害+25%
@@ -2888,8 +2904,18 @@ const Battle = {
         a.isCharging = false;
       }
 
-      // 蛇颈龙临时防御提升
-      if (d.tempDefBoost) {
+      // 狂暴状态防御惩罚：攻击方狂暴时受到更多伤害
+      if (a.berserkDef && a.isPlayer) {
+        // 狂暴状态的攻击方受到反弹伤害增加
+      }
+
+      // 狂暴状态防御惩罚：防御方狂暴时受到更多伤害
+      if (d.berserkDef) {
+        dmg = Math.floor(dmg * (1 + d.berserkDef));
+      }
+
+      // 蛇颈龙特性：生命低于50%时受到伤害减少30%
+      if (d.species === '蛇颈龙' && d.maxHp && d.hp / d.maxHp < 0.5) {
         dmg = Math.floor(dmg * 0.7);
         logs.push(`[蛇颈龙特性] ${d.name} 深海守护！伤害-30%`);
       }
@@ -2946,6 +2972,24 @@ const Battle = {
       
       d.hp = Math.max(0, (d.hp || 0) - dmg);
 
+      // 技能效果：攻击后附加状态
+      if (sk.effect === 'poison' && Math.random() < (sk.effectChance || 0.3)) {
+        d.poisoned = sk.effectDuration || 3;
+        logs.push(`[技能效果] ${d.name} 中毒了！持续${sk.effectDuration || 3}回合`);
+      }
+      if (sk.effect === 'paralyze' && Math.random() < (sk.effectChance || 0.3)) {
+        d.stunned = 1;
+        logs.push(`[技能效果] ${d.name} 被麻痹了！`);
+      }
+      if (sk.effect === 'freeze' && Math.random() < (sk.effectChance || 0.2)) {
+        d.frozen = sk.effectDuration || 2;
+        logs.push(`[技能效果] ${d.name} 被冻结了！持续${sk.effectDuration || 2}回合`);
+      }
+      if (sk.effect === 'charm' && Math.random() < (sk.effectChance || 0.25)) {
+        d.confused = sk.effectDuration || 2;
+        logs.push(`[技能效果] ${d.name} 被魅惑了！`);
+      }
+
       // 防御方特性（被攻击时触发）
       // 羊类特性：被攻击时有20%概率使攻击者减速
       if (d.species === '羊' && Math.random() < 0.2) {
@@ -2965,6 +3009,13 @@ const Battle = {
         d.hp = Math.floor((d.maxHp || 100) * 0.3);
         d.hasRevived = true;
         logs.push(`[凤凰雏特性] ${d.name} 涅槃重生！恢复30%生命`);
+      }
+
+      // 护盾机制：抵挡致命攻击
+      if (d.shield && d.shield > 0 && d.hp <= 0) {
+        d.shield--;
+        d.hp = Math.floor((d.maxHp || 100) * 0.3);
+        logs.push(`【护盾】${d.name} 抵挡了致命一击！护盾剩余 ${d.shield} 次`);
       }
 
       // 神话护盾机制
@@ -3004,6 +3055,17 @@ const Battle = {
         }
       }
       logs.push(`${a.name} 使用 ${skill}，造成 ${dmg} 伤害${advText}`);
+
+      // 连击技能：额外攻击次数
+      const hits = sk.hits || 1;
+      if (hits > 1) {
+        for (let i = 1; i < hits; i++) {
+          const extraDmg = Math.floor(dmg * (sk.hitDmgRate || 0.5));
+          d.hp = Math.max(0, (d.hp || 0) - extraDmg);
+          logs.push(`[连击${i + 1}] ${a.name} 追加 ${extraDmg} 伤害！`);
+          if (d.hp <= 0) break;
+        }
+      }
     } catch (e) {
       logs.push(`${a.name} 攻击时发生错误`);
       console.log('[万物有灵] attack错误:', e);
@@ -3130,6 +3192,13 @@ const Battle = {
         if (attacker.stunned && attacker.stunned > 0) {
           logs.push(`[眩晕] ${attacker.name} 处于眩晕状态，无法行动！`);
           attacker.stunned--;
+          continue;
+        }
+
+        // 冻结状态：无法行动
+        if (attacker.frozen && attacker.frozen > 0) {
+          logs.push(`[冻结] ${attacker.name} 被冰冻，无法行动！`);
+          attacker.frozen--;
           continue;
         }
 
@@ -5982,7 +6051,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.8',
+  version: '4.0.9',
   ext,
 
   DB: {
