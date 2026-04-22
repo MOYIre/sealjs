@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.7
+// @version     4.0.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.7');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.8');
   seal.ext.register(ext);
 }
 
@@ -2919,6 +2919,11 @@ const Battle = {
         dmg = Math.floor(dmg * 0.9);
       }
 
+      // 石像鬼特性：受到伤害减少10%
+      if (d.species === '石像鬼') {
+        dmg = Math.floor(dmg * 0.9);
+      }
+
       // 史莱姆特性：死亡时有10%概率分裂重生
       if (d.species === '史莱姆' && !d.hasRevived && d.hp <= 0 && Math.random() < 0.1) {
         d.hp = Math.floor((d.maxHp || 100) * 0.3);
@@ -2953,11 +2958,6 @@ const Battle = {
         const reflect = Math.floor(dmg * 0.2);
         a.hp = Math.max(0, (a.hp || 0) - reflect);
         logs.push(`[石像鬼特性] ${d.name} 石皮反弹${reflect}伤害！`);
-      }
-
-      // 石像鬼特性：受到伤害减少10%
-      if (d.species === '石像鬼') {
-        dmg = Math.floor(dmg * 0.9);
       }
 
       // 凤凰雏特性：死亡时有20%概率复活30%生命
@@ -5982,7 +5982,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.7',
+  version: '4.0.8',
   ext,
 
   DB: {
