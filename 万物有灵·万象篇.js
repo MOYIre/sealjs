@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.22
+// @version     3.1.23
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.22');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.23');
   seal.ext.register(ext);
 }
 
@@ -153,10 +153,7 @@ const DB = {
         const d = ext.storageGet('e_' + userId);
         if (!d) return defaultData;
         const data = JSON.parse(d);
-        const now = Date.now();
-        if (data.explore) data.explore = data.explore.filter(e => e.endTime > now);
-        if (data.work) data.work = data.work.filter(w => w.endTime > now);
-        return data;
+        return { ...defaultData, ...data };
       } catch { return defaultData; }
     },
     save(userId, data) { ext.storageSet('e_' + userId, JSON.stringify(data)); },
@@ -433,13 +430,13 @@ function formatPet(pet) {
   return `${r}${e} ${pet.name} Lv.${pet.level}`;
 }
 
-function unlockAchievement(uid, id) {
-  const data = DB.achievement.get(uid);
+function unlockAchievement(uid, id, dataOverride = null) {
+  const data = dataOverride || DB.achievement.get(uid);
   if (data.unlocked[id]) return;
   const ach = ACHIEVEMENTS[id];
   if (!ach) return;
   data.unlocked[id] = { time: Date.now(), name: ach.name };
-  DB.achievement.save(uid, data);
+  if (!dataOverride) DB.achievement.save(uid, data);
   return ach;
 }
 
@@ -477,7 +474,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.22', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.23', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -496,26 +493,22 @@ function init() {
     DB.ext.save(uid, data);
     const achData = DB.achievement.get(uid);
     achData.stats.captureCount++;
-    // 解锁成就时 unlockAchievement 内部会保存，无需再次保存
-    if (achData.stats.captureCount === 1) unlockAchievement(uid, 'first_capture');
-    if (achData.stats.captureCount >= 10) unlockAchievement(uid, 'capture_10');
-    if (achData.stats.captureCount >= 50) unlockAchievement(uid, 'capture_50');
-    if (pet.rarity === '传说') { unlockAchievement(uid, 'first_legend'); if (achData.stats.captureCount === 1) unlockAchievement(uid, 'lucky'); }
-    if (pet.rarity === '超稀有') unlockAchievement(uid, 'first_super');
-    // 只有未解锁成就时才需要保存（stats已更新）
-    if (achData.stats.captureCount > 0 && achData.stats.captureCount % 10 !== 0) {
-      // 非成就解锁节点，手动保存stats
-      DB.achievement.save(uid, achData);
-    }
+    if (achData.stats.captureCount === 1) unlockAchievement(uid, 'first_capture', achData);
+    if (achData.stats.captureCount >= 10) unlockAchievement(uid, 'capture_10', achData);
+    if (achData.stats.captureCount >= 50) unlockAchievement(uid, 'capture_50', achData);
+    if (pet.rarity === '传说') { unlockAchievement(uid, 'first_legend', achData); if (achData.stats.captureCount === 1) unlockAchievement(uid, 'lucky', achData); }
+    if (pet.rarity === '超稀有') unlockAchievement(uid, 'first_super', achData);
+    DB.achievement.save(uid, achData);
   }, 'wanwu-all', '万象篇');
 
-  main.on('battle', ({ uid, winner, draw, isNPC, targetUid }) => {
+  main.on('battle', ({ uid, winner, draw, isNPC, targetUid, pet1, mode, playerMode }) => {
     if (draw) return;
-    
+
     const data = DB.achievement.get(uid);
     // winner是布尔值：true表示当前玩家获胜
     if (winner) {
       data.stats.battleWins++;
+      data.stats.fightLoseStreak = 0;
       if (!isNPC) data.stats.pvpWins++;
       DB.achievement.save(uid, data);
       if (data.stats.battleWins >= 10) unlockAchievement(uid, 'battle_win_10');
@@ -523,8 +516,16 @@ function init() {
       if (data.stats.battleWins >= 100) unlockAchievement(uid, 'battle_win_100');
       if (!isNPC && data.stats.pvpWins === 1) unlockAchievement(uid, 'pvp_first_win');
       if (!isNPC && data.stats.pvpWins >= 10) unlockAchievement(uid, 'pvp_win_10');
+    } else {
+      if ((mode === 'wild' || isNPC) && playerMode === 'body') {
+        data.stats.fightLoseStreak = (data.stats.fightLoseStreak || 0) + 1;
+        if (data.stats.fightLoseStreak >= 3) unlockAchievement(uid, 'weakling', data);
+      } else {
+        data.stats.fightLoseStreak = 0;
+      }
+      DB.achievement.save(uid, data);
     }
-    
+
     // 竞技场积分
     if (!isNPC && targetUid) {
       const extData = DB.ext.get(uid);
@@ -557,7 +558,7 @@ function init() {
   }, 'wanwu-all', '万象篇');
 
   main.on('levelup', ({ uid, newLevel }) => { if (newLevel >= 50) unlockAchievement(uid, 'level_max'); }, 'wanwu-all', '万象篇');
-  main.on('evolve', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all', '万象篇');
+  main.on('evolution', ({ uid }) => unlockAchievement(uid, 'evolve_first'), 'wanwu-all', '万象篇');
   main.on('breed', ({ uid }) => unlockAchievement(uid, 'breed_first'), 'wanwu-all', '万象篇');
 
   // ========== 图鉴 ==========

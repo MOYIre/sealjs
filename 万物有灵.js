@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.7
+// @version     4.1.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.7');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.8');
   seal.ext.register(ext);
 }
 
@@ -4745,7 +4745,17 @@ cmd.solve = (ctx, msg, argv) => {
 
       save();
       // 触发对战事件
-      WanwuYouling.emit('battle', { uid, winner: result.winner === pet1Copy, draw: result.draw, isNPC, targetUid, pet1, pet2 });
+      WanwuYouling.emit('battle', {
+        uid,
+        winner: result.winner === pet1Copy,
+        draw: result.draw,
+        isNPC,
+        targetUid,
+        pet1,
+        pet2,
+        mode: isNPC ? 'wild' : 'pvp',
+        playerMode: pet1 && pet1.isPlayer ? 'body' : 'pet'
+      });
       reply(logs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 对战错误:', e);
@@ -5227,7 +5237,6 @@ cmd.solve = (ctx, msg, argv) => {
 
       const oldName = pet.name;
       pet.name = evo.name;
-      pet.species = evo.name;
       pet.evoStage = evo.stage;
       if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
       if (evo.bonus.atk) pet.atk += evo.bonus.atk;
@@ -5300,7 +5309,6 @@ cmd.solve = (ctx, msg, argv) => {
 
     const oldName = pet.name;
     pet.name = evo.name;
-    pet.species = evo.name;
     pet.evoStage = evo.stage;
     if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
     if (evo.bonus.atk) pet.atk += evo.bonus.atk;
@@ -6134,7 +6142,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.7',
+  version: '4.1.8',
   ext,
 
   DB: {
