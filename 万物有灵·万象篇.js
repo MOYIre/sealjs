@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.1.20
+// @version     3.1.21
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.19');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.1.21');
   seal.ext.register(ext);
 }
 
@@ -452,7 +452,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.18', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.1.21', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -591,7 +591,7 @@ function init() {
     if (mainData.money < eq.cost) return p.reply(`金币不足，需要 ${eq.cost}`);
     mainData.money -= eq.cost; main.DB.save(p.uid, mainData);
     const data = DB.equip.get(p.uid); data.bag[name] = (data.bag[name] || 0) + 1; DB.equip.save(p.uid, data);
-    p.reply(`购买成功！获得 ${name}`);
+    p.reply(`购买成功！获得 ${name}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '购买宠物装备', 'wanwu-all', '万象篇');
 
@@ -640,7 +640,7 @@ function init() {
     
     DB.equip.save(p.uid, data);
     main.DB.save(p.uid, mainData);
-    p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}`);
+    p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '宠物穿戴装备', 'wanwu-all', '万象篇');
 
@@ -674,7 +674,7 @@ function init() {
     data.books[bookName]--;
     if (data.books[bookName] <= 0) delete data.books[bookName];
     main.DB.save(p.uid, mainData); DB.skillbook.save(p.uid, data);
-    p.reply(`${pet.name} 学会了 ${book.skill}！`);
+    p.reply(`${pet.name} 学会了 ${book.skill}！\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '宠物学习技能书', 'wanwu-all', '万象篇');
 
@@ -747,7 +747,7 @@ function init() {
       main.DB.save(item.sellerId, sellerData);
     }
     delete marketData.listings[listingId]; saveMarket();
-    p.reply(`购买成功！获得 ${item.pet.name}`);
+    p.reply(`购买成功！获得 ${item.pet.name}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '购买宠物', 'wanwu-all', '万象篇');
 
@@ -823,7 +823,7 @@ function init() {
       ext.storageSet('shelterMarket', JSON.stringify(shelter));
     } catch (e) {}
 
-    p.reply(`【领养成功】\n获得 ${item.pet.name}\n花费 ${item.price} 金币`);
+    p.reply(`【领养成功】\n获得 ${item.pet.name}\n花费 ${item.price} 金币\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '从生灵保护机构领养', 'wanwu-all', '万象篇');
 
@@ -859,7 +859,7 @@ function init() {
     p.save();
     DB.ext.save(p.uid, data);
     TaskNotifier.register(p.uid, ctx, msg);
-    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${EXT_CONFIG.exploreTime}分钟后返回，完成后将自动通知`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 前往 ${area.name} 探险\n预计 ${EXT_CONFIG.exploreTime}分钟后返回，完成后将自动通知\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物探险', 'wanwu-all', '万象篇');
 
@@ -931,7 +931,7 @@ function init() {
     p.save();
     DB.ext.save(p.uid, data);
     TaskNotifier.register(p.uid, ctx, msg);
-    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${EXT_CONFIG.workTime}分钟后完成，完成后将自动通知`);
+    p.reply(`[${result.from === 'team' ? '队伍' : '仓库'}] ${pet.name} 开始${work.name}\n预计 ${EXT_CONFIG.workTime}分钟后完成，完成后将自动通知\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '派宠物打工', 'wanwu-all', '万象篇');
 

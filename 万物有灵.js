@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.1.5
+// @version     4.1.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.1.5');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.1.6');
   seal.ext.register(ext);
 }
 
@@ -4364,7 +4364,7 @@ cmd.solve = (ctx, msg, argv) => {
     data.storage.push(pet);
     save();
     WanwuYouling.emit('store', { uid, pet, to: 'storage' });
-    return reply(`${pet.name} 已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})`);
+    return reply(`${pet.name} 已存入仓库 (${data.storage.length}/${CONFIG.maxStorage})\n${getRandomTip()}`);
   }
 
   if (action === '取出') {
@@ -4379,7 +4379,7 @@ cmd.solve = (ctx, msg, argv) => {
     data.pets.push(pet);
     save();
     WanwuYouling.emit('store', { uid, pet, to: 'team' });
-    return reply(`${pet.name} 已加入队伍 (${data.pets.length}/${CONFIG.maxPets})`);
+    return reply(`${pet.name} 已加入队伍 (${data.pets.length}/${CONFIG.maxPets})\n${getRandomTip()}`);
   }
 
   if (action === '信息') {
@@ -4446,7 +4446,7 @@ cmd.solve = (ctx, msg, argv) => {
     pet.name = p2;
     save();
     WanwuYouling.emit('rename', { uid, pet, oldName, newName: p2 });
-    return reply(`已将宠物改名为 ${p2}`);
+    return reply(`已将宠物改名为 ${p2}\n${getRandomTip()}`);
   }
 
   if (action === '学习') {
@@ -4456,7 +4456,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (!result.success) return reply(result.error);
     save();
     WanwuYouling.emit('learn', { uid, pet, skill: result.skill });
-    return reply(`${pet.name} 学会了 ${result.skill}！`);
+    return reply(`${pet.name} 学会了 ${result.skill}！\n${getRandomTip()}`);
   }
 
   if (action === '对战') {
@@ -4918,7 +4918,7 @@ cmd.solve = (ctx, msg, argv) => {
       data.food[item] = (data.food[item] || 0) + count;
       save();
       WanwuYouling.emit('buy', { uid, item, count, cost, type: 'food' });
-      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
+      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币\n${getRandomTip()}`);
     } else if (ITEMS[item]) {
       const cost = ITEMS[item].cost * count;
       if (data.money < cost) return reply(`金币不足，需要 ${cost} 金币`);
@@ -4926,7 +4926,7 @@ cmd.solve = (ctx, msg, argv) => {
       data.items[item] = (data.items[item] || 0) + count;
       save();
       WanwuYouling.emit('buy', { uid, item, count, cost, type: 'item' });
-      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币`);
+      return reply(`购买成功！获得 ${item} x${count}，花费 ${cost} 金币\n${getRandomTip()}`);
     }
     return reply('未知物品，发送 .宠物商店 查看可购买的物品');
   }
@@ -4993,7 +4993,7 @@ cmd.solve = (ctx, msg, argv) => {
         useItem();
         save();
         WanwuYouling.emit('useItem', { uid, item: itemName, pet });
-        return reply(`${pet.name} 的技能已重置，恢复了 ${pet.sp - oldSp} 技能点`);
+        return reply(`${pet.name} 的技能已重置，恢复了 ${pet.sp - oldSp} 技能点\n${getRandomTip()}`);
       }
 
       case 'revive': {
@@ -5005,7 +5005,7 @@ cmd.solve = (ctx, msg, argv) => {
         useItem();
         save();
         WanwuYouling.emit('useItem', { uid, item: itemName, pet });
-        return reply(`${pet.name} 已复活！生命和精力已恢复`);
+        return reply(`${pet.name} 已复活！生命和精力已恢复\n${getRandomTip()}`);
       }
 
       case 'misc': {
@@ -5014,7 +5014,7 @@ cmd.solve = (ctx, msg, argv) => {
           useItem();
           save();
           WanwuYouling.emit('useItem', { uid, item: itemName });
-          return reply(`仓库容量已扩展！当前容量: ${data.maxStorage}`);
+          return reply(`仓库容量已扩展！当前容量: ${data.maxStorage}\n${getRandomTip()}`);
         }
         return reply(`${itemName} 无法直接使用`);
       }
@@ -6037,7 +6037,7 @@ cmd.solve = (ctx, msg, argv) => {
     if (playerItems[p1] <= 0) delete playerItems[p1];
     data.playerItems = playerItems;
     save();
-    return reply(`【技能学习成功】\n${p1}: ${book.desc}`);
+    return reply(`【技能学习成功】\n${p1}: ${book.desc}\n${getRandomTip()}`);
   }
 
   //   神话宠物  
@@ -6134,7 +6134,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.1.5',
+  version: '4.1.6',
   ext,
 
   DB: {
