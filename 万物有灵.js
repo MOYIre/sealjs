@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.0
+// @version     4.3.2
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.0');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.2');
   seal.ext.register(ext);
 }
 
@@ -95,7 +95,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.2.9' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.2' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -228,6 +228,12 @@ const WebUIReporter = {
         case 'config':
           if (payload.config && typeof CONFIG !== 'undefined') Object.assign(CONFIG, payload.config);
           break;
+        case 'shops':
+          return applyShopPatch(payload);
+        case 'encounters':
+          return applyEncounterPatch(payload);
+        case 'dungeons':
+          return applyDungeonPatch(payload);
       }
       return true;
     } catch (e) {
@@ -1902,6 +1908,144 @@ const NPC_SELLS_FOOD = {
   'wizard': ['遗迹秘果', '星辉圣代'],
 };
 
+const SHOP_RUNTIME = {
+  basicFoods: ['面包', '苹果', '鸡蛋', '牛奶', '鱼干', '蜂蜜', '药水', '治疗药', '宠物粮'],
+  cityFoods: CITY_FOOD_SHOPS,
+  npcFoods: NPC_SELLS_FOOD,
+  npcSellOverrides: {},
+};
+
+function cloneList(value) {
+  return Array.isArray(value) ? [...value] : [];
+}
+
+function getBasicShopFoods() {
+  return cloneList(SHOP_RUNTIME.basicFoods);
+}
+
+function getCityFoodShop(townId) {
+  return cloneList((SHOP_RUNTIME.cityFoods || {})[townId]);
+}
+
+function getNpcFoodShop(npcId) {
+  return cloneList((SHOP_RUNTIME.npcFoods || {})[npcId]);
+}
+
+function getNpcSellList(npcId) {
+  const override = (SHOP_RUNTIME.npcSellOverrides || {})[npcId];
+  if (Array.isArray(override)) return cloneList(override);
+  const npc = NPCS[npcId];
+  return cloneList(npc?.sells);
+}
+
+function applyKeyedListPatch(target, entries = {}) {
+  for (const [key, value] of Object.entries(entries || {})) {
+    if (value === null) delete target[key];
+    else if (Array.isArray(value)) target[key] = [...new Set(value.filter(v => typeof v === 'string' && v))];
+  }
+}
+
+function applyShopPatch(payload = {}) {
+  const shopPayload = payload.shops || payload;
+  if (!shopPayload || typeof shopPayload !== 'object') return false;
+
+  if (Array.isArray(shopPayload.basicFoods)) {
+    SHOP_RUNTIME.basicFoods = [...new Set(shopPayload.basicFoods.filter(v => typeof v === 'string' && v))];
+  }
+  if (shopPayload.cityFoods && typeof shopPayload.cityFoods === 'object') {
+    applyKeyedListPatch(SHOP_RUNTIME.cityFoods, shopPayload.cityFoods);
+  }
+  if (shopPayload.npcFoods && typeof shopPayload.npcFoods === 'object') {
+    applyKeyedListPatch(SHOP_RUNTIME.npcFoods, shopPayload.npcFoods);
+  }
+  if (shopPayload.npcSells && typeof shopPayload.npcSells === 'object') {
+    applyKeyedListPatch(SHOP_RUNTIME.npcSellOverrides, shopPayload.npcSells);
+  }
+  return true;
+}
+
+// 遭遇池热更新注册表
+const ENCOUNTER_RUNTIME = {
+  // 地区物种覆盖：{ '森林': ['猫', '狐', ...], ... }
+  regionSpecies: {},
+  // 稀有度权重覆盖
+  rarityWeights: null,
+};
+
+function getRegionSpecies(regionId) {
+  if (ENCOUNTER_RUNTIME.regionSpecies[regionId]) {
+    return [...ENCOUNTER_RUNTIME.regionSpecies[regionId]];
+  }
+  const region = REGIONS[regionId];
+  return region?.species ? [...region.species] : [];
+}
+
+function getRarityWeights() {
+  if (ENCOUNTER_RUNTIME.rarityWeights) {
+    return { ...ENCOUNTER_RUNTIME.rarityWeights };
+  }
+  return { ...RARITY_WEIGHTS };
+}
+
+function applyEncounterPatch(payload = {}) {
+  const encPayload = payload.encounters || payload;
+  if (!encPayload || typeof encPayload !== 'object') return false;
+
+  // 更新地区物种
+  if (encPayload.regionSpecies && typeof encPayload.regionSpecies === 'object') {
+    for (const [regionId, species] of Object.entries(encPayload.regionSpecies)) {
+      if (species === null) {
+        delete ENCOUNTER_RUNTIME.regionSpecies[regionId];
+      } else if (Array.isArray(species)) {
+        ENCOUNTER_RUNTIME.regionSpecies[regionId] = [...new Set(species.filter(v => typeof v === 'string' && v))];
+      }
+    }
+  }
+
+  // 更新稀有度权重
+  if (encPayload.rarityWeights && typeof encPayload.rarityWeights === 'object') {
+    const weights = {};
+    for (const [rarity, weight] of Object.entries(encPayload.rarityWeights)) {
+      if (typeof weight === 'number' && weight >= 0) {
+        weights[rarity] = weight;
+      }
+    }
+    if (Object.keys(weights).length > 0) {
+      ENCOUNTER_RUNTIME.rarityWeights = weights;
+    }
+  }
+
+  return true;
+}
+
+// 副本热更新注册表
+const DUNGEON_RUNTIME = {
+  // 副本配置覆盖：{ '迷雾深渊': { boss: '新Boss', bossHp: 600, ... }, ... }
+  dungeons: {},
+};
+
+function getDungeonConfig(dungeonName) {
+  if (DUNGEON_RUNTIME.dungeons[dungeonName]) {
+    return { ...DUNGEON_RUNTIME.dungeons[dungeonName] };
+  }
+  return DUNGEONS[dungeonName] ? { ...DUNGEONS[dungeonName] } : null;
+}
+
+function applyDungeonPatch(payload = {}) {
+  const dungeonPayload = payload.dungeons || payload;
+  if (!dungeonPayload || typeof dungeonPayload !== 'object') return false;
+
+  for (const [name, config] of Object.entries(dungeonPayload)) {
+    if (config === null) {
+      delete DUNGEON_RUNTIME.dungeons[name];
+    } else if (typeof config === 'object') {
+      DUNGEON_RUNTIME.dungeons[name] = config;
+    }
+  }
+
+  return true;
+}
+
 // NPC定义
 const NPCS = {
   'elder': { name: '村长', desc: '年迈的村长，知晓许多秘密', type: 'quest' },
@@ -2512,8 +2656,8 @@ const PetFactory = {
     let threshold = 0;
     let result = '普通';
 
-    // 复制权重并应用传说驯兽师效果
-    const weights = { ...RARITY_WEIGHTS };
+    // 使用热更新注册表的权重
+    const weights = getRarityWeights();
     if (legendBoost > 0) {
       weights['传说'] = (weights['传说'] || 0) * (1 + legendBoost);
       weights['神话'] = (weights['神话'] || 0) * (1 + legendBoost);
@@ -2548,12 +2692,15 @@ const PetFactory = {
   create(rarityBoost = 0, forceLegend = false, customName = null, regionId = null, legendBoost = 0) {
     const rarity = this.randomRarity(rarityBoost, forceLegend, legendBoost);
 
-    // 根据地区选择物种
+    // 根据地区选择物种（使用热更新注册表）
     let species;
-    if (regionId && REGIONS[regionId]) {
-      const regionSpecies = REGIONS[regionId].species;
-      species = regionSpecies[Math.floor(Math.random() * regionSpecies.length)];
-    } else {
+    if (regionId) {
+      const regionSpecies = getRegionSpecies(regionId);
+      if (regionSpecies.length > 0) {
+        species = regionSpecies[Math.floor(Math.random() * regionSpecies.length)];
+      }
+    }
+    if (!species) {
       const speciesKeys = Object.keys(SPECIES);
       species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
     }
@@ -3892,6 +4039,7 @@ const HELP_PAGES = {
 
   webui: `【WebUI命令】
 .宠物 webui - 查看WebUI状态
+.宠物 webui 验证 <验证码> - 完成WebUI注册验证
 .宠物 webui 配置 <端点> <Token> - 配置WebUI
 .宠物 webui 启用 - 启用WebUI上报
 .宠物 webui 禁用 - 禁用WebUI上报
@@ -4412,6 +4560,7 @@ cmd.solve = async (ctx, msg, argv) => {
         }
       } else if (result.winner === fighter) {
         logs.push(`\n[胜利] ${fighter.name}战胜了 ${wildPet.name}！`);
+        let captureSuccess = false;
 
         // 计算经验和金币奖励
         let expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
@@ -4476,7 +4625,6 @@ cmd.solve = async (ctx, msg, argv) => {
         if (hasCharm) {
           // 有符咒，可以捕捉宠物
           let captureRate = 0;
-          let captureSuccess = false;
 
           if (wildPet.isLegendary) {
             // 孤品宠物捕捉率极低
@@ -5341,7 +5489,7 @@ cmd.solve = async (ctx, msg, argv) => {
 
   if (action === '商店') {
     const lines = ['【宠物商店】', `你的金币: ${data.money}`, '', '【基础食物】'];
-    const basicFoods = ['面包', '苹果', '鸡蛋', '牛奶', '鱼干', '蜂蜜', '药水', '治疗药', '宠物粮'];
+    const basicFoods = getBasicShopFoods();
     for (const name of basicFoods) {
       const f = FOODS[name];
       if (!f) continue;
@@ -5370,16 +5518,16 @@ cmd.solve = async (ctx, msg, argv) => {
     const item = buyArgs[1] || '';
     const count = Math.max(1, parseInt(buyArgs[2]) || 1);
 
-    const cityFoodSet = new Set(Object.values(CITY_FOOD_SHOPS).flat());
-    const basicFoods = new Set(['面包', '苹果', '鸡蛋', '牛奶', '鱼干', '蜂蜜', '药水', '治疗药', '宠物粮']);
-    const currentTownFoods = data.currentTown ? new Set(CITY_FOOD_SHOPS[data.currentTown] || []) : new Set();
-    const currentNpcFoods = data.currentShopNpc ? new Set(NPC_SELLS_FOOD[data.currentShopNpc] || []) : new Set();
+    const cityFoodSet = new Set(Object.values(SHOP_RUNTIME.cityFoods || {}).flat());
+    const basicFoods = new Set(getBasicShopFoods());
+    const currentTownFoods = new Set(getCityFoodShop(data.currentTown));
+    const currentNpcFoods = new Set(getNpcFoodShop(data.currentShopNpc));
     const canBuyFromLocalShop = currentTownFoods.has(item) || currentNpcFoods.has(item);
 
     // 检查是食物还是道具
     if (FOODS[item]) {
       if (cityFoodSet.has(item) && !basicFoods.has(item) && !canBuyFromLocalShop) {
-        const townId = Object.keys(CITY_FOOD_SHOPS).find(id => CITY_FOOD_SHOPS[id].includes(item));
+        const townId = Object.keys(SHOP_RUNTIME.cityFoods || {}).find(id => getCityFoodShop(id).includes(item));
         const townName = TOWNS[townId]?.name || '对应城镇';
         return reply(`${item} 是城市特产，请先前往 ${townName} 查看当地商店后再购买`);
       }
@@ -5549,9 +5697,9 @@ cmd.solve = async (ctx, msg, argv) => {
     for (const npcId of town.npcs) {
       const npc = NPCS[npcId];
       lines.push('• ' + npc.name + ': ' + npc.desc);
-      if (npc.type === 'shop' && npc.sells) {
-        const townFoods = CITY_FOOD_SHOPS[townId] || [];
-        const preview = [...new Set([...npc.sells, ...townFoods])];
+      if (npc.type === 'shop') {
+        const townFoods = getCityFoodShop(townId);
+        const preview = [...new Set([...getNpcSellList(npcId), ...townFoods])];
         lines.push(`  出售: ${preview.join('、')}`);
       }
     }
@@ -5572,15 +5720,16 @@ cmd.solve = async (ctx, msg, argv) => {
 
     if (npc.type === 'shop') {
       // 商店NPC
-      if (!npc.sells) return reply(`${npc.name} 暂无商品出售`);
+      if (!getNpcSellList(npcId).length) return reply(`${npc.name} 暂无商品出售`);
       const townId = Object.keys(TOWNS).find(id => TOWNS[id].npcs.includes(npcId));
       if (townId) data.currentTown = townId;
       data.currentShopNpc = npcId;
       save();
 
-      const cityFoods = townId ? (CITY_FOOD_SHOPS[townId] || []) : [];
+      const cityFoods = townId ? getCityFoodShop(townId) : [];
+      const npcSellList = getNpcSellList(npcId);
       const lines = [`【${npc.name}的商店】`];
-      for (const item of npc.sells) {
+      for (const item of npcSellList) {
         const food = FOODS[item];
         const baseItem = ITEMS[item];
         const price = food?.cost ?? baseItem?.cost;
@@ -5992,7 +6141,7 @@ cmd.solve = async (ctx, msg, argv) => {
     const petArg = DUNGEON_DIFFICULTIES[p2] ? p3 : p2;
     const pet = getPet(petArg || '1');
     if (!pet) return reply('请指定宠物编号');
-    const dungeon = DUNGEONS[p1];
+    const dungeon = getDungeonConfig(p1);
     if (!dungeon) return reply('副本不存在');
     if (pet.hp <= 0) return reply('宠物已阵亡，请先复活');
     if (pet.energy < difficulty.energyCost) return reply(`精力不足(需要${difficulty.energyCost})`);
@@ -6085,7 +6234,7 @@ cmd.solve = async (ctx, msg, argv) => {
       if (!p2) return reply('用法: .宠物 组队 创建 <副本名/世界Boss> [难度]');
       const teamDifficulty = DUNGEON_DIFFICULTIES[p3] ? p3 : '普通';
       // 检查是否是世界Boss或普通副本
-      if (p2 !== '世界Boss' && !DUNGEONS[p2]) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿/世界Boss');
+      if (p2 !== '世界Boss' && !getDungeonConfig(p2)) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿/世界Boss');
       if (p2 === '世界Boss') {
         const spawnResult = WorldBossManager.checkAndSpawn();
         if (!spawnResult.boss) return reply('当前没有世界Boss');
@@ -6138,7 +6287,7 @@ cmd.solve = async (ctx, msg, argv) => {
           maxHp: spawnResult.boss.maxHp,
         };
       } else {
-        const baseDungeon = DUNGEONS[myTeam.dungeon];
+        const baseDungeon = getDungeonConfig(myTeam.dungeon);
         if (!baseDungeon) return reply('副本不存在');
         bossData = {
           ...baseDungeon,
@@ -6691,6 +6840,33 @@ cmd.solve = async (ctx, msg, argv) => {
       return reply(lines.join('\n'));
     }
 
+    // .宠物 webui 验证 <验证码> - 完成注册验证
+    if (p1 === '验证' || p1 === 'verify') {
+      if (!p2) {
+        return reply('用法: .宠物 webui 验证 <验证码>\n请在 WebUI 注册后获取验证码');
+      }
+      const code = p2.toUpperCase();
+      const qq = uid.split(':')[1] || uid;
+      
+      // 向 WebUI 发送验证请求
+      try {
+        const response = await fetch(`${WebUIReporter.config.endpoint || ''}/api/auth/verify-dice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, qq, uid }),
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+          return reply(`【验证成功】\nQQ: ${qq}\nToken 已绑定，请返回 WebUI 登录。\n\n你的 Token: ${result.token || '请在 WebUI 查看或重新获取'}`);
+        } else {
+          return reply(`【验证失败】\n${result.error || '验证码无效或已过期'}`);
+        }
+      } catch (e) {
+        return reply(`【验证失败】\n网络错误，请检查 WebUI 端点配置`);
+      }
+    }
+
     // .宠物 webui 配置 <端点> <Token>
     if (p1 === '配置' || p1 === 'config') {
       if (!p2 || !p3) {
@@ -6776,7 +6952,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.2.9',
+  version: '4.3.2',
   ext,
 
   DB: {
