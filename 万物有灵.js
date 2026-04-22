@@ -5319,7 +5319,7 @@ cmd.solve = (ctx, msg, argv) => {
     pet.name = evo.name;
     pet.evoStage = evo.stage;
     pet.evolved = true;
-    pet.maxBattles = CONFIG.maxPetBattles;
+    pet.maxBattles = 30;
     if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
     if (evo.bonus.atk) pet.atk += evo.bonus.atk;
     if (evo.bonus.def) pet.def += evo.bonus.def;
