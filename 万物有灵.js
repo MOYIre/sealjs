@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.0.5
+// @version     4.0.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702927
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.0.5');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.0.6');
   seal.ext.register(ext);
 }
 
@@ -2519,6 +2519,12 @@ const Battle = {
         return;
       }
 
+      // 幽灵特性：防御方有10%概率闪避攻击
+      if (d.species === '幽灵' && Math.random() < 0.1) {
+        logs.push(`[幽灵特性] ${d.name} 虚化闪避了攻击！`);
+        return;
+      }
+
       const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
       const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
       const sk = SKILLS[skill] || SKILLS['冲撞'];
@@ -2597,12 +2603,7 @@ const Battle = {
             // 此处不处理，移到防御方检查
             break;
           case '龟':
-            // 龟类：防御+25%，被攻击时有20%概率反弹10%伤害
-            if (Math.random() < 0.2) {
-              const reflectDmg = Math.floor(dmg * 0.1);
-              d.hp = Math.max(0, d.hp - reflectDmg);
-              logs.push(`[龟类特性] ${a.name} 反弹${reflectDmg}伤害！`);
-            }
+            // 龟类：受到伤害减少15%（反弹在防御方触发）
             break;
           case '熊':
             // 熊类：血量低于30%时攻击+40%
@@ -2782,10 +2783,7 @@ const Battle = {
             }
             break;
           case '马':
-            // 马类：速度+20%，首回合必定先手
-            if (a._turn === 1) {
-              logs.push(`[马类特性] ${a.name} 疾风先手！`);
-            }
+            // 马类：首回合先手（在ATB系统中实现）
             break;
           case '羊':
             // 羊类：被攻击时有20%概率使攻击者减速
@@ -2837,6 +2835,49 @@ const Battle = {
             // 鱼类：水属性伤害+15%，闪避率+5%
             if (sk.element === '水') dmg = Math.floor(dmg * 1.15);
             break;
+          // 补全剩余物种特性
+          case '史莱姆':
+            // 史莱姆：受到伤害减少10%，死亡时有10%概率分裂
+            if (Math.random() < 0.1 && a.hp <= 0) {
+              a.hp = Math.floor((a.maxHp || 50) * 0.3);
+              logs.push(`[史莱姆特性] ${a.name} 分裂重生！恢复30%生命`);
+            }
+            break;
+          case '精灵':
+            // 精灵：魔法伤害+20%，每回合恢复3%能量
+            if (sk.element && sk.element !== '无') dmg = Math.floor(dmg * 1.2);
+            if (a.maxEnergy) a.energy = Math.min(a.maxEnergy, (a.energy || 0) + Math.floor(a.maxEnergy * 0.03));
+            break;
+          case '元素':
+            // 元素：根据属性获得加成，全属性技能伤害+15%
+            dmg = Math.floor(dmg * 1.15);
+            break;
+          case '幽灵':
+            // 幽灵：闪避率+10%，攻击有15%概率使敌人混乱
+            if (Math.random() < 0.15) {
+              d.confused = 2;
+              logs.push(`[幽灵特性] ${a.name} 魂魄侵蚀！敌人混乱`);
+            }
+            break;
+          case '恶魔':
+            // 恶魔：攻击+15%，但受到神圣伤害+20%
+            dmg = Math.floor(dmg * 1.15);
+            break;
+          case '魅魔':
+            // 魅魔：攻击有20%概率使敌人混乱
+            if (Math.random() < 0.2) {
+              d.confused = 2;
+              logs.push(`[魅魔特性] ${a.name} 魅惑之吻！敌人混乱`);
+            }
+            break;
+          case '骷髅':
+            // 骷髅：攻击+10%，死亡时有15%概率复活20%生命
+            dmg = Math.floor(dmg * 1.1);
+            break;
+          case '傀儡':
+            // 傀儡：防御+15%，受到伤害减少10%
+            // 减伤在防御方触发
+            break;
         }
       }
 
@@ -2858,6 +2899,33 @@ const Battle = {
       // 蟹类特性：受到伤害减少10%
       if (d.species === '蟹') {
         dmg = Math.floor(dmg * 0.9);
+      }
+
+      // 龟类特性：受到伤害减少15%，20%概率反弹10%伤害
+      if (d.species === '龟') {
+        dmg = Math.floor(dmg * 0.85);
+        if (Math.random() < 0.2) {
+          const reflect = Math.floor(dmg * 0.1);
+          a.hp = Math.max(0, (a.hp || 0) - reflect);
+          logs.push(`[龟类特性] ${d.name} 坚壳反弹${reflect}伤害！`);
+        }
+      }
+
+      // 傀儡特性：受到伤害减少10%
+      if (d.species === '傀儡') {
+        dmg = Math.floor(dmg * 0.9);
+      }
+
+      // 史莱姆特性：受到伤害减少10%
+      if (d.species === '史莱姆') {
+        dmg = Math.floor(dmg * 0.9);
+      }
+
+      // 骷髅特性：死亡时有15%概率复活20%生命
+      if (d.species === '骷髅' && !d.hasRevived && d.hp <= 0 && Math.random() < 0.15) {
+        d.hp = Math.floor((d.maxHp || 100) * 0.2);
+        d.hasRevived = true;
+        logs.push(`[骷髅特性] ${d.name} 死亡复生！恢复20%生命`);
       }
 
       // 检查对方是否在防御
@@ -2959,10 +3027,11 @@ const Battle = {
 
     // ATB行动条系统
     const ACTION_THRESHOLD = 100;
-    let atb1 = 0; // p1的行动值
-    let atb2 = 0; // p2的行动值
-    let atb1Ally = 0; // p1盟友的行动值
-    let atb2Ally = 0; // p2盟友的行动值
+    // 马类首回合先手：初始行动值+50
+    let atb1 = p1.species === '马' ? 50 : 0;
+    let atb2 = p2.species === '马' ? 50 : 0;
+    let atb1Ally = p1Ally?.species === '马' ? 50 : 0;
+    let atb2Ally = p2Ally?.species === '马' ? 50 : 0;
     const spd1 = p1.spd || 100;
     const spd2 = p2.spd || 100;
     const spd1Ally = p1Ally ? (p1Ally.spd || 100) : 0;
@@ -5903,7 +5972,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.0.5',
+  version: '4.0.6',
   ext,
 
   DB: {
