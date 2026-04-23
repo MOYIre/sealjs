@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.12
+// @version     4.3.15
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.12');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.15');
   seal.ext.register(ext);
 }
 
@@ -3061,6 +3061,199 @@ const PLAYER_BASE = { hp: 35, atk: 18, def: 12, energy: 80, spd: 80 };
 const PLAYER_SKILLS = ['灵击', '灵刃', '护盾'];
 
 const Battle = {
+  applyMythicTurnStart(unit, opponent, logs) {
+    if (!unit || unit.rarity !== '神话') return;
+    unit.mythicTurnCount = (unit.mythicTurnCount || 0) + 1;
+
+    switch (unit.name) {
+      case '烛龙·衔烛': {
+        const phase = Math.floor((unit.mythicTurnCount - 1) / 2) % 2 === 0 ? '昼' : '夜';
+        unit.dayNightPhase = phase;
+        logs.push(`【昼夜轮转】${unit.name} 进入${phase}之相`);
+        break;
+      }
+      case '混沌·帝江': {
+        const modes = ['暴烈', '迅捷', '坚守'];
+        unit.chaosMode = modes[Math.floor(Math.random() * modes.length)];
+        logs.push(`【混沌涌动】${unit.name} 获得${unit.chaosMode}波动`);
+        break;
+      }
+      case '鲲鹏·扶摇': {
+        if ((unit.energy || 0) >= 70) {
+          unit.kunpengAwakened = true;
+          logs.push(`【扶摇九万里】${unit.name} 扶摇而起，速度大增！`);
+        } else {
+          unit.kunpengAwakened = false;
+        }
+        break;
+      }
+    }
+
+    if (unit.name === '建木·通天' && !unit.jianmuCritBroken) {
+      unit.jianmuStacks = Math.min(4, (unit.jianmuStacks || 0) + 1);
+      logs.push(`【生生不息】${unit.name} 积累生息 ${unit.jianmuStacks} 层`);
+    }
+    unit.jianmuCritBroken = false;
+
+    if (unit.name === '鲲鹏·扶摇') {
+      unit.kunpengConsecutive = unit.kunpengAwakened ? (unit.kunpengConsecutive || 0) + 1 : 0;
+    }
+  },
+
+  applyMythicPreAttack(attacker, defender, skillName, skillData, logs) {
+    if (!attacker || attacker.rarity !== '神话') return { damageMod: 1, speedMod: 1, extraCrit: 0, bonusDamage: 0 };
+
+    let damageMod = 1;
+    let speedMod = 1;
+    let extraCrit = 0;
+    let bonusDamage = 0;
+
+    switch (attacker.name) {
+      case '烛龙·衔烛':
+        if (attacker.dayNightPhase === '昼') {
+          damageMod *= 1.18;
+          extraCrit += 0.10;
+        } else if (attacker.dayNightPhase === '夜') {
+          speedMod *= 0.9;
+        }
+        break;
+      case '混沌·帝江':
+        if (attacker.chaosMode === '暴烈') damageMod *= 1.25;
+        if (attacker.chaosMode === '迅捷') speedMod *= 1.25;
+        break;
+      case '雷兽·夔牛':
+        if ((attacker.spd || 0) > (defender?.spd || 0)) {
+          damageMod *= 1.12;
+          defender.thunderMark = 1;
+          defender.slowed = Math.max(defender.slowed || 0, 1);
+          logs.push(`【惊雷先声】${defender.name} 被感电并减速！`);
+        }
+        break;
+      case '白泽·通灵':
+        if ((defender?.poisoned || 0) > 0 || (defender?.confused || 0) > 0 || (defender?.stunned || 0) > 0 || (defender?.frozen || 0) > 0 || (defender?.webbed || 0) > 0 || (defender?.slowed || 0) > 0) {
+          attacker.baiZeStacks = Math.min(3, (attacker.baiZeStacks || 0) + 1);
+          damageMod *= 1 + attacker.baiZeStacks * 0.06;
+          logs.push(`【洞见天机】${attacker.name} 洞悉破绽，伤害提升${attacker.baiZeStacks * 6}%`);
+        }
+        break;
+      case '鲲鹏·扶摇':
+        if (attacker.kunpengAwakened) {
+          const decay = (attacker.kunpengConsecutive || 0) >= 2 ? 0.7 : 1;
+          speedMod *= 1 + 0.2 * decay;
+          if ((defender?.hp || 0) > (defender?.maxHp || 1) * 0.5) damageMod *= 1 + 0.18 * decay;
+          else extraCrit += 0.15 * decay;
+        }
+        break;
+      case '朱雀·陵光':
+        if ((attacker.suzakuNirvana || 0) > 0) {
+          damageMod *= 1.2;
+          speedMod *= 1.15;
+          logs.push(`【焚羽重明】${attacker.name} 处于重明状态，伤害与速度提升！`);
+        }
+        break;
+    }
+
+    return { damageMod, speedMod, extraCrit, bonusDamage };
+  },
+
+  applyMythicPostAttack(attacker, defender, damage, logs) {
+    if (!attacker || attacker.rarity !== '神话') return;
+
+    switch (attacker.name) {
+      case '混沌·帝江':
+        if (attacker.chaosMode === '迅捷') {
+          attacker.energy = Math.min(attacker.maxEnergy || 100, (attacker.energy || 0) + 15);
+          logs.push(`【混沌涌动】${attacker.name} 回复15点精力`);
+        }
+        break;
+      case '白泽·通灵':
+        if ((attacker.baiZeStacks || 0) >= 3 && defender) {
+          defender.energy = Math.max(0, (defender.energy || 0) - 15);
+          attacker.baiZeStacks = 0;
+          logs.push(`【洞见天机】${attacker.name} 识破天机，削减${defender.name} 15点精力`);
+        }
+        break;
+      case '鲲鹏·扶摇':
+        if (attacker.kunpengAwakened) {
+          attacker.energy = Math.max(0, (attacker.energy || 0) - 10);
+          attacker.kunpengAwakened = false;
+          logs.push(`【扶摇九万里】${attacker.name} 额外消耗10点精力`);
+        }
+        break;
+    }
+  },
+
+  applyMythicOnDamage(defender, attacker, damage, logs) {
+    if (!defender || defender.rarity !== '神话') return damage;
+
+    let finalDamage = damage;
+    switch (defender.name) {
+      case '烛龙·衔烛':
+        if (defender.dayNightPhase === '夜') finalDamage = Math.floor(finalDamage * 0.82);
+        break;
+      case '玄武·执明':
+        if (damage >= Math.floor((defender.maxHp || 1) * 0.12)) {
+          defender.xuanwuStacks = Math.min(3, (defender.xuanwuStacks || 0) + 1);
+          logs.push(`【龟蛇镇守】${defender.name} 累积镇守 ${defender.xuanwuStacks} 层`);
+        }
+        finalDamage = Math.floor(finalDamage * (1 - (defender.xuanwuStacks || 0) * 0.08));
+        break;
+      case '建木·通天':
+        break;
+      case '朱雀·陵光':
+        if (!defender.suzakuNirvanaUsed && (defender.hp || 0) > 0) {
+          const threshold = Math.floor((defender.maxHp || 1) * 0.3);
+          const afterHp = Math.max(0, (defender.hp || 0) - finalDamage);
+          if (afterHp > 0 && afterHp <= threshold) {
+            defender.suzakuNirvanaUsed = true;
+            defender.suzakuNirvana = 2;
+            const heal = Math.floor((defender.maxHp || 100) * 0.2);
+            defender.hp = Math.min(defender.maxHp || 100, afterHp + heal);
+            logs.push(`【焚羽重明】${defender.name} 浴火涅槃，恢复${heal}生命并进入重明状态！`);
+            return 0;
+          }
+        }
+        break;
+    }
+    return Math.max(1, finalDamage);
+  },
+
+  applyMythicTurnEnd(unit, opponent, logs) {
+    if (!unit || unit.rarity !== '神话' || (unit.hp || 0) <= 0) return;
+
+    switch (unit.name) {
+      case '烛龙·衔烛':
+        if (unit.dayNightPhase === '夜') {
+          const heal = Math.floor((unit.maxHp || 100) * 0.03);
+          unit.hp = Math.min(unit.maxHp || 100, unit.hp + heal);
+          logs.push(`【昼夜轮转】${unit.name} 在夜相中恢复${heal}生命`);
+        }
+        break;
+      case '建木·通天': {
+        const heal = Math.floor((unit.maxHp || 100) * (0.025 * (unit.jianmuStacks || 0)));
+        unit.hp = Math.min(unit.maxHp || 100, unit.hp + heal);
+        unit.energy = Math.min(unit.maxEnergy || 100, (unit.energy || 0) + (unit.jianmuStacks || 0) * 5);
+        if ((unit.jianmuStacks || 0) > 0) logs.push(`【生生不息】${unit.name} 恢复${heal}生命并回复${(unit.jianmuStacks || 0) * 5}精力`);
+        break;
+      }
+      case '玄武·执明': {
+        const heal = Math.floor((unit.maxHp || 100) * 0.02 * (unit.xuanwuStacks || 0));
+        if (heal > 0) {
+          unit.hp = Math.min(unit.maxHp || 100, unit.hp + heal);
+          logs.push(`【龟蛇镇守】${unit.name} 恢复${heal}生命`);
+        }
+        break;
+      }
+      case '朱雀·陵光':
+        if ((unit.suzakuNirvana || 0) > 0) {
+          unit.suzakuNirvana--;
+          if (unit.suzakuNirvana === 0) {
+            logs.push(`【焚羽重明】${unit.name} 的重明状态结束了`);
+          }
+        }
+        break;
+    }
+  },
   calcDmg(atk, def, skill, atkLv, atkEle, defEle, atkSpecies = null, defSpecies = null, playerBuffs = null, attacker = null) {
     const sk = SKILLS[skill] || SKILLS['冲撞'];
 
@@ -3158,6 +3351,7 @@ const Battle = {
       const usable = (a.skills || ['冲撞']).filter(s => (SKILLS[s]?.cost || 0) <= (a.energy || 0));
       const skill = usable.length > 0 && Math.random() > 0.3 ? usable[Math.floor(Math.random() * usable.length)] : '冲撞';
       const sk = SKILLS[skill] || SKILLS['冲撞'];
+      const mythicPre = this.applyMythicPreAttack(a, d, skill, sk, logs);
       if (Math.random() * 100 > (sk.acc || 95)) {
         logs.push(`${a.name} 使用 ${skill}，但打偏了！`);
         return;
@@ -3234,7 +3428,8 @@ const Battle = {
       }
 
       // 普通攻击
-      let dmg = this.calcDmg(a.atk || 10, d.def || 10, skill, a.level || 1, a.element, d.element, a.species, d.species, a.playerBuffs);
+      let dmg = this.calcDmg(a.atk || 10, d.def || 10, skill, a.level || 1, a.element, d.element, a.species, d.species, a.playerBuffs, a);
+      dmg = Math.floor(dmg * (mythicPre.damageMod || 1));
 
       // 狂暴状态加成
       if (a.berserkAtk) {
@@ -3618,14 +3813,21 @@ const Battle = {
         logs.push(`[骷髅特性] ${d.name} 死亡复生！恢复20%生命`);
       }
 
+      let mythicDamageBonus = 0;
+      if (a.thunderMark) {
+        mythicDamageBonus += Math.floor((a.atk || 10) * 0.35);
+        logs.push(`【感电】${a.name} 因感电额外承受 ${mythicDamageBonus} 伤害`);
+        a.thunderMark = 0;
+      }
+
       // 检查对方是否在防御
       if (d.isDefending) {
         dmg = Math.floor(dmg * 0.5);
         d.isDefending = false;
       }
-      
-      d.hp = Math.max(0, (d.hp || 0) - dmg);
 
+      dmg = this.applyMythicOnDamage(d, a, dmg, logs);
+      d.hp = Math.max(0, (d.hp || 0) - dmg - mythicDamageBonus);
       // 技能效果：攻击后附加状态
       if (sk.effect === 'poison' && Math.random() < (sk.effectChance || 0.3)) {
         d.poisoned = sk.effectDuration || 3;
@@ -3840,6 +4042,7 @@ const Battle = {
 
         // 设置回合数供物种特性使用
         attacker._turn = turn;
+        this.applyMythicTurnStart(attacker, defender, logs);
 
         // 处理状态效果
         // 眩晕状态：无法行动
@@ -3881,6 +4084,7 @@ const Battle = {
         else if (action.atbKey === 'atb2Ally') atb2Ally -= ACTION_THRESHOLD;
 
         this.attack(attacker, defender, logs, attacker.isPlayer);
+        this.applyMythicPostAttack(attacker, defender, 0, logs);
 
         // 兔类额外行动
         if (attacker.extraAction) {
@@ -3930,6 +4134,10 @@ const Battle = {
       processDot(p2, p2.name);
       if (p1Ally) processDot(p1Ally, p1Ally.name);
       if (p2Ally) processDot(p2Ally, p2Ally.name);
+      this.applyMythicTurnEnd(p1, p2, logs);
+      this.applyMythicTurnEnd(p2, p1, logs);
+      if (p1Ally) this.applyMythicTurnEnd(p1Ally, p2, logs);
+      if (p2Ally) this.applyMythicTurnEnd(p2Ally, p1, logs);
 
       turn++;
     }
@@ -6276,10 +6484,21 @@ cmd.solve = async (ctx, msg, argv) => {
       return reply(lines.join('\n'));
     }
 
-    const difficultyName = DUNGEON_DIFFICULTIES[p2] ? p2 : '普通';
+    const dungeonArgs = p2 ? p2.split(/\s+/) : [];
+    let difficultyName = '普通';
+    let petArg = '1';
+
+    if (dungeonArgs.length > 0) {
+      if (DUNGEON_DIFFICULTIES[dungeonArgs[0]]) {
+        difficultyName = dungeonArgs[0];
+        petArg = dungeonArgs[1] || '1';
+      } else {
+        petArg = dungeonArgs[0];
+      }
+    }
+
     const difficulty = DUNGEON_DIFFICULTIES[difficultyName];
-    const petArg = DUNGEON_DIFFICULTIES[p2] ? p3 : p2;
-    const pet = getPet(petArg || '1');
+    const pet = getPet(petArg);
     if (!pet) return reply('请指定宠物编号');
     const dungeon = getDungeonConfig(p1);
     if (!dungeon) return reply('副本不存在');
