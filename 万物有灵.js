@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.4
+// @version     4.3.5
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.4');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.5');
   seal.ext.register(ext);
 }
 
@@ -4968,9 +4968,9 @@ cmd.solve = async (ctx, msg, argv) => {
     QuestManager.initPlayerQuests(data);
     const FEED_STAT_CAP = 30;
     const feedArgs = actionFromCmd ? args : args.slice(1);
-    const feedTarget = feedArgs[1] || '';
-    const foodName = feedArgs[2] || '';
-    const feedCountArg = feedArgs[3] || '';
+    const feedTarget = feedArgs[0] || '';
+    const foodName = feedArgs[1] || '';
+    const feedCountArg = feedArgs[2] || '';
     if (!foodName || !FOODS[foodName]) return reply(`未知食物，可用: ${Object.keys(FOODS).join('、')}`);
     const totalFood = data.food[foodName] || 0;
     if (totalFood <= 0) return reply(`你没有 ${foodName}，发送 .宠物 背包 查看拥有的食物`);
@@ -5584,8 +5584,8 @@ cmd.solve = async (ctx, msg, argv) => {
 
   if (action === '购买') {
     const buyArgs = actionFromCmd ? args : args.slice(1);
-    const item = buyArgs[1] || '';
-    const count = Math.max(1, parseInt(buyArgs[2]) || 1);
+    const item = buyArgs[0] || '';
+    const count = Math.max(1, parseInt(buyArgs[1]) || 1);
 
     const cityFoodSet = new Set(Object.values(SHOP_RUNTIME.cityFoods || {}).flat());
     const basicFoods = new Set(getBasicShopFoods());
