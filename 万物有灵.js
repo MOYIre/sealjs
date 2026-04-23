@@ -7190,6 +7190,11 @@ cmd.solve = async (ctx, msg, argv) => {
 
   //   WebUI管理
   if (action === 'webui') {
+    // 权限检查：仅限骰主使用 (privilegeLevel >= 100)
+    if (ctx.privilegeLevel < 100) {
+      return reply('【权限不足】\nWebUI 相关命令仅限骰主使用。');
+    }
+
     // .宠物 webui - 查看状态
     if (!p1) {
       const status = WebUIReporter.getStatus();
