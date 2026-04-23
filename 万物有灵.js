@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.5
+// @version     4.3.6
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.5');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.6');
   seal.ext.register(ext);
 }
 
@@ -1814,7 +1814,7 @@ const EVENTS = {
   // 天气事件
   weather: {
     '流星雨': [
-      { id: 'meteor_treasure', name: '流星坠落', chance: 0.1, desc: '一颗流星坠落在你附近！', reward: { items: ['传说之证'], money: [100, 500] } },
+      { id: 'meteor_treasure', name: '流星坠落', chance: 0.01, desc: '一颗流星坠落在你附近！', reward: { items: ['传说之证'], money: [100, 500] } },
     ],
     '暴风': [
       { id: 'wind_item', name: '风中宝物', chance: 0.08, desc: '风把一件物品吹到了你面前', reward: { items: ['加速卡', '全速卡'] } },
