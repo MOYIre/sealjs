@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.2
+// @version     4.3.3
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.2');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.3');
   seal.ext.register(ext);
 }
 
@@ -90,13 +90,22 @@ const WebUIReporter = {
     if (this._queue.length === 0) return;
     const batch = this._queue.splice(0, this._queue.length);
     try {
-      const res = await fetch(`${this.config.endpoint}/api/report`, {
+      // 验证 endpoint 格式
+      let url;
+      try {
+        url = new URL(`${this.config.endpoint}/api/report`);
+      } catch (urlErr) {
+        console.error('[WebUI Reporter] endpoint 格式无效:', this.config.endpoint);
+        this._queue.unshift(...batch);
+        return;
+      }
+      const res = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.2' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.3' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -312,21 +321,21 @@ const MAIN_SCHEMA_VERSION = 1;
 
 // 游戏小贴士
 const GAME_TIPS = [
-  '💡 每日首次喂食可获得双倍好感度',
-  '💡 宠物好感度达到100时可触发进化',
-  '💡 不同性格会影响宠物的属性成长',
-  '💡 天赋可以大幅提升宠物的战斗能力',
-  '💡 稀有宠物有更高的基础属性',
-  '💡 战斗时注意属性克制，可造成额外伤害',
-  '💡 宠物血量越低，捕捉成功率越高',
-  '💡 探险和打工可以获得技能书',
-  '💡 训练师装备可以提升宠物属性',
-  '💡 组队副本需要多人配合才能通关',
-  '💡 世界Boss每天12:00、18:00、22:00刷新',
-  '💡 神话宠物拥有专属技能',
-  '💡 育种可以继承父母的优秀基因',
-  '💡 宠物达到50级可挑战守护者',
-  '💡 使用.宠物 help 查看完整命令列表',
+  'ℑ 每日首次喂食可获得双倍好感度',
+  'ℑ 宠物好感度达到100时可触发进化',
+  'ℑ 不同性格会影响宠物的属性成长',
+  'ℑ 天赋可以大幅提升宠物的战斗能力',
+  'ℑ 稀有宠物有更高的基础属性',
+  'ℑ 战斗时注意属性克制，可造成额外伤害',
+  'ℑ 宠物血量越低，捕捉成功率越高',
+  'ℑ 探险和打工可以获得技能书',
+  'ℑ 训练师装备可以提升宠物属性',
+  'ℑ 组队副本需要多人配合才能通关',
+  'ℑ 世界Boss每天12:00、18:00、22:00刷新',
+  'ℑ 神话宠物拥有专属技能',
+  'ℑ 育种可以继承父母的优秀基因',
+  'ℑ 宠物达到50级可挑战守护者',
+  'ℑ 使用.宠物 help 查看完整命令列表',
 ];
 
 // 随机获取一条tips
@@ -7012,7 +7021,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.2',
+  version: '4.3.3',
   ext,
 
   DB: {
