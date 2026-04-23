@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.6
+// @version     4.3.7
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.7');
   seal.ext.register(ext);
 }
 
@@ -4263,28 +4263,33 @@ cmd.solve = async (ctx, msg, argv) => {
     // 新手福利：第一次捉宠送一只普通宠物
     if ((!data.pets || data.pets.length === 0) && !data.firstPetClaimed) {
       data.firstPetClaimed = true;
-      // 随机属性
-      const elements = ['火', '水', '草'];
-      const element = elements[Math.floor(Math.random() * elements.length)];
+      // 随机选择种族和元素
+      const speciesKeys = Object.keys(SPECIES);
+      const species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
+      const speciesData = SPECIES[species];
+      const element = speciesData.elements[Math.floor(Math.random() * speciesData.elements.length)];
       // 使用游戏内名字生成风格
       const name = PetFactory.generateName(element);
+      // 基础属性（普通品质）
+      const base = BASE_STATS['普通'];
+      const v = 0.9 + Math.random() * 0.2;
       const newPet = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         name: name,
-        species: name,
+        species: species,
         element: element,
         rarity: '普通',
         gender: Math.random() < 0.5 ? '♂' : '♀',
         nature: Object.keys(NATURES)[Math.floor(Math.random() * Object.keys(NATURES).length)],
         level: 1,
         exp: 0,
-        hp: 100,
-        maxHp: 100,
-        atk: 15,
-        def: 10,
-        spd: 100,
-        energy: 100,
-        maxEnergy: 100,
+        hp: Math.floor(base.hp * speciesData.baseMod.hp * v),
+        maxHp: Math.floor(base.hp * speciesData.baseMod.hp * v),
+        atk: Math.floor(base.atk * speciesData.baseMod.atk * v),
+        def: Math.floor(base.def * speciesData.baseMod.def * v),
+        spd: Math.floor(base.spd * v),
+        energy: Math.floor(base.energy * speciesData.baseMod.energy * v),
+        maxEnergy: Math.floor(base.energy * speciesData.baseMod.energy * v),
         sp: 0,
         affection: 50,
         skills: [],
