@@ -7208,10 +7208,13 @@ cmd.solve = async (ctx, msg, argv) => {
 
     // .宠物 webui 验证 <验证码> - 完成注册验证
     if (p1 === '验证' || p1 === 'verify') {
-      if (!p2) {
+      const verifyArgs = actionFromCmd ? args.slice(1) : args.slice(2);
+      const codeArg = verifyArgs[0] || '';
+
+      if (!codeArg) {
         return reply('用法: .宠物 webui 验证 <验证码>\n请在 WebUI 注册后获取验证码');
       }
-      const code = p2.toUpperCase();
+      const code = codeArg.toUpperCase();
       const qq = uid.split(':')[1] || uid;
       
       // 向 WebUI 发送验证请求
