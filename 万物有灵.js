@@ -4479,6 +4479,8 @@ cmd.solve = async (ctx, msg, argv) => {
     if (weatherEvent) eventResult = weatherEvent;
 
     try {
+      let captureSuccess = false;  // 在 try 块开头声明
+
       // 如果事件有特殊效果，处理它们
       if (eventResult) {
         if (eventResult.specialEffect === 'ambush') {
@@ -4560,7 +4562,6 @@ cmd.solve = async (ctx, msg, argv) => {
         }
       } else if (result.winner === fighter) {
         logs.push(`\n[胜利] ${fighter.name}战胜了 ${wildPet.name}！`);
-        let captureSuccess = false;
 
         // 计算经验和金币奖励
         let expGain = 20 + Math.floor(Math.random() * 20) + wildPet.level * 5;
