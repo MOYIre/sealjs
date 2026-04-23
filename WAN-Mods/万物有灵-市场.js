@@ -57,12 +57,22 @@ function cleanExpired() {
   saveMarket();
 }
 
+function normalizePetState(pet) {
+  if (!pet || typeof pet !== 'object') return pet;
+  pet.breedCount = pet.breedCount ?? 0;
+  pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
+  pet.retired = pet.retired ?? false;
+  pet.evolved = pet.evolved ?? false;
+  pet.parents = pet.parents ?? null;
+  return pet;
+}
+
 function returnPetToSeller(item) {
   const main = getMain();
   if (!main) return;
   const sellerData = main.DB.get(item.sellerId);
   if (sellerData.storage.length < main.Config.maxStorage) {
-    sellerData.storage.push(item.pet);
+    sellerData.storage.push(normalizePetState(item.pet));
     main.DB.save(item.sellerId, sellerData);
   }
 }
@@ -129,8 +139,9 @@ function init() {
     mainData.storage.splice(storageIdx, 1);
     main.DB.save(p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const petForSale = normalizePetState(pet);
     marketData.listings[listingId] = {
-      pet, price, sellerId: p.uid, sellerName: msg.sender.nickname || msg.sender.userId,
+      pet: petForSale, price, sellerId: p.uid, sellerName: msg.sender.nickname || msg.sender.userId,
       time: Date.now(), expire: Date.now() + CONFIG.listingExpire,
     };
     saveMarket();
@@ -152,8 +163,9 @@ function init() {
       return p.reply('宠物和仓库都已满');
     }
     mainData.money -= item.price;
-    if (mainData.pets.length < main.Config.maxPets) mainData.pets.push(item.pet);
-    else mainData.storage.push(item.pet);
+    const purchasedPet = normalizePetState(item.pet);
+    if (mainData.pets.length < main.Config.maxPets) mainData.pets.push(purchasedPet);
+    else mainData.storage.push(purchasedPet);
     main.DB.save(p.uid, mainData);
     const sellerData = main.DB.get(item.sellerId);
     const actualPrice = Math.floor(item.price * (1 - CONFIG.taxRate));
@@ -175,7 +187,7 @@ function init() {
     if (item.sellerId !== p.uid) return p.reply('只能撤销自己的挂售');
     const mainData = main.DB.get(p.uid);
     if (mainData.storage.length >= main.Config.maxStorage) return p.reply('仓库已满，无法返还宠物');
-    mainData.storage.push(item.pet);
+    mainData.storage.push(normalizePetState(item.pet));
     main.DB.save(p.uid, mainData);
     delete marketData.listings[listingId];
     saveMarket();

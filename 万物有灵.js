@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.9
+// @version     4.3.12
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.12');
   seal.ext.register(ext);
 }
 
@@ -1439,6 +1439,7 @@ const BreedManager = {
     const p1 = data.pets[pet1Idx - 1];
     const p2 = data.pets[pet2Idx - 1];
     if (!p1 || !p2) return { success: false, msg: '宠物不存在' };
+    if (p1.id === p2.id) return { success: false, msg: '不能和自己育种' };
     if (p1.energy < 30 || p2.energy < 30) return { success: false, msg: '精力不足(需要30)' };
 
     // 检查宠物上限
@@ -1447,43 +1448,88 @@ const BreedManager = {
       return { success: false, msg: `宠物已满(${CONFIG.maxPets + CONFIG.maxStorage}只上限)` };
     }
 
-    p1.energy -= 30; p2.energy -= 30;
+    // 进化后无法育种
+    if (p1.evolved || p2.evolved) return { success: false, msg: '进化后的宠物无法育种' };
 
-    const child = PetFactory.create(0, false);
-    child.maxHp = Math.floor((p1.maxHp + p2.maxHp) / 2 * (0.9 + Math.random() * 0.2));
-    child.atk = Math.floor((p1.atk + p2.atk) / 2 * (0.9 + Math.random() * 0.2));
-    child.def = Math.floor((p1.def + p2.def) / 2 * (0.9 + Math.random() * 0.2));
-    child.spd = Math.floor((p1.spd + p2.spd) / 2 * (0.9 + Math.random() * 0.2));
-    child.hp = child.maxHp;
+    // 检查育种次数
+    const breedCount1 = p1.breedCount || 0;
+    const breedCount2 = p2.breedCount || 0;
+    const needCard1 = breedCount1 >= 1;
+    const needCard2 = breedCount2 >= 1;
 
-    const allSkills = [...(p1.skills || []), ...(p2.skills || [])];
-    child.skills = allSkills.filter(() => Math.random() < 0.3).slice(0, 4);
-    if (child.skills.length === 0) child.skills = ['冲撞'];
-    child.nature = Math.random() < 0.5 ? p1.nature : p2.nature;
-    if ((p1.talent || p2.talent) && Math.random() < 0.35) child.talent = Math.random() < 0.5 ? p1.talent : p2.talent;
+    if (needCard1 && !data.items['计划生育卡']) return { success: false, msg: `${p1.name}已育种${breedCount1}次，需要计划生育卡` };
+    if (needCard2 && !data.items['计划生育卡']) return { success: false, msg: `${p2.name}已育种${breedCount2}次，需要计划生育卡` };
 
-    const mutation = Math.random() < 0.05;
-    if (mutation) {
-      const stats = ['atk', 'def', 'spd', 'maxHp'];
-      const stat = stats[Math.floor(Math.random() * stats.length)];
-      child[stat] = Math.floor(child[stat] * 1.3);
-      if (stat === 'maxHp') child.hp = child.maxHp;
+    const hasTwinPotion = data.items['多胞胎药水'] > 0;
+    const isTwin = hasTwinPotion || Math.random() < 0.08;
+    const babyCount = isTwin ? 2 : 1;
+
+    if (data.pets.length + babyCount > CONFIG.maxPets && (data.storage || []).length + babyCount > CONFIG.maxStorage) {
+      return { success: false, msg: `宠物和仓库空间不足，无法容纳${babyCount}只幼崽` };
     }
 
-    child.parents = [
-      { id: p1.id, name: p1.name, species: p1.species },
-      { id: p2.id, name: p2.name, species: p2.species },
-    ];
-    child.generation = Math.max(p1.generation || 1, p2.generation || 1) + 1;
-
-    // 优先放入队伍，队伍满了放仓库
-    if (data.pets.length < CONFIG.maxPets) {
-      data.pets.push(child);
-    } else {
-      data.storage = data.storage || [];
-      data.storage.push(child);
+    // 消耗道具与精力
+    if (needCard1 || needCard2) {
+      data.items['计划生育卡']--;
+      if (data.items['计划生育卡'] <= 0) delete data.items['计划生育卡'];
     }
-    return { success: true, msg: `繁殖成功！获得${child.name}${mutation ? '(变异!)' : ''}`, child };
+    if (hasTwinPotion) {
+      data.items['多胞胎药水']--;
+      if (data.items['多胞胎药水'] <= 0) delete data.items['多胞胎药水'];
+    }
+    p1.energy -= 30;
+    p2.energy -= 30;
+    p1.breedCount = breedCount1 + 1;
+    p2.breedCount = breedCount2 + 1;
+    p1.canBreed = p1.breedCount < 1;
+    p2.canBreed = p2.breedCount < 1;
+
+    const babies = [];
+    for (let i = 0; i < babyCount; i++) {
+      const child = PetFactory.create();
+      if (Math.random() < 0.5) child.species = p1.species;
+      else child.species = p2.species;
+      if (Math.random() < 0.1) {
+        const speciesKeys = Object.keys(SPECIES);
+        child.species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
+      }
+
+      child.maxHp = Math.floor((p1.maxHp + p2.maxHp) / 2 * (0.9 + Math.random() * 0.2));
+      child.atk = Math.floor((p1.atk + p2.atk) / 2 * (0.9 + Math.random() * 0.2));
+      child.def = Math.floor((p1.def + p2.def) / 2 * (0.9 + Math.random() * 0.2));
+      child.spd = Math.floor((p1.spd + p2.spd) / 2 * (0.9 + Math.random() * 0.2));
+      child.hp = child.maxHp;
+
+      const allSkills = [...(p1.skills || []), ...(p2.skills || [])];
+      child.skills = allSkills.filter(() => Math.random() < 0.3).slice(0, 4);
+      if (child.skills.length === 0) child.skills = ['冲撞'];
+      child.nature = Math.random() < 0.5 ? p1.nature : p2.nature;
+      if ((p1.talent || p2.talent) && Math.random() < 0.35) child.talent = Math.random() < 0.5 ? p1.talent : p2.talent;
+
+      const mutation = Math.random() < 0.05;
+      if (mutation) {
+        const stats = ['atk', 'def', 'spd', 'maxHp'];
+        const stat = stats[Math.floor(Math.random() * stats.length)];
+        child[stat] = Math.floor(child[stat] * 1.3);
+        if (stat === 'maxHp') child.hp = child.maxHp;
+      }
+
+      child.parents = [
+        { id: p1.id, name: p1.name, species: p1.species },
+        { id: p2.id, name: p2.name, species: p2.species },
+      ];
+      child.generation = Math.max(p1.generation || 1, p2.generation || 1) + 1;
+
+      if (data.pets.length < CONFIG.maxPets) {
+        data.pets.push(child);
+      } else {
+        data.storage = data.storage || [];
+        data.storage.push(child);
+      }
+      babies.push(child);
+    }
+
+    return { success: true, msg: `繁殖成功！获得${babies.map(b => b.name).join('、')}`, child: babies[0], babies };
   },
 };
 
@@ -2467,8 +2513,8 @@ const INITIAL_SKILLS = {
 const ITEMS = {
   // 捉宠相关
   '捉宠符咒': { cost: 50, desc: '捉宠必备道具，无符咒只能获得经验', type: 'catch' },
-  '幸运符': { cost: 10000, desc: '下次捉宠稀有度提升一档', type: 'luck' },
-  '传说之证': { cost: 100000, desc: '下次捉宠必定为传说品质', type: 'luck' },
+  '幸运符': { cost: 2000, desc: '下次捉宠稀有度提升一档', type: 'luck' },
+  '传说之证': { cost: 10000, desc: '下次捉宠必定为传说品质', type: 'luck' },
 
   // 育种相关
   '计划生育卡': { cost: 1000, desc: '允许宠物额外育种一次（最多3胎）', type: 'breed' },
@@ -2594,6 +2640,8 @@ const DB = {
         if (!pet.id) pet.id = DB.genId();
         if (!pet.gender) pet.gender = Math.random() < 0.5 ? '♂' : '♀';
         if (!pet.parents) pet.parents = null;
+        pet.breedCount = pet.breedCount ?? 0;
+        pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
         // 更新旧宠物的初始技能
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
@@ -2603,6 +2651,8 @@ const DB = {
         if (!pet.id) pet.id = DB.genId();
         if (!pet.gender) pet.gender = Math.random() < 0.5 ? '♂' : '♀';
         if (!pet.parents) pet.parents = null;
+        pet.breedCount = pet.breedCount ?? 0;
+        pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
         // 更新旧宠物的初始技能
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
@@ -4175,6 +4225,12 @@ cmd.solve = async (ctx, msg, argv) => {
 
   const reply = (text) => seal.replyToSender(ctx, msg, text);
   const save = () => { try { DB.save(uid, data); } catch (e) { console.log('[万物有灵] 保存失败:', e); } };
+  const applyBattleInjuryCap = (pet, battleHp) => {
+    if (!pet) return;
+    const maxLoss = Math.max(1, Math.floor((pet.maxHp || 0) * 0.1));
+    const minHpAfterBattle = Math.max(0, (pet.maxHp || 0) - maxLoss);
+    pet.hp = Math.max(minHpAfterBattle, Math.max(0, battleHp));
+  };
 
   // 获取宠物：1-3号队伍，4-18号仓库
   const getPet = (idx) => {
@@ -4634,7 +4690,7 @@ cmd.solve = async (ctx, msg, argv) => {
         logs.push(`\n[平局] ${fighter.name}和 ${wildPet.name} 同归于尽，它逃跑了...`);
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
+          applyBattleInjuryCap(pet, fighter.hp);
           pet.energy = Math.max(0, pet.energy - 20);
           save();
         }
@@ -4850,7 +4906,7 @@ cmd.solve = async (ctx, msg, argv) => {
         // 宠物出战消耗：同步战斗后的血量
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = Math.max(0, fighter.hp);
+          applyBattleInjuryCap(pet, fighter.hp);
           pet.energy = Math.max(0, pet.energy - 20);
         }
 
@@ -4869,7 +4925,7 @@ cmd.solve = async (ctx, msg, argv) => {
         logs.push(`\n[失败] ${fighter.name}被 ${wildPet.name} 打败了，它逃跑了...`);
         if (!isPlayerFight) {
           const pet = getPet(p1);
-          pet.hp = Math.max(0, fighter.hp);  // 同步战斗后的血量
+          applyBattleInjuryCap(pet, fighter.hp);
           pet.energy = Math.max(0, pet.energy - 20);
         }
         // 双人战斗：玩家精力消耗
@@ -5444,6 +5500,9 @@ cmd.solve = async (ctx, msg, argv) => {
     const breedCount1 = pet1.breedCount || 0;
     const breedCount2 = pet2.breedCount || 0;
 
+    if (pet1.canBreed === false && !data.items['计划生育卡']) return reply(`${pet1.name}已失去生育能力，需要计划生育卡`);
+    if (pet2.canBreed === false && !data.items['计划生育卡']) return reply(`${pet2.name}已失去生育能力，需要计划生育卡`);
+
     // 进化后无法育种
     if (pet1.evolved || pet2.evolved) return reply('进化后的宠物无法育种');
 
@@ -5476,6 +5535,8 @@ cmd.solve = async (ctx, msg, argv) => {
     // 更新育种次数
     pet1.breedCount = breedCount1 + 1;
     pet2.breedCount = breedCount2 + 1;
+    pet1.canBreed = pet1.breedCount < 1;
+    pet2.canBreed = pet2.breedCount < 1;
 
     const babies = [];
     for (let i = 0; i < babyCount; i++) {

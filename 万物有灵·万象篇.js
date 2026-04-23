@@ -161,6 +161,16 @@ function getPetCapacity(main, data) {
   };
 }
 
+function normalizePetState(pet) {
+  if (!pet || typeof pet !== 'object') return pet;
+  pet.breedCount = pet.breedCount ?? 0;
+  pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
+  pet.retired = pet.retired ?? false;
+  pet.evolved = pet.evolved ?? false;
+  pet.parents = pet.parents ?? null;
+  return pet;
+}
+
 function getShelterMarket(main) {
   if (main?.getShelterMarket) return main.getShelterMarket();
   return main?._shelterMarket || {};
@@ -524,7 +534,7 @@ function cleanExpired() {
           const capacity = getPetCapacity(main, sellerData);
           sellerData.storage = sellerData.storage || [];
           if (sellerData && sellerData.storage.length < capacity.maxStorage) {
-            sellerData.storage.push(item.pet);
+            sellerData.storage.push(normalizePetState(item.pet));
             saveUserData(main, item.sellerId, sellerData);
           }
         } catch (e) {
@@ -807,7 +817,8 @@ function init() {
     }
     saveUserData(main, p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    marketData.listings[listingId] = { pet: JSON.parse(JSON.stringify(pet)), price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
+    const petForSale = normalizePetState(JSON.parse(JSON.stringify(pet)));
+    marketData.listings[listingId] = { pet: petForSale, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
     saveMarket();
     p.reply(`已挂售 ${pet.name} ${price}金 #${listingId.slice(-4)}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -829,8 +840,9 @@ function init() {
     }
 
     mainData.money -= item.price;
-    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(item.pet);
-    else mainData.storage.push(item.pet);
+    const adoptedPet = normalizePetState(item.pet);
+    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(adoptedPet);
+    else mainData.storage.push(adoptedPet);
     saveUserData(main, p.uid, mainData);
     const sellerData = getUserData(main, item.sellerId);
     if (sellerData) {
@@ -898,12 +910,13 @@ function init() {
     if (mainData.money < item.price) return p.reply(`金币不足，需要 ${item.price} 金币`);
 
     mainData.money -= item.price;
+    const rescuedPet = normalizePetState(item.pet);
     const capacity = getPetCapacity(main, mainData);
-    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(item.pet);
+    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(rescuedPet);
     else {
       mainData.storage = mainData.storage || [];
       if (mainData.storage.length >= capacity.maxStorage) return p.reply('仓库已满，无法领养');
-      mainData.storage.push(item.pet);
+      mainData.storage.push(rescuedPet);
     }
     saveUserData(main, p.uid, mainData);
 

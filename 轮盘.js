@@ -19,7 +19,8 @@ let gameSessions = {};
 const ITEM_NAMES = {
   '药': '✚药',
   '弃': '✘弃', 
-  '毁': '✘毁'
+  '毁': '✘毁',
+  '观': '◎观'
 };
 
 function random(min, max) {
@@ -52,11 +53,12 @@ function itemsStr(items) {
   if (items['药'] > 0) parts.push(`✚药×${items['药']}`);
   if (items['弃'] > 0) parts.push(`✘弃×${items['弃']}`);
   if (items['毁'] > 0) parts.push(`✘毁×${items['毁']}`);
+  if (items['观'] > 0) parts.push(`◎观×${items['观']}`);
   return parts.length > 0 ? parts.join(' ') : '无';
 }
 
 function totalItems(items) {
-  return items['药'] + items['弃'] + items['毁'];
+  return items['药'] + items['弃'] + items['毁'] + items['观'];
 }
 
 class GameSession {
@@ -71,19 +73,19 @@ class GameSession {
 
   initDeck() {
     const total = random(4, 8);
-    const swordNum = random(1, Math.floor(total * 0.4));
-    const itemNum = random(1, Math.floor(total * 0.3));
-    const heartNum = total - swordNum - itemNum;
-    
+    // 剑和心数量接近，道具固定1张，剑至少1张
+    const itemNum = 1;
+    const remain = total - itemNum;
+    const swordNum = Math.max(1, random(Math.floor(remain * 0.3), Math.floor(remain * 0.7)));
+    const heartNum = remain - swordNum;
+
     let deck = [];
     for (let i = 0; i < swordNum; i++) deck.push('剑');
     for (let i = 0; i < heartNum; i++) deck.push('心');
-    
-    const itemTypes = ['药', '弃', '毁'];
-    for (let i = 0; i < itemNum; i++) {
-      deck.push(itemTypes[random(0, 2)]);
-    }
-    
+
+    const itemTypes = ['药', '弃', '毁', '观'];
+    deck.push(itemTypes[random(0, 3)]);
+
     this.deck = shuffle(deck);
     return { swordNum, heartNum, itemNum };
   }
@@ -195,9 +197,9 @@ cmdRoulette.help = `【轮盘对决】2人对战游戏
 
 游戏中:
 .出击/.自用       使用顶牌
-.用药/.用弃/.用毁 使用道具
+.用药/.用弃/.用毁/.用观 使用道具
 
-牌堆: ⚔剑 ♡心 ✚药(回血) ✘弃(移除顶牌) ✘毁(销毁对方道具)`;
+牌堆: ⚔剑 ♡心 ✚药(回血) ✘弃(移除顶牌) ✘毁(销毁对方道具) ◎观(查看顶牌)`;
 
 cmdRoulette.solve = (ctx, msg, cmdArgs) => {
   const groupId = getGroupId(ctx);
@@ -223,7 +225,7 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       }
       session.players = [{ 
         id: playerId, name: playerName, hp: 3, isCurrent: false,
-        items: { '药': 0, '弃': 0, '毁': 0 }
+        items: { '药': 0, '弃': 0, '毁': 0, '观': 0 }
       }];
       session.hostId = playerId;
       session.phase = 'waiting';
@@ -243,7 +245,7 @@ cmdRoulette.solve = (ctx, msg, cmdArgs) => {
       }
       session.players.push({ 
         id: playerId, name: playerName, hp: 3, isCurrent: false,
-        items: { '药': 0, '弃': 0, '毁': 0 }
+        items: { '药': 0, '弃': 0, '毁': 0, '观': 0 }
       });
       session.initDeck();
       session.phase = 'playing';
@@ -256,7 +258,7 @@ ${session.players[0].name} VS ${session.players[1].name}
 牌堆: ⚔${cnt.sword} ♡${cnt.heart} ✦${cnt.item}
 先手: ${session.players[firstIdx].name}
 ───────────────────────────
-.出击/.自用 使用顶牌 | .用药/.用弃/.用偷 使用道具`);
+.出击/.自用 使用顶牌 | .用药/.用弃/.用毁/.用观 使用道具`);
       return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -298,12 +300,31 @@ ${session.players[0].name} VS ${session.players[1].name}
 
 // 添加道具（带上限检查）
 function addItem(player, itemType) {
-  player.items[itemType]++;
   const total = totalItems(player.items);
-  if (total > 4) {
-    // 超过上限，返回需要弃置的提示
-    return { overLimit: true, total };
+  if (total >= 4) {
+    const pool = [];
+    if (player.items['药'] > 0) {
+      for (let i = 0; i < player.items['药']; i++) pool.push('药');
+    }
+    if (player.items['弃'] > 0) {
+      for (let i = 0; i < player.items['弃']; i++) pool.push('弃');
+    }
+    if (player.items['毁'] > 0) {
+      for (let i = 0; i < player.items['毁']; i++) pool.push('毁');
+    }
+    if (player.items['观'] > 0) {
+      for (let i = 0; i < player.items['观']; i++) pool.push('观');
+    }
+    pool.push(itemType);
+
+    const discarded = pool[random(0, pool.length - 1)];
+    if (discarded !== itemType) {
+      player.items[discarded]--;
+      player.items[itemType]++;
+    }
+    return { overLimit: true, discarded };
   }
+  player.items[itemType]++;
   return { overLimit: false };
 }
 
@@ -318,9 +339,22 @@ function discardItem(player, itemType) {
 
 // 随机弃置一张道具
 function randomDiscardItem(player) {
-  const types = ['药', '弃', '毁'].filter(t => player.items[t] > 0);
-  if (types.length === 0) return null;
-  const type = types[random(0, types.length - 1)];
+  const pool = [];
+  if (player.items['药'] > 0) {
+    for (let i = 0; i < player.items['药']; i++) pool.push('药');
+  }
+  if (player.items['弃'] > 0) {
+    for (let i = 0; i < player.items['弃']; i++) pool.push('弃');
+  }
+  if (player.items['毁'] > 0) {
+    for (let i = 0; i < player.items['毁']; i++) pool.push('毁');
+  }
+  if (player.items['观'] > 0) {
+    for (let i = 0; i < player.items['观']; i++) pool.push('观');
+  }
+  if (pool.length === 0) return null;
+
+  const type = pool[random(0, pool.length - 1)];
   player.items[type]--;
   return type;
 }
@@ -359,12 +393,15 @@ cmdAttack.solve = (ctx, msg, cmdArgs) => {
   } else if (card === '心') {
     result = `✦ 揭示顶牌 ✧ ♡心\n${opponent.name} 幸运躲过，无效果`;
   } else {
-    // 道具牌
-    const addResult = addItem(current, card);
-    result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${current.name} 获得道具 ${ITEM_NAMES[card]}`;
-    if (addResult.overLimit) {
-      const discarded = randomDiscardItem(current);
-      result += `\n[道具上限4张，随机弃置 ${ITEM_NAMES[discarded]}]`;
+    // 道具牌归对方
+    const addResult = addItem(opponent, card);
+    if (addResult.overLimit && addResult.discarded === card) {
+      result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${opponent.name} 想获得道具 ${ITEM_NAMES[card]}，但道具已满，本张被弃置`;
+    } else {
+      result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${opponent.name} 获得道具 ${ITEM_NAMES[card]}`;
+      if (addResult.overLimit) {
+        result += `\n[道具已满，弃置 ${ITEM_NAMES[addResult.discarded]}]`;
+      }
     }
   }
 
@@ -418,10 +455,13 @@ cmdSelfUse.solve = (ctx, msg, cmdArgs) => {
     skipTurn = true;
   } else {
     const addResult = addItem(current, card);
-    result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${current.name} 获得道具 ${ITEM_NAMES[card]}`;
-    if (addResult.overLimit) {
-      const discarded = randomDiscardItem(current);
-      result += `\n[道具上限4张，随机弃置 ${ITEM_NAMES[discarded]}]`;
+    if (addResult.overLimit && addResult.discarded === card) {
+      result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${current.name} 想获得道具 ${ITEM_NAMES[card]}，但道具已满，本张被弃置`;
+    } else {
+      result = `✦ 揭示顶牌 ✧ ${ITEM_NAMES[card]}\n${current.name} 获得道具 ${ITEM_NAMES[card]}`;
+      if (addResult.overLimit) {
+        result += `\n[道具已满，弃置 ${ITEM_NAMES[addResult.discarded]}]`;
+      }
     }
   }
 
@@ -554,6 +594,43 @@ cmdUseDestroy.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 
+// 用观命令
+const cmdUsePeek = seal.ext.newCmdItemInfo();
+cmdUsePeek.name = '用观';
+cmdUsePeek.help = '使用观牌，查看当前顶牌';
+
+cmdUsePeek.solve = (ctx, msg, cmdArgs) => {
+  const groupId = getGroupId(ctx);
+  const playerId = getPlayerId(ctx);
+  const session = getSession(groupId);
+
+  if (session.phase !== 'playing') {
+    seal.replyToSender(ctx, msg, '[!] 当前没有进行中的游戏');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (!session.isPlayerInGame(playerId)) {
+    seal.replyToSender(ctx, msg, '[!] 你不是游戏参与者');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const current = session.getCurrentPlayer();
+  if (current.id !== playerId) {
+    seal.replyToSender(ctx, msg, `[!] 现在是 ${current.name} 的回合`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (current.items['观'] <= 0) {
+    seal.replyToSender(ctx, msg, '[!] 你没有观牌');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  current.items['观']--;
+  const card = session.topCard;
+  const cardName = card === '剑' ? '⚔剑' : (card === '心' ? '♡心' : ITEM_NAMES[card]);
+
+  seal.replyPerson(ctx, msg, `✦ 使用道具 ✧ ◎观\n顶牌是: ${cardName}`);
+  seal.replyToSender(ctx, msg, `✦ 使用道具 ✧ ◎观\n已私发本次观牌结果\n\n${showStatus(session)}`);
+  return seal.ext.newCmdExecuteResult(true);
+};
+
 // 注册命令
 ext.cmdMap['轮盘'] = cmdRoulette;
 ext.cmdMap['出击'] = cmdAttack;
@@ -561,3 +638,4 @@ ext.cmdMap['自用'] = cmdSelfUse;
 ext.cmdMap['用药'] = cmdUseMed;
 ext.cmdMap['用弃'] = cmdUseDiscard;
 ext.cmdMap['用毁'] = cmdUseDestroy;
+ext.cmdMap['用观'] = cmdUsePeek;
