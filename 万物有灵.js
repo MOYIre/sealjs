@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.8
+// @version     4.3.9
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.8');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.9');
   seal.ext.register(ext);
 }
 
@@ -4404,18 +4404,23 @@ cmd.solve = async (ctx, msg, argv) => {
       const minLevel = Math.max(1, playerMaxLevel - 2);
       const maxLevel = Math.max(5, playerMaxLevel + 2);
       wildPet.level = Math.floor(Math.random() * (maxLevel - minLevel + 1)) + minLevel;
-      // 根据等级提升属性 (v4.2.5: 平滑野怪成长曲线)
+      // 根据等级提升属性 (v4.3.8: 分段成长曲线)
       for (let i = 1; i < wildPet.level; i++) {
         if (i < 5) {
           // 1-5级：正常成长（新手友好）
           wildPet.maxHp += 8;
           wildPet.atk += 3;
           wildPet.def += 3;
-        } else {
-          // 6级以上：中幅成长，避免断层
+        } else if (i < 30) {
+          // 6-30级：中等成长
           wildPet.maxHp += 14;
           wildPet.atk += 6;
           wildPet.def += 4;
+        } else {
+          // 31级以上：高难度成长
+          wildPet.maxHp += 22;
+          wildPet.atk += 10;
+          wildPet.def += 7;
         }
         wildPet.hp = wildPet.maxHp;
       }
