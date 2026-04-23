@@ -42,7 +42,8 @@ const WebUIReporter = {
     try {
       const saved = ext.storageGet('webui_installed_mods');
       this._installedMods = saved ? JSON.parse(saved) : [];
-    } catch {
+    } catch (e) {
+      console.warn('[WebUI Reporter] 加载已安装 Mod 失败:', e.message);
       this._installedMods = [];
     }
   },
@@ -72,7 +73,7 @@ const WebUIReporter = {
         tags: log.tags || [],
       }
     });
-    if (this._queue.length >= 50) this._flush();
+    if (this._queue.length >= 50) void this._flush();  // 异步刷新，不阻塞
   },
 
   reportPlayerData(uid, summary) {
@@ -109,9 +110,22 @@ const WebUIReporter = {
 
   _startPeriodicReport() {
     if (this._timer) clearInterval(this._timer);
-    this._timer = setInterval(() => {
-      if (this._queue.length > 0) this._flush();
+    this._timer = setInterval(async () => {
+      if (this._queue.length > 0) {
+        try {
+          await this._flush();
+        } catch (e) {
+          console.error('[WebUI Reporter] 定时上报失败:', e);
+        }
+      }
     }, this.config.reportInterval);
+  },
+
+  stop() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
   },
 
   async fetchMods() {
@@ -142,11 +156,23 @@ const WebUIReporter = {
       // 安全检查：禁止危险操作
       const dangerousPatterns = [
         /eval\s*\(/,
-        /Function\s*\(/,
+        /Function\s*[\.\(]/,
         /require\s*\(/,
         /import\s+/,
-        /process\s*\./,
+        /process\s*[\.\/]/,
         /__proto__/,
+        /constructor\s*\[/,
+        /window\s*[\.\[]/,
+        /global\s*[\.\[]/,
+        /globalThis\s*[\.\[]/,
+        /\.call\s*\(/,
+        /\.apply\s*\(/,
+        /child_process/,
+        /\bfs\s*\./,
+        /\bpath\s*\./,
+        /\bos\s*\./,
+        /\bcrypto\s*\(/,
+        /Buffer\s*\(/,
       ];
       for (const pattern of dangerousPatterns) {
         if (pattern.test(mod.content)) {
@@ -975,7 +1001,10 @@ const GuildManager = {
     try {
       const saved = ext.storageGet('guilds');
       this._guilds = saved ? JSON.parse(saved) : {};
-    } catch { this._guilds = {}; }
+    } catch (e) {
+      console.warn('[公会] 数据加载失败:', e.message);
+      this._guilds = {};
+    }
     return this._guilds;
   },
 
@@ -1038,7 +1067,10 @@ const TeamManager = {
     try {
       const saved = ext.storageGet('teams');
       this._teams = saved ? JSON.parse(saved) : {};
-    } catch { this._teams = {}; }
+    } catch (e) {
+      console.warn('[组队] 数据加载失败:', e.message);
+      this._teams = {};
+    }
     return this._teams;
   },
 
@@ -1205,7 +1237,10 @@ const WorldBossManager = {
     try {
       const saved = ext.storageGet('worldBoss');
       this._boss = saved ? JSON.parse(saved) : null;
-    } catch { this._boss = null; }
+    } catch (e) {
+      console.warn('[世界Boss] 数据加载失败:', e.message);
+      this._boss = null;
+    }
     return this._boss;
   },
 
@@ -1508,7 +1543,10 @@ const LegendaryManager = {
     try {
       const saved = ext.storageGet('legendary_state');
       this._state = saved ? JSON.parse(saved) : {};
-    } catch { this._state = {}; }
+    } catch (e) {
+      console.warn('[孤品宠物] 数据加载失败:', e.message);
+      this._state = {};
+    }
     return this._state;
   },
 
