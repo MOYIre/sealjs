@@ -7276,8 +7276,10 @@ cmd.solve = async (ctx, msg, argv) => {
       if (!WebUIReporter.config.enabled) {
         return reply('WebUI未启用');
       }
+      const queueSize = WebUIReporter._queue.length;
+      console.log(`[WebUI Reporter] 准备同步数据，当前队列长度: ${queueSize}`);
       await WebUIReporter._flush();
-      return reply('【数据已同步】');
+      return reply(`【数据已同步】\n处理了 ${queueSize} 条数据`);
     }
 
     // .宠物 webui 补丁 - 拉取并应用补丁
