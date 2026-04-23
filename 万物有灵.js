@@ -6830,12 +6830,57 @@ cmd.solve = async (ctx, msg, argv) => {
     return reply('用法: .宠物 世界Boss [攻击/排行]');
   }
 
-  //   出售系统  
+  //   出售系统
   if (action === '出售' || action === 'sell') {
-    if (!p1) return reply('用法: .宠物 出售 [宠物编号]\n      编号: 1-3队伍, 4-18仓库\n      挂售到市场: .宠物 挂售 [编号] [价格]');
+    if (!p1) return reply('用法: .宠物 出售 [物品名/宠物编号] [数量]\n      编号: 1-3队伍, 4-18仓库\n      挂售到市场: .宠物 挂售 [物品名/编号] [价格]\n      说明: 装备/技能书/道具也可以出售给系统，系统默认以 10 金币回收装备/技能书。');
 
+    // 首先检查是否是出售装备/技能书/道具
+    const playerItems = data.playerItems || {};
+    const items = data.items || {};
+    
+    // 检查是否是玩家装备或技能书
+    let isEquipOrBook = false;
+    for (const [type, typeItems] of Object.entries(PLAYER_EQUIPMENT)) {
+      if (typeItems[p1]) isEquipOrBook = true;
+    }
+    if (PLAYER_SKILL_BOOKS[p1]) isEquipOrBook = true;
+
+    if (isEquipOrBook) {
+      if (!playerItems[p1] || playerItems[p1] <= 0) return reply(`你没有 ${p1}`);
+      const count = Math.max(1, parseInt(p2) || 1);
+      if (playerItems[p1] < count) return reply(`你的 ${p1} 数量不足，当前拥有: ${playerItems[p1]}`);
+      
+      const price = 10; // 系统回收固定价格 10 金币
+      const total = price * count;
+      
+      playerItems[p1] -= count;
+      if (playerItems[p1] <= 0) delete playerItems[p1];
+      data.money += total;
+      save();
+      
+      return reply(`【系统回收】\n出售了 ${p1} x${count}\n获得: ${total}金币\n当前金币: ${data.money}`);
+    }
+    
+    // 检查是否是普通道具
+    if (ITEMS[p1]) {
+      if (!items[p1] || items[p1] <= 0) return reply(`你没有 ${p1}`);
+      const count = Math.max(1, parseInt(p2) || 1);
+      if (items[p1] < count) return reply(`你的 ${p1} 数量不足，当前拥有: ${items[p1]}`);
+      
+      const price = Math.max(1, Math.floor((ITEMS[p1].cost || 10) * 0.5)); // 系统半价回收道具
+      const total = price * count;
+      
+      items[p1] -= count;
+      if (items[p1] <= 0) delete items[p1];
+      data.money += total;
+      save();
+      
+      return reply(`【系统回收】\n出售了 ${p1} x${count}\n获得: ${total}金币\n当前金币: ${data.money}`);
+    }
+
+    // 原有的宠物出售逻辑
     const pet = getPet(parseInt(p1));
-    if (!pet) return reply('宠物不存在');
+    if (!pet) return reply('宠物或物品不存在');
 
     const basePrice = {
       '普通': 50,
@@ -6862,7 +6907,6 @@ cmd.solve = async (ctx, msg, argv) => {
 
     return reply(`【生灵保护机构收购】\n${pet.name} → ${buyPrice}金币\n将以${sellPrice}金币上架，编号: #${listingId.slice(-4)}\n1天后放生\n.宠物 机构 查看`);
   }
-
   //   繁殖优化  
   if (action === '繁殖') {
     if (!p1 || !p2) return reply('用法: .宠物 繁殖 [宠物1编号] [宠物2编号]');

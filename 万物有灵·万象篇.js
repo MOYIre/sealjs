@@ -787,45 +787,83 @@ function init() {
     loadMarket(); cleanExpired();
     const listings = Object.entries(marketData.listings);
     if (!listings.length) {
-      p.reply('【市场】\n暂无宠物\n.宠物 挂售 <仓库编号> <价格>\n.宠物 购买宠物 <编号>');
+      p.reply('【市场】\n暂无物品\n.宠物 挂售 <仓库编号/物品名> <价格>\n.宠物 购买 <编号>');
       return seal.ext.newCmdExecuteResult(true);
     }
-    const lines = ['【市场】', `在售: ${listings.length}只`];
-    listings.slice(0, 10).forEach(([id, item]) => lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金 卖家:${item.sellerName}`));
-    lines.push('.宠物 购买宠物 <编号>');
+    const lines = ['【市场】', `在售: ${listings.length}件`];
+    listings.slice(0, 10).forEach(([id, item]) => {
+      if (item.type === 'item') {
+        lines.push(`#${id.slice(-4)} ${item.itemName} x${item.count} ${item.price}金 卖家:${item.sellerName}`);
+      } else {
+        lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金 卖家:${item.sellerName}`);
+      }
+    });
+    lines.push('.宠物 购买 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看市场', 'wanwu-all', '万象篇');
 
   main.registerCommand('挂售', (ctx, msg, p) => {
-    const petNum = parseInt(p.p1), price = parseInt(p.p2);
-    if (isNaN(petNum) || isNaN(price)) return p.reply('用法: .宠物 挂售 <宠物编号> <价格>\n编号: 1-3队伍, 4-18仓库');
+    const target = p.p1, price = parseInt(p.p2), count = parseInt(p.p3) || 1;
+    if (!target || isNaN(price)) return p.reply('用法: .宠物 挂售 <宠物编号/物品名> <价格> [数量]\n编号: 1-3队伍, 4-18仓库');
+    
     const mainData = getUserData(main, p.uid);
-    let pet;
-    if (petNum <= 3) {
-      // 队伍宠物
-      if (petNum > mainData.pets.length) return p.reply('队伍无此宠物');
-      pet = mainData.pets[petNum - 1];
-      mainData.pets.splice(petNum - 1, 1);
-    } else {
-      // 仓库宠物
-      const storageIdx = petNum - 4;
-      const storage = mainData.storage || [];
-      if (storageIdx < 0 || storageIdx >= storage.length) return p.reply('仓库无此宠物');
-      pet = storage[storageIdx];
-      storage.splice(storageIdx, 1);
-    }
-    saveUserData(main, p.uid, mainData);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const petForSale = normalizePetState(JSON.parse(JSON.stringify(pet)));
-    marketData.listings[listingId] = { pet: petForSale, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
-    saveMarket();
-    p.reply(`已挂售 ${pet.name} ${price}金 #${listingId.slice(-4)}`);
-    return seal.ext.newCmdExecuteResult(true);
+    
+    // 尝试解析为宠物编号
+    const petNum = parseInt(target);
+    if (!isNaN(petNum)) {
+      let pet;
+      if (petNum <= 3) {
+        if (petNum > mainData.pets.length) return p.reply('队伍无此宠物');
+        pet = mainData.pets[petNum - 1];
+        mainData.pets.splice(petNum - 1, 1);
+      } else {
+        const storageIdx = petNum - 4;
+        const storage = mainData.storage || [];
+        if (storageIdx < 0 || storageIdx >= storage.length) return p.reply('仓库无此宠物');
+        pet = storage[storageIdx];
+        storage.splice(storageIdx, 1);
+      }
+      saveUserData(main, p.uid, mainData);
+      const petForSale = normalizePetState(JSON.parse(JSON.stringify(pet)));
+      marketData.listings[listingId] = { type: 'pet', pet: petForSale, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
+      saveMarket();
+      p.reply(`已挂售 ${pet.name} ${price}金 #${listingId.slice(-4)}`);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    // 尝试解析为物品/装备/技能书
+    const playerItems = mainData.playerItems || {};
+    const items = mainData.items || {};
+    
+    if (playerItems[target] && playerItems[target] >= count) {
+      playerItems[target] -= count;
+      if (playerItems[target] <= 0) delete playerItems[target];
+      saveUserData(main, p.uid, mainData);
+      
+      marketData.listings[listingId] = { type: 'item', itemName: target, count, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
+      saveMarket();
+      p.reply(`已挂售 ${target}x${count} ${price}金 #${listingId.slice(-4)}`);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    
+    if (items[target] && items[target] >= count) {
+      items[target] -= count;
+      if (items[target] <= 0) delete items[target];
+      saveUserData(main, p.uid, mainData);
+      
+      marketData.listings[listingId] = { type: 'item', itemName: target, count, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
+      saveMarket();
+      p.reply(`已挂售 ${target}x${count} ${price}金 #${listingId.slice(-4)}`);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+
+    return p.reply(`你没有足够的 ${target} 或宠物编号错误`);
   }, '挂售宠物', 'wanwu-all', '万象篇');
 
-  main.registerCommand('购买宠物', (ctx, msg, p) => {
-    const shortId = p.p1; if (!shortId) return p.reply('用法: .宠物 购买宠物 <编号>');
+  main.registerCommand('购买', (ctx, msg, p) => {
+    const shortId = p.p1; if (!shortId) return p.reply('用法: .宠物 购买 <编号>');
     loadMarket();
     const listingId = Object.keys(marketData.listings).find(id => id.slice(-4) === shortId);
     if (!listingId) return p.reply('未找到');
@@ -833,7 +871,47 @@ function init() {
     if (item.sellerId === p.uid) return p.reply('不能买自己的');
     const mainData = getUserData(main, p.uid);
     if (mainData.money < item.price) return p.reply(`金币不足 ${item.price}`);
-    
+
+    if (item.type === 'item') {
+      mainData.money -= item.price;
+      
+      // 检查是装备/技能书还是普通道具
+      // 依赖于万物有灵.js中定义的 PLAYER_EQUIPMENT 和 PLAYER_SKILL_BOOKS，由于在不同文件，这里简化处理
+      // 只要原来是在 playerItems 里的，买回来也放进去，否则放 items
+      const isEquipOrBook = target => {
+        if (typeof PLAYER_SKILL_BOOKS !== 'undefined' && PLAYER_SKILL_BOOKS[target]) return true;
+        if (typeof PLAYER_EQUIPMENT !== 'undefined') {
+          for (const type in PLAYER_EQUIPMENT) {
+            if (PLAYER_EQUIPMENT[type][target]) return true;
+          }
+        }
+        // 如果没有全局变量，简单猜测：通常装备和技能书不叠加很多，或者名字特征
+        return false;
+      };
+      
+      // 这里做个简单处理，统一先试着放 playerItems，如果不是再放 items，但这需要跨文件引用
+      // 更安全的是直接放进 playerItems，因为装备/技能书使用时是从 playerItems 读的
+      // 或者我们通过判断是否为系统预定义道具
+      if (typeof ITEMS !== 'undefined' && ITEMS[item.itemName]) {
+        mainData.items = mainData.items || {};
+        mainData.items[item.itemName] = (mainData.items[item.itemName] || 0) + item.count;
+      } else {
+        mainData.playerItems = mainData.playerItems || {};
+        mainData.playerItems[item.itemName] = (mainData.playerItems[item.itemName] || 0) + item.count;
+      }
+      
+      saveUserData(main, p.uid, mainData);
+      const sellerData = getUserData(main, item.sellerId);
+      if (sellerData) {
+        sellerData.money = (sellerData.money || 0) + Math.floor(item.price * 0.95);
+        saveUserData(main, item.sellerId, sellerData);
+      }
+      delete marketData.listings[listingId]; saveMarket();
+      p.reply(`购买成功！获得 ${item.itemName}x${item.count}\n${getRandomTip()}`);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 宠物购买逻辑
     const capacity = getPetCapacity(main, mainData);
     if (mainData.pets.length >= capacity.maxPets && mainData.storage.length >= capacity.maxStorage) {
       return p.reply(`宠物和仓库已满(${capacity.maxPets + capacity.maxStorage}只上限)，无法购买`);
@@ -852,6 +930,11 @@ function init() {
     delete marketData.listings[listingId]; saveMarket();
     p.reply(`购买成功！获得 ${item.pet.name}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
+  }, '购买物品', 'wanwu-all', '万象篇');
+
+  // 为了兼容旧命令，保留 购买宠物 别名
+  main.registerCommand('购买宠物', (ctx, msg, p) => {
+    return main.cmdMap['购买'].solve(ctx, msg, p);
   }, '购买宠物', 'wanwu-all', '万象篇');
 
   // ========== 生灵保护机构 ==========
