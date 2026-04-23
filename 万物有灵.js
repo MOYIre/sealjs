@@ -90,16 +90,13 @@ const WebUIReporter = {
     if (this._queue.length === 0) return;
     const batch = this._queue.splice(0, this._queue.length);
     try {
-      // 验证 endpoint 格式
-      let url;
-      try {
-        url = new URL(`${this.config.endpoint}/api/report`);
-      } catch (urlErr) {
-        console.error('[WebUI Reporter] endpoint 格式无效:', this.config.endpoint);
+      // 兼容不支持 new URL() 的旧版引擎，直接通过简单正则验证 http(s)
+      if (!/^https?:\/\//.test(this.config.endpoint)) {
+        console.error('[WebUI Reporter] endpoint 格式无效，必须以 http:// 或 https:// 开头:', this.config.endpoint);
         this._queue.unshift(...batch);
         return;
       }
-      const res = await fetch(url.toString(), {
+      const res = await fetch(`${this.config.endpoint}/api/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
