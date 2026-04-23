@@ -1203,6 +1203,22 @@ const TeamManager = {
     delete this._teams[teamId];
     this.save();
   },
+
+  // 清理过期队伍（30分钟未活动）
+  cleanExpiredTeams() {
+    this.load();
+    const now = Date.now();
+    const expireTime = 30 * 60 * 1000; // 30分钟
+    let cleaned = 0;
+    for (const [id, team] of Object.entries(this._teams)) {
+      if (now - team.createdAt > expireTime) {
+        delete this._teams[id];
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) this.save();
+    return cleaned;
+  },
 };
 
 //   副本系统
@@ -1404,9 +1420,13 @@ const WorldBossManager = {
   },
 };
 
-//   繁殖优化  
+//   繁殖优化
 const BreedManager = {
   breed(data, pet1Idx, pet2Idx) {
+    // 索引有效性检查
+    if (pet1Idx < 1 || pet2Idx < 1 || pet1Idx > data.pets.length || pet2Idx > data.pets.length) {
+      return { success: false, msg: '宠物编号无效' };
+    }
     const p1 = data.pets[pet1Idx - 1];
     const p2 = data.pets[pet2Idx - 1];
     if (!p1 || !p2) return { success: false, msg: '宠物不存在' };
@@ -2988,7 +3008,8 @@ const Battle = {
     // 新伤害公式：平衡攻击、技能、等级、防御 (v3.6.10 优化)
     // 目标：普通战斗4-6回合，克制战斗2-4回合
     const levelBonus = 1 + Math.min(atkLv * 0.02, 0.8); // 等级加成上限80%
-    const defReduction = 100 / (100 + def * 0.5); // 降低防御收益，系数0.8->0.5
+    const effectiveDef = Math.max(0, def); // 防御值下限为0，避免负数导致伤害异常
+    const defReduction = 100 / (100 + effectiveDef * 0.5); // 降低防御收益，系数0.8->0.5
 
     let dmg = (atk * 0.45 + sk.power * 0.55) * levelBonus * defReduction; // ATK权重提高到45%
 
@@ -4684,8 +4705,8 @@ cmd.solve = async (ctx, msg, argv) => {
               wildPet.escaped = true;
             }
           } else {
-            // 普通宠物捕捉率计算
-            captureRate = 0.3 + (wildPet.hp / wildPet.maxHp) * 0.3;  // 30%-60%基础率
+            // 普通宠物捕捉率计算：血量越低，捕捉率越高
+            captureRate = 0.3 + (1 - wildPet.hp / wildPet.maxHp) * 0.3;  // 30%-60%基础率
             // 玩家技能：捕捉大师
             if (data.player.skills?.includes('捕捉大师')) captureRate += 0.1;
             captureRate = Math.min(0.9, captureRate);
