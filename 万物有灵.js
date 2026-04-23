@@ -6594,15 +6594,19 @@ cmd.solve = async (ctx, msg, argv) => {
       return reply(lines.join('\n'));
     }
     if (p1 === '创建') {
-      if (!p2) return reply('用法: .宠物 组队 创建 <副本名/世界Boss> [难度]');
-      const teamDifficulty = DUNGEON_DIFFICULTIES[p3] ? p3 : '普通';
+      const createArgs = actionFromCmd ? args.slice(1) : args.slice(2);
+      const dungeonName = createArgs[0] || '';
+      const diffArg = createArgs[1] || '普通';
+
+      if (!dungeonName) return reply('用法: .宠物 组队 创建 <副本名/世界Boss> [难度]');
+      const teamDifficulty = DUNGEON_DIFFICULTIES[diffArg] ? diffArg : '普通';
       // 检查是否是世界Boss或普通副本
-      if (p2 !== '世界Boss' && !getDungeonConfig(p2)) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿/世界Boss');
-      if (p2 === '世界Boss') {
+      if (dungeonName !== '世界Boss' && !getDungeonConfig(dungeonName)) return reply('副本不存在，可选: 迷雾深渊/熔岩地狱/冰霜王座/虚空裂隙/森林回廊/沙海遗墓/雷鸣穹顶/星辉神殿/世界Boss');
+      if (dungeonName === '世界Boss') {
         const spawnResult = WorldBossManager.checkAndSpawn();
         if (!spawnResult.boss) return reply('当前没有世界Boss');
       }
-      const result = TeamManager.createTeam(uid, myName || '玩家', p2, teamDifficulty);
+      const result = TeamManager.createTeam(uid, myName || '玩家', dungeonName, teamDifficulty);
       return reply(result.msg);
     }
     if (p1 === '加入') {
