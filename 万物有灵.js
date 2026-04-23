@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.15
+// @version     4.3.16
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.15');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.16');
   seal.ext.register(ext);
 }
 
@@ -6536,12 +6536,19 @@ cmd.solve = async (ctx, msg, argv) => {
       data.money += money;
       data.items[item] = (data.items[item] || 0) + 1;
       save();
-      logs.push(`【胜利】击败${bossName}！获得: ${money}金币, ${item}`);
-      return reply(logs.slice(0, 15).join('\n'));
+      
+      const resultLog = `【胜利】击败${bossName}！获得: ${money}金币, ${item}`;
+      let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
+      if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
+      finalLogs.push(resultLog);
+      return reply(finalLogs.join('\n'));
     } else {
       save();
-      logs.push(`【失败】被${bossName}击败...`);
-      return reply(logs.slice(0, 15).join('\n'));
+      const resultLog = `【失败】被${bossName}击败...`;
+      let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
+      if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
+      finalLogs.push(resultLog);
+      return reply(finalLogs.join('\n'));
     }
   }
   //   公会系统
@@ -7228,11 +7235,15 @@ cmd.solve = async (ctx, msg, argv) => {
 
     // .宠物 webui 配置 <端点> <Token>
     if (p1 === '配置' || p1 === 'config') {
-      if (!p2 || !p3) {
+      const configArgs = actionFromCmd ? args.slice(1) : args.slice(2);
+      const endpointArg = configArgs[0] || '';
+      const tokenArg = configArgs[1] || '';
+      
+      if (!endpointArg || !tokenArg) {
         return reply('用法: .宠物 webui 配置 <端点> <Token>\n示例: .宠物 webui 配置 https://wwyl.xiaocui.icu my-token-123');
       }
-      const endpoint = p2.endsWith('/') ? p2.slice(0, -1) : p2;
-      const token = p3;
+      const endpoint = endpointArg.endsWith('/') ? endpointArg.slice(0, -1) : endpointArg;
+      const token = tokenArg;
       WebUIReporter.init({ endpoint, token, enabled: false });
       ext.storageSet('webui_config', JSON.stringify({ endpoint, token, enabled: false }));
       return reply(`【WebUI配置已保存】\n端点: ${endpoint}\nToken: ******（已隐藏）\n\n使用 .宠物 webui 启用 开启上报`);
