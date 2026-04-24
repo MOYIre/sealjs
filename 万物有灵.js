@@ -344,7 +344,7 @@ const GAME_TIPS = [
   'ℑ 战斗时注意属性克制，可造成额外伤害',
   'ℑ 宠物血量越低，捕捉成功率越高',
   'ℑ 探险和打工可以获得技能书',
-  'ℑ 训练师装备可以提升宠物属性',
+  'ℑ 精灵族装备可以提升宠物属性',
   'ℑ 组队副本需要多人配合才能通关',
   'ℑ 世界Boss每天12:00、18:00、22:00刷新',
   'ℑ 神话宠物拥有专属技能',
@@ -962,7 +962,7 @@ const PokedexManager = {
 
 //   排行榜系统  
 const LeaderboardManager = {
-  // 计算宠物战力 (v3.6.10 统一公式)
+  // 计算宠物潜能 (v3.6.10 统一公式)
   calcPower(pet) {
     // 使用与PetFactory.power相同的公式，加上稀有度倍率
     let power = Math.floor((pet.atk * 1.5 + pet.def + pet.maxHp * 0.5 + pet.maxEnergy * 0.3) * (1 + pet.level * 0.1));
@@ -1002,11 +1002,11 @@ const LeaderboardManager = {
   // 格式化排行榜
   formatRanking(allData, type = 'power') {
     const ranking = this.getRanking(allData, type);
-    const titles = { power: '战力榜', level: '等级榜', count: '收集榜', money: '财富榜' };
+    const titles = { power: '潜能榜', level: '等级榜', count: '收集榜', money: '财富榜' };
     const lines = [`【${titles[type]}】`];
     ranking.forEach((e, i) => {
       const medal = i === 0 ? '★' : i === 1 ? '☆' : i === 2 ? '○' : `${i + 1}.`;
-      if (type === 'power') lines.push(`${medal} ${e.name} - ${e.topPet} 战力${e.topPower}`);
+      if (type === 'power') lines.push(`${medal} ${e.name} - ${e.topPet} 潜能${e.topPower}`);
       else if (type === 'level') lines.push(`${medal} ${e.name} - 最高Lv.${e.maxLevel}`);
       else if (type === 'count') lines.push(`${medal} ${e.name} - ${e.petCount}只宠物`);
       else if (type === 'money') lines.push(`${medal} ${e.name} - ${e.money}金币`);
@@ -1325,7 +1325,7 @@ const WorldBossManager = {
             const userData = ext.storageGet('u_' + uid);
             if (userData) {
               const data = JSON.parse(userData);
-              // 检查训练师等级或宠物等级
+              // 检查精灵族等级或宠物等级
               if ((data.player && data.player.level >= 30) || 
                   (data.pets && data.pets.some(p => p.level >= 30))) {
                 hasHighLevelPlayer = true;
@@ -2212,7 +2212,7 @@ const QUESTS = {
     { id: 'main_1', name: '初识世界', desc: '获得你的第一只宠物', target: 1, type: 'pet_count', reward: { money: 200, item: '捉宠符咒' } },
     { id: 'main_2', name: '成长之路', desc: '将一只宠物升到10级', target: 10, type: 'pet_level', reward: { money: 500, item: '技能书' } },
     { id: 'main_3', name: '收集大师', desc: '拥有5只不同的宠物', target: 5, type: 'pet_count', reward: { money: 1000, item: '传说之证' } },
-    { id: 'main_4', name: '精英训练师', desc: '将一只宠物升到30级', target: 30, type: 'pet_level', reward: { money: 2000, item: '天赋果实' } },
+    { id: 'main_4', name: '精英精灵族', desc: '将一只宠物升到30级', target: 30, type: 'pet_level', reward: { money: 2000, item: '天赋果实' } },
     { id: 'main_5', name: '传说之路', desc: '获得一只传说品质的宠物', target: 1, type: 'legendary_pet', reward: { money: 5000, item: '神秘蛋' } },
   ],
 };
@@ -3011,7 +3011,7 @@ const PetFactory = {
     let text = `${header} ${r}${e}\n` +
       `──────────────\n` +
       `种族: ${pet.species} | 等级: Lv.${pet.level} (${pet.exp}/${pet.level * 100})\n` +
-      `状态: ${status} | 战力: ${this.power(pet)} | 技能点: ${pet.sp}\n` +
+      `状态: ${status} | 潜能: ${this.power(pet)} | 技能点: ${pet.sp}\n` +
       `好感: ${affectionBar} (${affection})\n` +
       `生命: ${this.bar(pet.hp, pet.maxHp)} ${pet.hp}/${pet.maxHp}\n` +
       `精力: ${this.bar(pet.energy, pet.maxEnergy)} ${pet.energy}/${pet.maxEnergy}\n` +
@@ -4191,7 +4191,7 @@ cmd.help = `【万物有灵】宠物养成对战系统
 .宠物 help 管理 - 宠物管理
 .宠物 help 商店 - 商店道具
 .宠物 help 世界 - 世界探索
-.宠物 help 训练师 - 训练师系统
+.宠物 help 精灵族 - 精灵族系统
 .宠物 help 进阶 - 进阶功能
 .宠物 help 组队 - 组队副本
 .宠物 help 世界Boss - 世界Boss
@@ -4215,7 +4215,7 @@ const HELP_PAGES = {
 .宠物 学习 <编号> - 学习技能
 
 【精力自动恢复】
-宠物和训练师精力每小时自动恢复10%`,
+宠物和精灵族精力每小时自动恢复10%`,
 
   管理: `【管理命令】
 .宠物 存入 <编号> - 存入仓库
@@ -4238,20 +4238,20 @@ const HELP_PAGES = {
 .宠物 探索 <地区> - 探索地区
 .宠物 地区 - 查看可探索地区`,
 
-  训练师: `【训练师系统】
-.宠物 训练师 - 查看训练师信息
+  精灵族: `【精灵族系统】
+.宠物 精灵族 - 查看精灵族信息
 .宠物 锻炼 [项目] - 锻炼提升属性(每日5次)
   力量训练/敏捷训练/智力训练/体质训练/冥想
-.宠物 装备玩家 [装备名] - 装备训练师装备
-.宠物 学习技能 [技能名] - 学习训练师技能书
+.宠物 装备玩家 [装备名] - 装备精灵族装备
+.宠物 学习技能 [技能名] - 学习精灵族技能书
 
-【训练师属性效果】
+【精灵族属性效果】
 力量: 宠物攻击加成
 敏捷: 宠物速度加成
 智力: 宠物精力加成
 体质: 宠物生命加成
 
-【训练师装备/技能书】战斗胜利有几率掉落`,
+【精灵族装备/技能书】战斗胜利有几率掉落`,
 
   进阶: `【进阶命令】
 .宠物 装备 - 查看装备背包(战斗掉落)
@@ -4323,7 +4323,7 @@ const HELP_PAGES = {
 
 【世界Boss刷新规则】
 刷新时间: 每天 12:00、18:00、22:00
-刷新条件: 有玩家达到30级（训练师或宠物）
+刷新条件: 有玩家达到30级（精灵族或宠物）
 刷新概率: 20%（大部分时候不会出现）
 
 【世界Boss】
@@ -4726,7 +4726,7 @@ cmd.solve = async (ctx, msg, argv) => {
     const totalInt = player.int + equipBonus.int;
     const totalVit = player.vit + equipBonus.vit;
 
-    // 玩家战斗属性（基于训练师属性 + 等级成长）(v3.6.10 削弱向)
+    // 玩家战斗属性（基于精灵族属性 + 等级成长）(v3.6.10 削弱向)
     const pLevel = player.level || 1;
     const playerCombatAttrs = {
       hp: PLAYER_BASE.hp + totalVit * 3 + (pLevel - 1) * 9,
@@ -4752,13 +4752,13 @@ cmd.solve = async (ctx, msg, argv) => {
       if (pet.hp <= 0) return reply('宠物生命值不足，请先喂食恢复');
       if (pet.energy < 20) return reply('宠物精力不足，请稍后再试(精力每小时自动恢复10%)');
 
-      // 宠物战斗单位 (v3.6.10 添加训练师属性加成)
+      // 宠物战斗单位 (v3.6.10 添加精灵族属性加成)
       fighter = JSON.parse(JSON.stringify(pet));
       fighter.playerBuffs = playerBuffs;
       fighter.maxHp = fighter.maxHp || fighter.hp;
       fighter.maxEnergy = fighter.maxEnergy || fighter.energy;
 
-      // 应用训练师属性加成
+      // 应用精灵族属性加成
       const strBonus = 1 + Math.max(0, totalStr - 10) * 0.005;
       const agiBonus = 1 + Math.max(0, totalAgi - 10) * 0.005;
       const intBonus = 1 + Math.max(0, totalInt - 10) * 0.005;
@@ -4977,7 +4977,7 @@ cmd.solve = async (ctx, msg, argv) => {
           data.player.agi = (data.player.agi || 10) + 1;
           data.player.int = (data.player.int || 10) + 1;
           data.player.vit = (data.player.vit || 10) + 1;
-          logs.push(`训练师升级到 Lv.${data.player.level}！全属性+1`);
+          logs.push(`精灵族升级到 Lv.${data.player.level}！全属性+1`);
         }
 
         if (hasCharm) {
@@ -5100,7 +5100,7 @@ cmd.solve = async (ctx, msg, argv) => {
             if (rand <= threshold) {
               data.playerItems = data.playerItems || {};
               data.playerItems[name] = (data.playerItems[name] || 0) + 1;
-              logs.push(`[训练师装备] 获得: [${item.rarity}]${name}`);
+              logs.push(`[精灵族装备] 获得: [${item.rarity}]${name}`);
               break;
             }
           }
@@ -5179,7 +5179,7 @@ cmd.solve = async (ctx, msg, argv) => {
     data.pets.forEach((pet, i) => {
       const e = ELEMENT_MARK[pet.element] || '';
       const r = RARITY_MARK[pet.rarity] || '';
-      lines.push(`${i + 1}. ${r}${e} ${pet.name} (${pet.species}) Lv.${pet.level} 战力:${PetFactory.power(pet)}`);
+      lines.push(`${i + 1}. ${r}${e} ${pet.name} (${pet.species}) Lv.${pet.level} 潜能:${PetFactory.power(pet)}`);
     });
     if (data.storage.length) lines.push(`\n仓库: ${data.storage.length}/${CONFIG.maxStorage} (.宠物 仓库 查看)`);
     return reply(lines.join('\n'));
@@ -5478,7 +5478,7 @@ cmd.solve = async (ctx, msg, argv) => {
     pet1Copy.hp = pet1Copy.maxHp;
     pet1Copy.energy = pet1Copy.maxEnergy || 100;
 
-    // 计算己方训练师属性加成
+    // 计算己方精灵族属性加成
     const myTotalStr = (player.str || 10) + (equipBonus.str || 0);
     const myTotalAgi = (player.agi || 10) + (equipBonus.agi || 0);
     const myTotalInt = (player.int || 10) + (equipBonus.int || 0);
@@ -6483,7 +6483,7 @@ cmd.solve = async (ctx, msg, argv) => {
     const allData = {}; // 这里需要从全局存储获取所有玩家数据
     // 简化：只显示当前玩家排名
     const power = LeaderboardManager.calcPower(getPet(1) || { atk: 10, def: 10, hp: 50, spd: 100, level: 1 });
-    return reply(`【排行榜】\n你的最高战力: ${power}\n\n排行榜功能需要多玩家数据支持`);
+    return reply(`【排行榜】\n你的最高潜能: ${power}\n\n排行榜功能需要多玩家数据支持`);
   }
 
   //   副本系统
@@ -6934,7 +6934,7 @@ cmd.solve = async (ctx, msg, argv) => {
   }
 
   //   玩家系统  
-  if (action === '训练师' || action === 'player') {
+  if (action === '精灵族' || action === 'player') {
     const player = data.player;
     const totalAttr = player.str + player.agi + player.int + player.vit;
     const equipBonus = { str: 0, agi: 0, int: 0, vit: 0 };
@@ -6949,7 +6949,7 @@ cmd.solve = async (ctx, msg, argv) => {
     }
 
     const lines = [
-      `【训练师信息】`,
+      `【精灵族信息】`,
       `等级: Lv.${player.level}`,
       `经验: ${player.exp}/${PLAYER_EXP_TABLE[player.level] || player.level * 500}`,
       '',
@@ -7009,7 +7009,7 @@ cmd.solve = async (ctx, msg, argv) => {
       const pLevel = player.level || 1;
       const attrCap = 10 + Math.floor(pLevel * 1.5);
       if (player[train.attr] >= attrCap) {
-        return reply(`【${p1}失败】\n${{str:'力量',agi:'敏捷',int:'智力',vit:'体质'}[train.attr]}已达当前等级上限(${attrCap})\n请先提升训练师等级`);
+        return reply(`【${p1}失败】\n${{str:'力量',agi:'敏捷',int:'智力',vit:'体质'}[train.attr]}已达当前等级上限(${attrCap})\n请先提升精灵族等级`);
       }
     }
 
@@ -7033,7 +7033,7 @@ cmd.solve = async (ctx, msg, argv) => {
       }
       save();
       if (levelUp) {
-        return reply(`【冥想完成】\n获得 ${gain} 经验\n恭喜升级！训练师等级提升到 Lv.${player.level}\n全属性+1`);
+        return reply(`【冥想完成】\n获得 ${gain} 经验\n恭喜升级！精灵族等级提升到 Lv.${player.level}\n全属性+1`);
       }
       return reply(`【冥想完成】\n获得 ${gain} 经验\n当前: ${player.exp}/${PLAYER_EXP_TABLE[player.level] || player.level * 500}`);
     } else {
@@ -7158,7 +7158,7 @@ cmd.solve = async (ctx, msg, argv) => {
     for (const [name, legend] of Object.entries(LEGENDARY_PETS)) {
       const captured = LegendaryManager.isCaptured(name);
       const capturedBy = LegendaryManager.getCapturedBy(name);
-      const status = captured ? `✓已被${capturedBy || '某位训练师'}捕获` : '?尚未现身';
+      const status = captured ? `✓已被${capturedBy || '某位精灵族'}捕获` : '?尚未现身';
       lines.push(`【${name}】`);
       lines.push(`  ${legend.desc}`);
       lines.push(`  属性: ${legend.element} | 状态: ${status}`);
