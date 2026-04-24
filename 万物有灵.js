@@ -24,10 +24,13 @@ const WebUIReporter = {
     token: '',
     enabled: false,
     reportInterval: 60000,
+    patchCheckInterval: 600000,
   },
   _queue: [],
   _timer: null,
   _installedMods: null,
+  _lastPatchDigest: '',
+  _lastPatchCheckAt: 0,
 
   init(options = {}) {
     this.config = { ...this.config, ...options };
@@ -127,7 +130,49 @@ const WebUIReporter = {
           console.error('[WebUI Reporter] 定时上报失败:', e);
         }
       }
+
+      try {
+        await this._autoSyncPatches();
+      } catch (e) {
+        console.error('[WebUI Reporter] 自动检查补丁失败:', e);
+      }
     }, this.config.reportInterval);
+  },
+
+  _buildPatchDigest(patches = []) {
+    return patches
+      .map((p) => `${p.id || ''}:${p.updatedAt || p.publishedAt || ''}:${p.status || ''}`)
+      .sort()
+      .join('|');
+  },
+
+  async _autoSyncPatches() {
+    const now = Date.now();
+    if (!this.config.enabled || !this.config.endpoint) return;
+    if (now - this._lastPatchCheckAt < this.config.patchCheckInterval) return;
+    this._lastPatchCheckAt = now;
+
+    const patches = await this.fetchPatches();
+    const digest = this._buildPatchDigest(patches);
+
+    // 没有变化就不拉取/不应用
+    if (digest === this._lastPatchDigest) return;
+    this._lastPatchDigest = digest;
+
+    if (!patches.length) {
+      console.log('[WebUI Reporter] 补丁状态有变化，当前无生效补丁');
+      return;
+    }
+
+    let applied = 0;
+    for (const patch of patches) {
+      const ok = this.applyPatch(patch);
+      if (ok) applied++;
+    }
+
+    if (applied > 0) {
+      console.log(`[WebUI Reporter] 自动应用补丁 ${applied}/${patches.length} 个`);
+    }
   },
 
   stop() {
