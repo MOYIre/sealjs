@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.19
+// @version     4.3.20
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.19');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.20');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.19' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.20' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1078,11 +1078,46 @@ const LeaderboardManager = {
   },
 };
 
-//   公会系统  
+//   公会系统
+const GUILD_LEVELS = {
+  1: { exp: 200, limit: 10 },
+  2: { exp: 400, limit: 12 },
+  3: { exp: 700, limit: 15 },
+  4: { exp: 1100, limit: 18 },
+  5: { exp: 1600, limit: 20 },
+  6: { exp: 2300, limit: 22 },
+  7: { exp: 3100, limit: 24 },
+  8: { exp: 4200, limit: 26 },
+  9: { exp: 5500, limit: 28 },
+  10: { exp: 0, limit: 30 },
+};
+
+const GUILD_SHOP = {
+  '宠物口粮': { cost: 30, item: '宠物粮', count: 3, limit: 5, minLevel: 1 },
+  '捉宠符咒': { cost: 50, item: '捉宠符咒', count: 2, limit: 3, minLevel: 1 },
+  '进化石': { cost: 120, item: '进化石', count: 1, limit: 2, minLevel: 2 },
+  '高级进化石': { cost: 260, item: '高级进化石', count: 1, limit: 1, minLevel: 4 },
+  '天赋果实': { cost: 360, item: '天赋果实', count: 1, limit: 1, minLevel: 5 },
+  '神话契约碎片': { cost: 500, item: '神话契约碎片', count: 1, limit: 1, minLevel: 7 },
+};
+
+const GUILD_SKILLS = {
+  '富足': { name: '富足', max: 5, baseCost: 1200, desc: '签到金币每级+5' },
+  '勤勉': { name: '勤勉', max: 5, baseCost: 1500, desc: '签到贡献每级+1' },
+  '猎手': { name: '猎手', max: 5, baseCost: 1800, desc: '公会Boss伤害每级+2%' },
+  '训练': { name: '训练', max: 5, baseCost: 1600, desc: '公会Boss参与奖励每级+2%' },
+};
+
+function guildDateKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 const GuildManager = {
   _guilds: null,
 
-  // 加载公会数据
   load() {
     if (this._guilds) return this._guilds;
     try {
@@ -1093,27 +1128,102 @@ const GuildManager = {
       this._guilds = {};
     }
 
-    // 兼容旧数据：只补齐字段，不再自动删除空成员公会，避免全局表异常时误删真实公会
     for (const [guildName, guild] of Object.entries(this._guilds)) {
       if (!guild || typeof guild !== 'object') continue;
-      guild.name = guild.name || guildName;
-      guild.members = Array.isArray(guild.members) ? [...new Set(guild.members.filter(Boolean))] : [];
-      guild.level = guild.level || 1;
-      guild.bank = guild.bank || 0;
-      if (!guild.leader || (guild.members.length > 0 && !guild.members.includes(guild.leader))) {
-        guild.leader = guild.members[0] || '';
-      }
+      this.normalizeGuild(guild, guildName);
     }
 
     return this._guilds;
   },
 
-  // 保存公会数据
   save() {
     ext.storageSet('guilds', JSON.stringify(this._guilds || {}));
   },
 
   get guilds() { return this.load(); },
+
+  getMemberLimit(guild) {
+    const lv = Math.max(1, Math.min(10, guild.level || 1));
+    return GUILD_LEVELS[lv]?.limit || 30;
+  },
+
+  getMemberName(uid) {
+    return DB.getName(uid) || String(uid || '').replace('QQ:', '') || '未知';
+  },
+
+  isManager(guild, uid) {
+    return guild && (guild.leader === uid || (guild.officers || []).includes(uid));
+  },
+
+  getMember(guild, uid) {
+    if (!guild || !uid) return null;
+    guild.memberData = guild.memberData || {};
+    if (!guild.memberData[uid]) {
+      guild.memberData[uid] = {
+        role: guild.leader === uid ? 'leader' : ((guild.officers || []).includes(uid) ? 'officer' : 'member'),
+        joinAt: Date.now(),
+        contribution: 0,
+        totalContribution: 0,
+        lastCheckIn: '',
+        donatedDate: '',
+        donatedToday: 0,
+        shop: {},
+        bossDate: '',
+        bossAttempts: 0,
+      };
+    }
+    return guild.memberData[uid];
+  },
+
+  normalizeGuild(guild, guildName) {
+    guild.name = guild.name || guildName;
+    guild.members = Array.isArray(guild.members) ? [...new Set(guild.members.filter(Boolean))] : [];
+    guild.level = Math.max(1, Math.min(10, guild.level || 1));
+    guild.exp = guild.exp || 0;
+    guild.bank = guild.bank || 0;
+    guild.createdAt = guild.createdAt || Date.now();
+    guild.notice = guild.notice || '';
+    guild.officers = Array.isArray(guild.officers) ? guild.officers.filter(uid => guild.members.includes(uid)) : [];
+    guild.memberData = guild.memberData || {};
+    guild.daily = guild.daily || { date: guildDateKey(), checkIns: 0 };
+    if (guild.daily.date !== guildDateKey()) guild.daily = { date: guildDateKey(), checkIns: 0, checkInUsers: {}, donated: {}, shop: {}, bossAttempts: {} };
+    guild.daily.checkInUsers = guild.daily.checkInUsers || {};
+    guild.daily.donated = guild.daily.donated || {};
+    guild.daily.shop = guild.daily.shop || {};
+    guild.daily.bossAttempts = guild.daily.bossAttempts || {};
+    guild.logs = Array.isArray(guild.logs) ? guild.logs.slice(-20) : [];
+    guild.storage = guild.storage || {};
+    guild.skills = guild.skills || {};
+    guild.shopDate = guild.shopDate || guildDateKey();
+    guild.boss = guild.boss || null;
+    if (!guild.leader || (guild.members.length > 0 && !guild.members.includes(guild.leader))) guild.leader = guild.members[0] || '';
+    for (const uid of guild.members) this.getMember(guild, uid);
+    for (const uid of Object.keys(guild.memberData)) {
+      if (!guild.members.includes(uid)) delete guild.memberData[uid];
+    }
+    if (guild.leader && guild.memberData[guild.leader]) guild.memberData[guild.leader].role = 'leader';
+    for (const uid of guild.officers) if (guild.memberData[uid] && uid !== guild.leader) guild.memberData[uid].role = 'officer';
+    return guild;
+  },
+
+  addLog(guild, text) {
+    guild.logs = guild.logs || [];
+    guild.logs.push(`${new Date().toLocaleString()} ${text}`);
+    if (guild.logs.length > 20) guild.logs = guild.logs.slice(-20);
+  },
+
+  checkLevelUp(guild) {
+    const ups = [];
+    while (guild.level < 10) {
+      const need = GUILD_LEVELS[guild.level]?.exp || 0;
+      if (!need || guild.exp < need) break;
+      guild.exp -= need;
+      guild.level++;
+      ups.push(guild.level);
+      this.addLog(guild, `公会升级到 Lv.${guild.level}`);
+    }
+    return ups;
+  },
 
   ensureGuildFromUser(uid, data) {
     this.load();
@@ -1124,12 +1234,13 @@ const GuildManager = {
       guild = this.rebuildGuildFromUsers(guildName, uid, data).guild;
       return guild;
     }
-    guild.name = guild.name || guildName;
-    guild.members = Array.isArray(guild.members) ? [...new Set(guild.members.filter(Boolean))] : [];
-    if (!guild.members.includes(uid)) guild.members.push(uid);
+    this.normalizeGuild(guild, guildName);
+    if (!guild.members.includes(uid)) {
+      if (guild.members.length >= this.getMemberLimit(guild)) return guild;
+      guild.members.push(uid);
+    }
+    this.getMember(guild, uid);
     if (!guild.leader || !guild.members.includes(guild.leader)) guild.leader = guild.members[0];
-    guild.level = guild.level || 1;
-    guild.bank = guild.bank || 0;
     this.save();
     return guild;
   },
@@ -1156,21 +1267,24 @@ const GuildManager = {
     if (fallbackUid && fallbackData && fallbackData.guild === guildName) members.push(fallbackUid);
     const uniqueMembers = [...new Set(members.filter(Boolean))];
     const oldGuild = this._guilds[guildName] || {};
-    const guild = this._guilds[guildName] = {
+    const guild = this._guilds[guildName] = this.normalizeGuild({
+      ...oldGuild,
       name: oldGuild.name || guildName,
       leader: uniqueMembers.includes(oldGuild.leader) ? oldGuild.leader : (uniqueMembers[0] || fallbackUid || ''),
       members: uniqueMembers,
       level: oldGuild.level || 1,
+      exp: oldGuild.exp || 0,
       bank: oldGuild.bank || 0,
-    };
+    }, guildName);
     this.save();
-    return { success: true, msg: `已从玩家存档恢复公会【${guildName}】，成员${guild.members.length}/30`, guild };
+    return { success: true, msg: `已从玩家存档恢复公会【${guildName}】，成员${guild.members.length}/${this.getMemberLimit(guild)}`, guild };
   },
 
   createGuild(uid, data, name) {
     this.load();
     const guildName = (name || '').trim();
     if (!guildName) return { success: false, msg: '请输入公会名称' };
+    if (guildName.length < 2 || guildName.length > 12) return { success: false, msg: '公会名称需为2-12个字符' };
     if (data.money < 5000) return { success: false, msg: '创建公会需要5000金币' };
     if (data.guild) {
       this.ensureGuildFromUser(uid, data);
@@ -1178,11 +1292,13 @@ const GuildManager = {
     }
     if (this._guilds[guildName]) return { success: false, msg: '公会名已存在' };
     data.money -= 5000;
-    this._guilds[guildName] = { name: guildName, leader: uid, members: [uid], level: 1, bank: 0 };
+    this._guilds[guildName] = this.normalizeGuild({ name: guildName, leader: uid, members: [uid], level: 1, exp: 0, bank: 0 }, guildName);
     data.guild = guildName;
+    this.addLog(this._guilds[guildName], `${this.getMemberName(uid)} 创建公会`);
     this.save();
     return { success: true, msg: `公会【${guildName}】创建成功！` };
   },
+
   joinGuild(uid, data, name) {
     this.load();
     const guildName = (name || '').trim();
@@ -1193,44 +1309,368 @@ const GuildManager = {
     }
     const guild = this._guilds[guildName];
     if (!guild) return { success: false, msg: '公会不存在' };
-    guild.members = Array.isArray(guild.members) ? guild.members : [];
-    if (guild.members.includes(uid)) {
-      data.guild = guildName;
-      this.save();
-      return { success: true, msg: `你已在公会【${guildName}】中，已同步状态` };
-    }
-    if (guild.members.length >= 30) return { success: false, msg: '公会成员已满' };
+    this.normalizeGuild(guild, guildName);
+    if (guild.members.length >= this.getMemberLimit(guild)) return { success: false, msg: '公会成员已满' };
     guild.members.push(uid);
-    if (!guild.leader || !guild.members.includes(guild.leader)) guild.leader = guild.members[0];
-    guild.level = guild.level || 1;
-    guild.bank = guild.bank || 0;
     data.guild = guildName;
+    this.getMember(guild, uid);
+    this.addLog(guild, `${this.getMemberName(uid)} 加入公会`);
     this.save();
     return { success: true, msg: `成功加入公会【${guildName}】` };
   },
+
   leaveGuild(uid, data) {
     this.load();
     if (!data.guild) return { success: false, msg: '你未加入公会' };
-    const guild = this._guilds[data.guild];
+    const guildName = data.guild;
+    const guild = this._guilds[guildName];
     if (guild) {
+      this.normalizeGuild(guild, guildName);
       guild.members = guild.members.filter(m => m !== uid);
-      if (guild.leader === uid && guild.members.length > 0) {
-        guild.leader = guild.members[0];
-      }
-      if (guild.members.length === 0) delete this._guilds[data.guild];
+      guild.officers = (guild.officers || []).filter(m => m !== uid);
+      delete guild.memberData[uid];
+      if (guild.leader === uid && guild.members.length > 0) guild.leader = guild.members[0];
+      if (guild.members.length === 0) delete this._guilds[guildName];
+      else this.addLog(guild, `${this.getMemberName(uid)} 退出公会`);
     }
     delete data.guild;
+    data.guildLeaveAt = Date.now();
     this.save();
     return { success: true, msg: '已退出公会' };
   },
+
   getGuildInfo(uid, data) {
     this.load();
     if (!data.guild) return '你未加入公会';
     const guild = this.ensureGuildFromUser(uid, data);
     if (!guild) return '你未加入公会';
-    const leaderUid = guild.leader || guild.members[0] || '';
-    const leaderName = leaderUid ? (DB.getName(leaderUid) || leaderUid.replace('QQ:', '')) : '未知';
-    return `【${guild.name}】Lv.${guild.level}\n会长: ${leaderName}\n成员: ${guild.members.length}/30\n资金: ${guild.bank}`;
+    const leaderName = this.getMemberName(guild.leader);
+    const lvConf = GUILD_LEVELS[guild.level] || GUILD_LEVELS[10];
+    const expText = guild.level >= 10 ? 'MAX' : `${guild.exp}/${lvConf.exp}`;
+    const notice = guild.notice ? `\n公告: ${guild.notice}` : '';
+    return `【${guild.name}】Lv.${guild.level}\n会长: ${leaderName}\n成员: ${guild.members.length}/${this.getMemberLimit(guild)}\n经验: ${expText}\n资金: ${guild.bank}\n今日签到: ${guild.daily.checkIns || 0}${notice}`;
+  },
+
+  formatMembers(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const lines = [`【${guild.name}成员】`];
+    guild.members.slice(0, 20).forEach((mid, i) => {
+      const m = this.getMember(guild, mid);
+      const role = mid === guild.leader ? '会长' : ((guild.officers || []).includes(mid) ? '副会长' : '成员');
+      const checked = m.lastCheckIn === guildDateKey() ? '✓' : '-';
+      lines.push(`${i + 1}. ${this.getMemberName(mid)} ${role} 贡献:${m.contribution || 0}/${m.totalContribution || 0} 签到:${checked}`);
+    });
+    if (guild.members.length > 20) lines.push(`...其余${guild.members.length - 20}人未显示`);
+    return lines.join('\n');
+  },
+
+  checkIn(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    const member = this.getMember(guild, uid);
+    const today = guildDateKey();
+    if (member.lastCheckIn === today || guild.daily.checkInUsers[uid]) return { success: false, msg: '今天已经签到过了' };
+    const richLv = guild.skills['富足'] || 0;
+    const diligentLv = guild.skills['勤勉'] || 0;
+    const money = 100 + (guild.level || 1) * 10 + richLv * 5;
+    const contribution = 10 + diligentLv;
+    member.lastCheckIn = today;
+    guild.daily.checkInUsers[uid] = true;
+    member.contribution += contribution;
+    member.totalContribution += contribution;
+    guild.exp += 10;
+    guild.bank += 20;
+    guild.daily.checkIns = (guild.daily.checkIns || 0) + 1;
+    data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + money);
+    const ups = this.checkLevelUp(guild);
+    this.addLog(guild, `${this.getMemberName(uid)} 签到，贡献+${contribution}`);
+    this.save();
+    return { success: true, msg: `签到成功！获得${money}金币，贡献+${contribution}\n公会经验+10，资金+20${ups.length ? `\n公会升级到 Lv.${guild.level}！` : ''}` };
+  },
+
+  donate(uid, data, amount) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    const n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n <= 0) return { success: false, msg: '请输入正确的捐献金币数量' };
+    if ((data.money || 0) < n) return { success: false, msg: '金币不足' };
+    const member = this.getMember(guild, uid);
+    const today = guildDateKey();
+    if (member.donatedDate !== today) { member.donatedDate = today; member.donatedToday = 0; }
+    const donatedToday = Math.max(member.donatedToday || 0, guild.daily.donated[uid] || 0);
+    const remain = Math.max(0, 5000 - donatedToday);
+    if (remain <= 0) return { success: false, msg: '今日捐献已达上限5000金币' };
+    const real = Math.min(n, remain);
+    const contribution = Math.floor(real / 100);
+    data.money -= real;
+    member.donatedToday = donatedToday + real;
+    guild.daily.donated[uid] = member.donatedToday;
+    member.contribution += contribution;
+    member.totalContribution += contribution;
+    guild.bank += real;
+    guild.exp += contribution;
+    const ups = this.checkLevelUp(guild);
+    this.addLog(guild, `${this.getMemberName(uid)} 捐献${real}金币`);
+    this.save();
+    return { success: true, msg: `捐献成功：${real}金币\n贡献+${contribution}，公会资金+${real}，经验+${contribution}${real < n ? '\n已按今日上限截断' : ''}${ups.length ? `\n公会升级到 Lv.${guild.level}！` : ''}` };
+  },
+
+  setNotice(uid, data, text) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (!this.isManager(guild, uid)) return { success: false, msg: '只有会长/副会长可以修改公告' };
+    const notice = (text || '').trim();
+    if (!notice) return { success: false, msg: '请输入公告内容' };
+    if (notice.length > 80) return { success: false, msg: '公告不能超过80字' };
+    guild.notice = notice;
+    this.addLog(guild, `${this.getMemberName(uid)} 修改公告`);
+    this.save();
+    return { success: true, msg: `公告已更新：${notice}` };
+  },
+
+  transfer(uid, data, targetUid) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (guild.leader !== uid) return { success: false, msg: '只有会长可以转让' };
+    if (!targetUid || !guild.members.includes(targetUid)) return { success: false, msg: '目标不是本公会成员' };
+    guild.leader = targetUid;
+    guild.officers = (guild.officers || []).filter(id => id !== targetUid);
+    this.getMember(guild, uid).role = 'member';
+    this.getMember(guild, targetUid).role = 'leader';
+    this.addLog(guild, `会长转让给 ${this.getMemberName(targetUid)}`);
+    this.save();
+    return { success: true, msg: `已将会长转让给 ${this.getMemberName(targetUid)}` };
+  },
+
+  appoint(uid, data, targetUid, appoint = true) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (guild.leader !== uid) return { success: false, msg: '只有会长可以任免副会长' };
+    if (!targetUid || !guild.members.includes(targetUid)) return { success: false, msg: '目标不是本公会成员' };
+    if (targetUid === guild.leader) return { success: false, msg: '会长无需任命' };
+    guild.officers = guild.officers || [];
+    if (appoint && !guild.officers.includes(targetUid)) guild.officers.push(targetUid);
+    if (!appoint) guild.officers = guild.officers.filter(id => id !== targetUid);
+    this.getMember(guild, targetUid).role = appoint ? 'officer' : 'member';
+    this.addLog(guild, `${this.getMemberName(uid)} ${appoint ? '任命' : '取消'} ${this.getMemberName(targetUid)} 副会长`);
+    this.save();
+    return { success: true, msg: `${appoint ? '已任命' : '已取消'} ${this.getMemberName(targetUid)} ${appoint ? '为副会长' : '的副会长'}` };
+  },
+
+  kick(uid, data, targetUid) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (!this.isManager(guild, uid)) return { success: false, msg: '只有会长/副会长可以踢人' };
+    if (!targetUid || !guild.members.includes(targetUid)) return { success: false, msg: '目标不是本公会成员' };
+    if (targetUid === guild.leader) return { success: false, msg: '不能踢出会长' };
+    if ((guild.officers || []).includes(targetUid) && guild.leader !== uid) return { success: false, msg: '副会长不能踢出副会长' };
+    guild.members = guild.members.filter(id => id !== targetUid);
+    guild.officers = (guild.officers || []).filter(id => id !== targetUid);
+    delete guild.memberData[targetUid];
+    const targetData = DB.get(targetUid);
+    if (targetData.guild === guild.name) { delete targetData.guild; targetData.guildLeaveAt = Date.now(); DB.save(targetUid, targetData); }
+    this.addLog(guild, `${this.getMemberName(uid)} 踢出 ${this.getMemberName(targetUid)}`);
+    this.save();
+    return { success: true, msg: `已踢出 ${this.getMemberName(targetUid)}` };
+  },
+
+  formatLogs(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    return ['【公会日志】', ...(guild.logs || []).slice(-10)].join('\n');
+  },
+
+  formatShop(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const member = this.getMember(guild, uid);
+    const lines = [`【公会商店】你的贡献: ${member.contribution || 0}`];
+    for (const [name, item] of Object.entries(GUILD_SHOP)) {
+      const bought = guild.daily.shop?.[uid]?.[name] || member.shop?.[guildDateKey()]?.[name] || 0;
+      const locked = guild.level < item.minLevel ? ` Lv.${item.minLevel}解锁` : '';
+      lines.push(`${name} - ${item.cost}贡献 (${item.item}x${item.count}) 限购${bought}/${item.limit}${locked}`);
+    }
+    lines.push('.宠物公会 兑换 <商品名>');
+    return lines.join('\n');
+  },
+
+  buyShop(uid, data, name) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    const item = GUILD_SHOP[name];
+    if (!item) return { success: false, msg: `商品不存在，可用: ${Object.keys(GUILD_SHOP).join('、')}` };
+    if (guild.level < item.minLevel) return { success: false, msg: `需要公会Lv.${item.minLevel}` };
+    const member = this.getMember(guild, uid);
+    const today = guildDateKey();
+    member.shop = member.shop || {};
+    member.shop[today] = member.shop[today] || {};
+    guild.daily.shop[uid] = guild.daily.shop[uid] || {};
+    const bought = guild.daily.shop[uid][name] || member.shop[today][name] || 0;
+    if (bought >= item.limit) return { success: false, msg: '今日已达限购' };
+    if ((member.contribution || 0) < item.cost) return { success: false, msg: '贡献不足' };
+    member.contribution -= item.cost;
+    member.shop[today][name] = bought + 1;
+    guild.daily.shop[uid][name] = bought + 1;
+    data.items = data.items || {};
+    data.items[item.item] = (data.items[item.item] || 0) + item.count;
+    this.addLog(guild, `${this.getMemberName(uid)} 兑换 ${name}`);
+    this.save();
+    return { success: true, msg: `兑换成功：${item.item}x${item.count}，消耗${item.cost}贡献` };
+  },
+
+  storageDeposit(uid, data, itemName, count) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    const rawCount = count === undefined || count === '' ? 1 : Number(count);
+    if (!Number.isSafeInteger(rawCount) || rawCount <= 0) return { success: false, msg: '请输入正确的数量' };
+    const n = rawCount;
+    data.items = data.items || {};
+    if (!itemName || (data.items[itemName] || 0) < n) return { success: false, msg: '道具不足' };
+    data.items[itemName] -= n;
+    if (data.items[itemName] <= 0) delete data.items[itemName];
+    guild.storage[itemName] = (guild.storage[itemName] || 0) + n;
+    this.addLog(guild, `${this.getMemberName(uid)} 存入 ${itemName}x${n}`);
+    this.save();
+    return { success: true, msg: `已存入公会仓库：${itemName}x${n}` };
+  },
+
+  storageWithdraw(uid, data, itemName, count) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (!this.isManager(guild, uid)) return { success: false, msg: '只有会长/副会长可以取出仓库道具' };
+    const rawCount = count === undefined || count === '' ? 1 : Number(count);
+    if (!Number.isSafeInteger(rawCount) || rawCount <= 0) return { success: false, msg: '请输入正确的数量' };
+    const n = rawCount;
+    if (!itemName || (guild.storage[itemName] || 0) < n) return { success: false, msg: '仓库道具不足' };
+    guild.storage[itemName] -= n;
+    if (guild.storage[itemName] <= 0) delete guild.storage[itemName];
+    data.items = data.items || {};
+    data.items[itemName] = (data.items[itemName] || 0) + n;
+    this.addLog(guild, `${this.getMemberName(uid)} 取出 ${itemName}x${n}`);
+    this.save();
+    return { success: true, msg: `已取出：${itemName}x${n}` };
+  },
+
+  formatStorage(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const entries = Object.entries(guild.storage || {});
+    if (entries.length === 0) return '【公会仓库】空空如也\n.宠物公会 仓库 存入 <道具> [数量]';
+    return ['【公会仓库】', ...entries.map(([k, v]) => `${k} x${v}`), '\n存入: .宠物公会 仓库 存入 <道具> [数量]', '取出: .宠物公会 仓库 取出 <道具> [数量]'].join('\n');
+  },
+
+  formatSkills(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const lines = [`【公会技能】资金:${guild.bank}`];
+    for (const [name, cfg] of Object.entries(GUILD_SKILLS)) {
+      const lv = guild.skills[name] || 0;
+      const cost = cfg.baseCost * (lv + 1);
+      lines.push(`${name} Lv.${lv}/${cfg.max} - ${cfg.desc}${lv < cfg.max ? `，升级需${cost}资金` : ''}`);
+    }
+    lines.push('.宠物公会 技能 升级 <技能名>');
+    return lines.join('\n');
+  },
+
+  upgradeSkill(uid, data, name) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (guild.leader !== uid) return { success: false, msg: '只有会长可以升级公会技能' };
+    const cfg = GUILD_SKILLS[name];
+    if (!cfg) return { success: false, msg: `技能不存在，可用: ${Object.keys(GUILD_SKILLS).join('、')}` };
+    const lv = guild.skills[name] || 0;
+    if (lv >= cfg.max) return { success: false, msg: '技能已满级' };
+    const cost = cfg.baseCost * (lv + 1);
+    if ((guild.bank || 0) < cost) return { success: false, msg: `公会资金不足，需要${cost}` };
+    guild.bank -= cost;
+    guild.skills[name] = lv + 1;
+    this.addLog(guild, `升级技能 ${name} 到 Lv.${lv + 1}`);
+    this.save();
+    return { success: true, msg: `公会技能【${name}】升级到 Lv.${lv + 1}` };
+  },
+
+  getBoss(guild) {
+    const today = guildDateKey();
+    if (!guild.boss || guild.boss.date !== today) {
+      const lv = guild.level || 1;
+      const maxHp = 3000 + lv * 1200 + guild.members.length * 300;
+      guild.boss = {
+        date: today,
+        name: `公会守卫兽·Lv${lv}`,
+        maxHp,
+        hp: maxHp,
+        atk: 80 + lv * 15,
+        def: 20 + lv * 5,
+        damage: {},
+        killed: false,
+      };
+    }
+    return guild.boss;
+  },
+
+  formatBoss(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const boss = this.getBoss(guild);
+    const status = boss.killed || boss.hp <= 0 ? '今日已击败' : `HP: ${boss.hp}/${boss.maxHp}`;
+    const lines = [`【公会Boss】${boss.name}`, status, `.宠物公会 Boss 攻击 <宠物编号>`, '.宠物公会 Boss 排行'];
+    this.save();
+    return lines.join('\n');
+  },
+
+  attackBoss(uid, data, pet) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (!pet) return { success: false, msg: '请指定宠物编号' };
+    if (pet.hp <= 0) return { success: false, msg: '宠物已阵亡' };
+    if ((pet.energy || 0) < 20) return { success: false, msg: '宠物精力不足(需要20)' };
+    const member = this.getMember(guild, uid);
+    const today = guildDateKey();
+    if (member.bossDate !== today) { member.bossDate = today; member.bossAttempts = 0; }
+    const attempts = Math.max(member.bossAttempts || 0, guild.daily.bossAttempts[uid] || 0);
+    if (attempts >= 3) return { success: false, msg: '今日公会Boss挑战次数已用完' };
+    const boss = this.getBoss(guild);
+    if (boss.hp <= 0 || boss.killed) return { success: false, msg: '今日公会Boss已被击败' };
+    member.bossAttempts = attempts + 1;
+    guild.daily.bossAttempts[uid] = member.bossAttempts;
+    pet.energy -= 20;
+    const skillBoost = 1 + ((guild.skills['猎手'] || 0) * 0.02);
+    const damage = Math.max(1, Math.floor(((pet.atk || 10) * 3 + (pet.level || 1) * 8 - boss.def + Math.floor(Math.random() * 50)) * skillBoost));
+    boss.hp = Math.max(0, boss.hp - damage);
+    boss.damage[uid] = (boss.damage[uid] || 0) + damage;
+    const counter = Math.max(1, boss.atk - (pet.def || 0) + Math.floor(Math.random() * 20));
+    pet.hp = Math.max(1, (pet.hp || 1) - counter);
+    let msg = `造成${damage}伤害，Boss HP:${boss.hp}/${boss.maxHp}\n${pet.name}受到${counter}反击伤害`;
+    if (boss.hp <= 0) {
+      boss.killed = true;
+      const rewardRate = 1 + ((guild.skills['训练'] || 0) * 0.02);
+      const money = Math.floor((500 + guild.level * 120) * rewardRate);
+      const contribution = 30;
+      data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + money);
+      member.contribution += contribution;
+      member.totalContribution += contribution;
+      guild.exp += 80 + guild.level * 10;
+      guild.bank += 300 + guild.level * 50;
+      const items = ['进化石', '高级进化石', '天赋果实'];
+      const item = items[Math.floor(Math.random() * items.length)];
+      data.items = data.items || {};
+      data.items[item] = (data.items[item] || 0) + 1;
+      this.checkLevelUp(guild);
+      this.addLog(guild, `${this.getMemberName(uid)} 击败公会Boss`);
+      msg += `\n【击杀】获得${money}金币、贡献+${contribution}、${item}x1`;
+    }
+    this.save();
+    return { success: true, msg };
+  },
+
+  formatBossRank(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const boss = this.getBoss(guild);
+    const rank = Object.entries(boss.damage || {}).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (rank.length === 0) return '暂无公会Boss伤害记录';
+    return ['【公会Boss伤害排行】', ...rank.map(([id, dmg], i) => `${i + 1}. ${this.getMemberName(id)} - ${dmg}`)].join('\n');
   },
 };
 
@@ -6796,18 +7236,23 @@ cmd.solve = async (ctx, msg, argv) => {
   }
   //   公会系统
   if (action === '公会' || action === 'guild') {
-    if (!p1) {
+    const usage = '用法: .宠物 公会 [信息/成员/签到/捐献/商店/兑换/仓库/技能/Boss/公告/转让/任命/取消任命/踢出/日志/创建/加入/退出/恢复] [参数]';
+    const gSub = actionArgs[1] || '';
+    const gArg1 = actionArgs[2] || '';
+    const gArg2 = actionArgs[3] || '';
+    const gRest = actionArgs.slice(1).join(' ');
+    if (!p1 || p1 === '信息') {
       const info = GuildManager.getGuildInfo(uid, data);
       save();
-      return reply(info + '\n\n用法: .宠物 公会 [创建/加入/退出/恢复] [名称]');
+      return reply(info + '\n\n' + usage);
     }
     if (p1 === '创建') {
-      const result = GuildManager.createGuild(uid, data, p2);
+      const result = GuildManager.createGuild(uid, data, gRest);
       save();
       return reply(result.msg);
     }
     if (p1 === '加入') {
-      const result = GuildManager.joinGuild(uid, data, p2);
+      const result = GuildManager.joinGuild(uid, data, gRest);
       save();
       return reply(result.msg);
     }
@@ -6816,12 +7261,85 @@ cmd.solve = async (ctx, msg, argv) => {
       save();
       return reply(result.msg);
     }
-    if (p1 === '恢复' || p1 === '重建') {
-      const result = GuildManager.rebuildGuildFromUsers(p2 || data.guild, uid, data);
+    if (p1 === '成员') return reply(GuildManager.formatMembers(uid, data));
+    if (p1 === '签到') {
+      const result = GuildManager.checkIn(uid, data);
       save();
       return reply(result.msg);
     }
-    return reply('用法: .宠物 公会 [创建/加入/退出/恢复] [名称]');
+    if (p1 === '捐献') {
+      const result = GuildManager.donate(uid, data, gSub);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '公告') {
+      const result = GuildManager.setNotice(uid, data, gRest);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '转让') {
+      const result = GuildManager.transfer(uid, data, atUserId || gRest);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '任命') {
+      const result = GuildManager.appoint(uid, data, atUserId || gRest, true);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '取消任命') {
+      const result = GuildManager.appoint(uid, data, atUserId || gRest, false);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '踢出') {
+      const result = GuildManager.kick(uid, data, atUserId || gRest);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '日志') return reply(GuildManager.formatLogs(uid, data));
+    if (p1 === '商店') return reply(GuildManager.formatShop(uid, data));
+    if (p1 === '兑换') {
+      const result = GuildManager.buyShop(uid, data, gRest);
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '仓库') {
+      if (!gSub) return reply(GuildManager.formatStorage(uid, data));
+      const result = gSub === '存入'
+        ? GuildManager.storageDeposit(uid, data, gArg1, gArg2 || '1')
+        : gSub === '取出'
+          ? GuildManager.storageWithdraw(uid, data, gArg1, gArg2 || '1')
+          : { msg: '用法: .宠物公会 仓库 [存入/取出] <道具> [数量]' };
+      save();
+      return reply(result.msg);
+    }
+    if (p1 === '技能') {
+      if (!gSub) return reply(GuildManager.formatSkills(uid, data));
+      if (gSub === '升级') {
+        const result = GuildManager.upgradeSkill(uid, data, actionArgs.slice(2).join(' '));
+        save();
+        return reply(result.msg);
+      }
+      return reply(GuildManager.formatSkills(uid, data));
+    }
+    if (p1 === 'Boss' || p1 === 'boss') {
+      if (!gSub) return reply(GuildManager.formatBoss(uid, data));
+      if (gSub === '排行' || gSub === 'rank') return reply(GuildManager.formatBossRank(uid, data));
+      if (gSub === '攻击' || gSub === 'attack') {
+        const pet = getPet(gArg1 || '1');
+        const result = GuildManager.attackBoss(uid, data, pet);
+        save();
+        return reply(result.msg);
+      }
+      return reply('用法: .宠物公会 Boss [攻击/排行] [宠物编号]');
+    }
+    if (p1 === '恢复' || p1 === '重建') {
+      const result = GuildManager.rebuildGuildFromUsers(gRest || data.guild, uid, data);
+      save();
+      return reply(result.msg);
+    }
+    return reply(usage);
   }
 
   //   组队系统
@@ -7620,7 +8138,7 @@ ext.cmdMap['宠物'] = cmd;
 ext.cmdMap['万物有灵'] = cmd;
 
 // 为别名命令创建独立的命令对象
-const aliasNames = ['宠物对战', '宠物捉宠', '宠物斗殴', '宠物喂食', '宠物购买'];
+const aliasNames = ['宠物对战', '宠物捉宠', '宠物斗殴', '宠物喂食', '宠物购买', '宠物公会'];
 for (const aliasName of aliasNames) {
   const aliasCmd = seal.ext.newCmdItemInfo();
   aliasCmd.name = aliasName;
@@ -7633,7 +8151,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.19',
+  version: '4.3.20',
   ext,
 
   DB: {
