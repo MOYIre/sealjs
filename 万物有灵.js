@@ -1092,6 +1092,16 @@ const GuildManager = {
       console.warn('[公会] 数据加载失败:', e.message);
       this._guilds = {};
     }
+
+    // 兼容旧数据：修复 leader 丢失导致会长显示 undefined
+    for (const guild of Object.values(this._guilds)) {
+      if (!guild || typeof guild !== 'object') continue;
+      guild.members = Array.isArray(guild.members) ? guild.members : [];
+      if (!guild.leader && guild.members.length > 0) {
+        guild.leader = guild.members[0];
+      }
+    }
+
     return this._guilds;
   },
 
@@ -1102,34 +1112,37 @@ const GuildManager = {
 
   get guilds() { return this.load(); },
 
-  createGuild(data, name) {
+  createGuild(uid, data, name) {
     this.load();
     if (data.money < 5000) return { success: false, msg: '创建公会需要5000金币' };
     if (data.guild) return { success: false, msg: '你已加入公会' };
     if (this._guilds[name]) return { success: false, msg: '公会名已存在' };
     data.money -= 5000;
-    this._guilds[name] = { name, leader: data.uid, members: [data.uid], level: 1, bank: 0 };
+    this._guilds[name] = { name, leader: uid, members: [uid], level: 1, bank: 0 };
     data.guild = name;
     this.save();
     return { success: true, msg: `公会【${name}】创建成功！` };
   },
-  joinGuild(data, name) {
+  joinGuild(uid, data, name) {
     this.load();
     if (data.guild) return { success: false, msg: '你已加入公会' };
     const guild = this._guilds[name];
     if (!guild) return { success: false, msg: '公会不存在' };
     if (guild.members.length >= 30) return { success: false, msg: '公会成员已满' };
-    guild.members.push(data.uid);
+    guild.members.push(uid);
     data.guild = name;
     this.save();
     return { success: true, msg: `成功加入公会【${name}】` };
   },
-  leaveGuild(data) {
+  leaveGuild(uid, data) {
     this.load();
     if (!data.guild) return { success: false, msg: '你未加入公会' };
     const guild = this._guilds[data.guild];
     if (guild) {
-      guild.members = guild.members.filter(m => m !== data.uid);
+      guild.members = guild.members.filter(m => m !== uid);
+      if (guild.leader === uid && guild.members.length > 0) {
+        guild.leader = guild.members[0];
+      }
       if (guild.members.length === 0) delete this._guilds[data.guild];
     }
     delete data.guild;
@@ -1141,7 +1154,9 @@ const GuildManager = {
     if (!data.guild) return '你未加入公会';
     const guild = this._guilds[data.guild];
     if (!guild) return '公会不存在';
-    return `【${guild.name}】Lv.${guild.level}\n会长: ${guild.leader}\n成员: ${guild.members.length}/30\n资金: ${guild.bank}`;
+    const leaderUid = guild.leader || (guild.members && guild.members[0]) || '';
+    const leaderName = leaderUid ? (DB.getName(leaderUid) || leaderUid.replace('QQ:', '')) : '未知';
+    return `【${guild.name}】Lv.${guild.level}\n会长: ${leaderName}\n成员: ${guild.members.length}/30\n资金: ${guild.bank}`;
   },
 };
 
@@ -6633,17 +6648,17 @@ cmd.solve = async (ctx, msg, argv) => {
   if (action === '公会' || action === 'guild') {
     if (!p1) return reply(GuildManager.getGuildInfo(data) + '\n\n用法: .宠物 公会 [创建/加入/退出] [名称]');
     if (p1 === '创建') {
-      const result = GuildManager.createGuild(data, p2);
+      const result = GuildManager.createGuild(uid, data, p2);
       save();
       return reply(result.msg);
     }
     if (p1 === '加入') {
-      const result = GuildManager.joinGuild(data, p2);
+      const result = GuildManager.joinGuild(uid, data, p2);
       save();
       return reply(result.msg);
     }
     if (p1 === '退出') {
-      const result = GuildManager.leaveGuild(data);
+      const result = GuildManager.leaveGuild(uid, data);
       save();
       return reply(result.msg);
     }
