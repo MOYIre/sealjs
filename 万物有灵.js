@@ -2347,6 +2347,27 @@ const QuestManager = {
     this.checkDailyReset(data);
   },
 
+  resolveQuest(questRef) {
+    const ref = (questRef || '').trim();
+    if (!ref) return null;
+
+    const all = [...QUESTS.daily, ...QUESTS.main];
+
+    // 优先按任务ID精确匹配
+    let quest = all.find(q => q.id === ref);
+    if (quest) return quest;
+
+    // 其次按任务名精确匹配
+    quest = all.find(q => q.name === ref);
+    if (quest) return quest;
+
+    // 最后按任务名模糊匹配（仅唯一命中时生效）
+    const fuzzy = all.filter(q => q.name.includes(ref));
+    if (fuzzy.length === 1) return fuzzy[0];
+
+    return null;
+  },
+
   checkDailyReset(data) {
     const today = new Date().setHours(0, 0, 0, 0);
     if (data.quests.lastDailyReset < today) {
@@ -2361,9 +2382,10 @@ const QuestManager = {
     }
   },
 
-  acceptQuest(data, questId) {
-    const quest = QUESTS.daily.find(q => q.id === questId) || QUESTS.main.find(q => q.id === questId);
+  acceptQuest(data, questRef) {
+    const quest = this.resolveQuest(questRef);
     if (!quest) return { success: false, msg: '任务不存在' };
+    const questId = quest.id;
     const type = QUESTS.daily.includes(quest) ? 'daily' : 'main';
     if (data.quests[type][questId]) return { success: false, msg: '已接受该任务' };
     data.quests[type][questId] = { progress: 0, completed: false, claimed: false };
@@ -2388,9 +2410,10 @@ const QuestManager = {
     return updated;
   },
 
-  claimReward(data, questId) {
-    const quest = QUESTS.daily.find(q => q.id === questId) || QUESTS.main.find(q => q.id === questId);
+  claimReward(data, questRef) {
+    const quest = this.resolveQuest(questRef);
     if (!quest) return { success: false, msg: '任务不存在' };
+    const questId = quest.id;
     const type = QUESTS.daily.includes(quest) ? 'daily' : 'main';
     const progress = data.quests[type][questId];
     if (!progress) return { success: false, msg: '未接受该任务' };
@@ -6258,20 +6281,20 @@ cmd.solve = async (ctx, msg, argv) => {
     }
 
     if (p1 === '接受' || p1 === 'accept') {
-      if (!p2) return reply('请指定任务ID，例如: .宠物 任务 接受 daily_catch');
+      if (!p2) return reply('请指定任务名或任务ID，例如: .宠物 任务 接受 日常捕捉 或 .宠物 任务 接受 daily_catch');
       const result = QuestManager.acceptQuest(data, p2);
       save();
       return reply(result.msg);
     }
 
     if (p1 === '领取' || p1 === 'claim') {
-      if (!p2) return reply('请指定任务ID，例如: .宠物 任务 领取 daily_catch');
+      if (!p2) return reply('请指定任务名或任务ID，例如: .宠物 任务 领取 日常捕捉 或 .宠物 任务 领取 daily_catch');
       const result = QuestManager.claimReward(data, p2);
       save();
       return reply(result.msg);
     }
 
-    return reply('用法: .宠物 任务 [接受/领取] [任务ID]');
+    return reply('用法: .宠物 任务 [接受/领取] [任务名或任务ID]');
   }
 
   //   进化系统
