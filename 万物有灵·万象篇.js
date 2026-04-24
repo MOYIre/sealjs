@@ -936,7 +936,16 @@ function init() {
 
   // 为了兼容旧命令，保留 购买宠物 别名
   main.registerCommand('购买宠物', (ctx, msg, p) => {
-    return main.cmdMap['购买'].solve(ctx, msg, p);
+    const shortId = p.p1 || p.p2;
+    if (!shortId) return p.reply('用法: .宠物 购买宠物 <编号>');
+
+    const buyCmd = main._extCommands && main._extCommands['购买'];
+    if (!buyCmd || typeof buyCmd.handler !== 'function') {
+      return p.reply('购买命令不可用，请检查万象篇是否正确加载');
+    }
+
+    const aliasPayload = { ...p, p1: shortId, p2: '' };
+    return buyCmd.handler(ctx, msg, aliasPayload);
   }, '购买宠物', 'wanwu-all', '万象篇');
 
   // ========== 生灵保护机构 ==========
