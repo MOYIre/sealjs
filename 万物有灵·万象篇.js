@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.0
+// @version     3.2.1
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.0');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.1');
   seal.ext.register(ext);
 }
 
@@ -523,27 +523,46 @@ function getUserListings(uid) {
 
 function cleanExpired() {
   const now = Date.now();
+  let changed = false;
   Object.keys(marketData.listings).forEach(id => {
-    if (marketData.listings[id].expire < now) {
-      const item = marketData.listings[id];
-      delete marketData.listings[id];
-      const main = getMain();
-      if (main) {
-        try {
-          const sellerData = getUserData(main, item.sellerId);
+    const item = marketData.listings[id];
+    if (!item || item.expire >= now) return;
+
+    const main = getMain();
+    let recovered = false;
+
+    if (main && item.type === 'pet') {
+      try {
+        const sellerData = getUserData(main, item.sellerId);
+        if (sellerData) {
           const capacity = getPetCapacity(main, sellerData);
           sellerData.storage = sellerData.storage || [];
-          if (sellerData && sellerData.storage.length < capacity.maxStorage) {
+          if (sellerData.storage.length < capacity.maxStorage) {
             sellerData.storage.push(normalizePetState(item.pet));
             saveUserData(main, item.sellerId, sellerData);
+            recovered = true;
           }
-        } catch (e) {
-          console.log('[万物有灵-万象篇] 归还过期宠物失败:', e);
         }
+      } catch (e) {
+        console.log('[万物有灵-万象篇] 归还过期宠物失败:', e);
       }
+    } else {
+      recovered = true;
+    }
+
+    if (recovered) {
+      delete marketData.listings[id];
+      changed = true;
+    } else if (item.type === 'pet') {
+      // 卖家仓库已满，保留挂单并短暂延期，避免宠物直接丢失
+      item.expire = now + 6 * 60 * 60 * 1000;
+      changed = true;
+    } else {
+      delete marketData.listings[id];
+      changed = true;
     }
   });
-  saveMarket();
+  if (changed) saveMarket();
 }
 
 // ==================== 初始化 ====================
@@ -552,7 +571,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.0', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.1', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.16
+// @version     4.3.17
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.16');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.17');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.3' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.17' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1100,6 +1100,8 @@ const GuildManager = {
       if (!guild.leader && guild.members.length > 0) {
         guild.leader = guild.members[0];
       }
+      // 去重，避免旧档重复加入导致成员数异常
+      guild.members = [...new Set(guild.members.filter(Boolean))];
     }
 
     return this._guilds;
@@ -1114,25 +1116,35 @@ const GuildManager = {
 
   createGuild(uid, data, name) {
     this.load();
+    const guildName = (name || '').trim();
+    if (!guildName) return { success: false, msg: '请输入公会名称' };
     if (data.money < 5000) return { success: false, msg: '创建公会需要5000金币' };
     if (data.guild) return { success: false, msg: '你已加入公会' };
-    if (this._guilds[name]) return { success: false, msg: '公会名已存在' };
+    if (this._guilds[guildName]) return { success: false, msg: '公会名已存在' };
     data.money -= 5000;
-    this._guilds[name] = { name, leader: uid, members: [uid], level: 1, bank: 0 };
-    data.guild = name;
+    this._guilds[guildName] = { name: guildName, leader: uid, members: [uid], level: 1, bank: 0 };
+    data.guild = guildName;
     this.save();
-    return { success: true, msg: `公会【${name}】创建成功！` };
+    return { success: true, msg: `公会【${guildName}】创建成功！` };
   },
   joinGuild(uid, data, name) {
     this.load();
+    const guildName = (name || '').trim();
+    if (!guildName) return { success: false, msg: '请输入公会名称' };
     if (data.guild) return { success: false, msg: '你已加入公会' };
-    const guild = this._guilds[name];
+    const guild = this._guilds[guildName];
     if (!guild) return { success: false, msg: '公会不存在' };
+    guild.members = Array.isArray(guild.members) ? guild.members : [];
+    if (guild.members.includes(uid)) {
+      data.guild = guildName;
+      this.save();
+      return { success: true, msg: `你已在公会【${guildName}】中，已同步状态` };
+    }
     if (guild.members.length >= 30) return { success: false, msg: '公会成员已满' };
     guild.members.push(uid);
-    data.guild = name;
+    data.guild = guildName;
     this.save();
-    return { success: true, msg: `成功加入公会【${name}】` };
+    return { success: true, msg: `成功加入公会【${guildName}】` };
   },
   leaveGuild(uid, data) {
     this.load();
@@ -1173,6 +1185,20 @@ const TeamManager = {
       console.warn('[组队] 数据加载失败:', e.message);
       this._teams = {};
     }
+
+    // 兼容旧档：补齐成员与时间字段，避免空字段导致链路异常
+    for (const team of Object.values(this._teams)) {
+      if (!team || typeof team !== 'object') continue;
+      team.members = Array.isArray(team.members) ? team.members : [];
+      if (!team.leader && team.members.length > 0) {
+        team.leader = team.members[0].uid;
+        team.leaderName = team.members[0].name || team.members[0].uid || '玩家';
+      }
+      team.status = team.status || 'recruiting';
+      team.createdAt = team.createdAt || Date.now();
+      team.updatedAt = team.updatedAt || team.createdAt;
+    }
+
     return this._teams;
   },
 
@@ -1185,6 +1211,10 @@ const TeamManager = {
   // 创建队伍
   createTeam(leaderUid, leaderName, dungeonName, difficulty = '普通') {
     this.load();
+    const oldTeam = this.getUserTeam(leaderUid);
+    if (oldTeam) {
+      return { success: false, msg: '你已在队伍中，不能重复创建' };
+    }
     const teamId = 'team_' + Date.now();
     this._teams[teamId] = {
       id: teamId,
@@ -1195,6 +1225,7 @@ const TeamManager = {
       members: [{ uid: leaderUid, name: leaderName, petIdx: 0 }],
       status: 'recruiting', // recruiting, fighting, completed
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     this.save();
     return { success: true, teamId, msg: `队伍创建成功！\n副本: ${dungeonName} [${difficulty}]\n.宠物 组队 加入 @${leaderName} 加入队伍` };
@@ -1207,9 +1238,19 @@ const TeamManager = {
     if (!team) return { success: false, msg: '队伍不存在' };
     if (team.status !== 'recruiting') return { success: false, msg: '队伍已开始战斗' };
     if (team.members.length >= 4) return { success: false, msg: '队伍已满(最多4人)' };
+
+    const currentTeam = this.getUserTeam(uid);
+    if (currentTeam) {
+      if (currentTeam.id === teamId) {
+        return { success: false, msg: '你已在队伍中' };
+      }
+      return { success: false, msg: `你已在其他队伍中(${currentTeam.dungeon})` };
+    }
+
     if (team.members.find(m => m.uid === uid)) return { success: false, msg: '你已在队伍中' };
-    
+
     team.members.push({ uid, name, petIdx: 0 });
+    team.updatedAt = Date.now();
     this.save();
     return { success: true, msg: `成功加入队伍！当前成员: ${team.members.length}/4` };
   },
@@ -1219,21 +1260,23 @@ const TeamManager = {
     this.load();
     const team = this._teams[teamId];
     if (!team) return { success: false, msg: '队伍不存在' };
-    
+
     const idx = team.members.findIndex(m => m.uid === uid);
     if (idx === -1) return { success: false, msg: '你不在队伍中' };
-    
+
     team.members.splice(idx, 1);
-    
+
     // 如果队长退出，转让队长
     if (team.leader === uid && team.members.length > 0) {
       team.leader = team.members[0].uid;
       team.leaderName = team.members[0].name;
     }
-    
+
     // 如果队伍空了，删除队伍
     if (team.members.length === 0) {
       delete this._teams[teamId];
+    } else {
+      team.updatedAt = Date.now();
     }
     this.save();
     return { success: true, msg: '已退出队伍' };
@@ -1244,23 +1287,24 @@ const TeamManager = {
     this.load();
     const team = this._teams[teamId];
     if (!team) return { success: false, msg: '队伍不存在' };
-    
+
     const member = team.members.find(m => m.uid === uid);
     if (!member) return { success: false, msg: '你不在队伍中' };
-    
-    member.petIdx = petIdx;
-    this.save();
-    return { success: true, msg: `已设置第${petIdx}只宠物出战` };
-  },
 
+    member.petIdx = petIdx;
+    team.updatedAt = Date.now();
+    this.save();
+    return { success: true, msg: `已设置第${petIdx + 1}只宠物出战` };
+  },
   // 获取招募中的队伍列表
   getRecruitingTeams(dungeonName = null) {
     this.load();
     const now = Date.now();
     const list = [];
     for (const [id, team] of Object.entries(this._teams)) {
+      const lastActiveAt = team.updatedAt || team.createdAt || 0;
       // 清理超过30分钟的队伍
-      if (now - team.createdAt > 1800000) {
+      if (now - lastActiveAt > 1800000) {
         delete this._teams[id];
         continue;
       }
@@ -1282,12 +1326,12 @@ const TeamManager = {
     if (team.leader !== leaderUid) return { success: false, msg: '只有队长可以开始战斗' };
     if (team.members.length < 1) return { success: false, msg: '至少需要1人' };
     if (team.status !== 'recruiting') return { success: false, msg: '队伍状态异常' };
-    
+
     team.status = 'fighting';
+    team.updatedAt = Date.now();
     this.save();
     return { success: true, msg: '战斗开始！' };
   },
-
   // 获取用户所在队伍
   getUserTeam(uid) {
     this.load();
@@ -1313,7 +1357,8 @@ const TeamManager = {
     const expireTime = 30 * 60 * 1000; // 30分钟
     let cleaned = 0;
     for (const [id, team] of Object.entries(this._teams)) {
-      if (now - team.createdAt > expireTime) {
+      const lastActiveAt = team.updatedAt || team.createdAt || 0;
+      if (now - lastActiveAt > expireTime) {
         delete this._teams[id];
         cleaned++;
       }
@@ -4491,11 +4536,12 @@ cmd.solve = async (ctx, msg, argv) => {
     actionFromCmd = commandName.substring(2); // 提取 "对战"、"捉宠" 等
   }
 
-  const args = rawArgs.trim().split(/\s+/);
+  const args = rawArgs.trim().split(/\s+/).filter(x => x);
   const action = actionFromCmd || args[0] || '';
-  const p1 = actionFromCmd ? args[0] : args[1] || '';
-  const p2 = actionFromCmd ? args.slice(1).join(' ') : args.slice(2).join(' ') || '';
-  const p3 = actionFromCmd ? args[2] || '' : args[3] || '';
+  const actionArgs = actionFromCmd ? args : args.slice(1);
+  const p1 = actionArgs[0] || '';
+  const p2 = actionFromCmd ? actionArgs.slice(1).join(' ') : actionArgs.slice(1).join(' ') || '';
+  const p3 = actionArgs[2] || '';
 
   // 从 argv.atInfo 获取@用户（SealDice已解析好）
   const atInfo = argv.atInfo || argv.at || [];
@@ -7387,12 +7433,13 @@ cmd.solve = async (ctx, msg, argv) => {
       const configArgs = actionFromCmd ? args.slice(1) : args.slice(2);
       const endpointArg = configArgs[0] || '';
       const tokenArg = configArgs[1] || '';
-      
+
       if (!endpointArg || !tokenArg) {
         return reply('用法: .宠物 webui 配置 <端点> <Token>\n示例: .宠物 webui 配置 https://wwyl.xiaocui.icu my-token-123');
       }
       const endpoint = endpointArg.endsWith('/') ? endpointArg.slice(0, -1) : endpointArg;
       const token = tokenArg;
+      WebUIReporter.stop();
       WebUIReporter.init({ endpoint, token, enabled: false });
       ext.storageSet('webui_config', JSON.stringify({ endpoint, token, enabled: false }));
       return reply(`【WebUI配置已保存】\n端点: ${endpoint}\nToken: ******（已隐藏）\n\n使用 .宠物 webui 启用 开启上报`);
@@ -7403,7 +7450,7 @@ cmd.solve = async (ctx, msg, argv) => {
       if (!WebUIReporter.config.endpoint) {
         return reply('请先配置WebUI端点:\n.宠物 webui 配置 <端点> <Token>');
       }
-      WebUIReporter.config.enabled = true;
+      WebUIReporter.init({ enabled: true });
       ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
       return reply('【WebUI已启用】\n数据将自动上报到: ' + WebUIReporter.config.endpoint);
     }
@@ -7411,10 +7458,10 @@ cmd.solve = async (ctx, msg, argv) => {
     // .宠物 webui 禁用
     if (p1 === '禁用' || p1 === 'disable') {
       WebUIReporter.config.enabled = false;
+      WebUIReporter.stop();
       ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
       return reply('【WebUI已禁用】');
     }
-
     // .宠物 webui 同步 - 立即同步
     if (p1 === '同步' || p1 === 'sync') {
       if (!WebUIReporter.config.enabled) {
@@ -7473,7 +7520,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.3',
+  version: '4.3.17',
   ext,
 
   DB: {
