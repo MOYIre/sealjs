@@ -1094,14 +1094,19 @@ const GuildManager = {
     }
 
     // 兼容旧数据：修复 leader 丢失导致会长显示 undefined
-    for (const guild of Object.values(this._guilds)) {
+    for (const [guildName, guild] of Object.entries(this._guilds)) {
       if (!guild || typeof guild !== 'object') continue;
       guild.members = Array.isArray(guild.members) ? guild.members : [];
-      if (!guild.leader && guild.members.length > 0) {
-        guild.leader = guild.members[0];
-      }
       // 去重，避免旧档重复加入导致成员数异常
       guild.members = [...new Set(guild.members.filter(Boolean))];
+      // 清理空公会脏数据，避免出现“会长: 未知 / 成员: 0”
+      if (guild.members.length === 0) {
+        delete this._guilds[guildName];
+        continue;
+      }
+      if (!guild.leader || !guild.members.includes(guild.leader)) {
+        guild.leader = guild.members[0];
+      }
     }
 
     return this._guilds;
@@ -6173,7 +6178,26 @@ cmd.solve = async (ctx, msg, argv) => {
     if (result) return result;
   }
 
-  //   城镇系统  
+  // 扩展命令兜底：兼容“购买宠物”别名在部分运行态未注册的情况
+  if (action === '购买宠物') {
+    const shortId = p1 || p2;
+    if (!shortId) return reply('用法: .宠物 购买宠物 <编号>');
+    const buyCmd = WanwuYouling._extCommands['购买'];
+    if (buyCmd && typeof buyCmd.handler === 'function') {
+      const payload = {
+        uid, data, args, p1: shortId, p2: '', reply,
+        save: () => { DB.save(uid, data); },
+        getPet,
+        DB, PetFactory, Battle, CONFIG, FOODS, SPECIES,
+        get uid() { return uid; },
+        get data() { return data; },
+      };
+      const result = buyCmd.handler(ctx, msg, payload);
+      if (result) return result;
+    }
+  }
+
+  //   城镇系统
   if (action === '城镇' || action === 'town') {
     if (!p1) {
       // 显示所有城镇
@@ -7406,7 +7430,7 @@ cmd.solve = async (ctx, msg, argv) => {
     }
 
     // .宠物 webui - 查看状态
-    if (!p1) {
+    if (!p1 || p1 === '状态' || p1 === 'status') {
       const status = WebUIReporter.getStatus();
       const lines = ['【WebUI状态】', ''];
       lines.push(`状态: ${status.enabled ? '已启用' : '未启用'}`);
