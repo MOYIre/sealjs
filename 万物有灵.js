@@ -152,12 +152,16 @@ const WebUIReporter = {
     if (now - this._lastPatchCheckAt < this.config.patchCheckInterval) return;
     this._lastPatchCheckAt = now;
 
-    const patches = await this.fetchPatches();
-    const digest = this._buildPatchDigest(patches);
+    // 先走轻量 meta 比对，避免每次都拉取完整 payload
+    const patchMeta = await this.fetchPatchMeta();
+    const digest = this._buildPatchDigest(patchMeta);
 
-    // 没有变化就不拉取/不应用
+    // 没有变化就不拉取完整补丁
     if (digest === this._lastPatchDigest) return;
     this._lastPatchDigest = digest;
+
+    // 有变化才拉取完整补丁并应用
+    const patches = await this.fetchPatches();
 
     if (!patches.length) {
       console.log('[WebUI Reporter] 补丁状态有变化，当前无生效补丁');
@@ -275,6 +279,20 @@ const WebUIReporter = {
   getInstalledMods() {
     if (!this._installedMods) this._loadInstalledMods();
     return this._installedMods || [];
+  },
+
+  async fetchPatchMeta() {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/patch/meta`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data || [];
+    } catch (e) {
+      return [];
+    }
   },
 
   async fetchPatches() {
