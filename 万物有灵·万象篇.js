@@ -806,7 +806,7 @@ function init() {
     loadMarket(); cleanExpired();
     const listings = Object.entries(marketData.listings);
     if (!listings.length) {
-      p.reply('【市场】\n暂无物品\n.宠物 挂售 <仓库编号/物品名> <价格>\n.宠物 购买 <编号>');
+      p.reply('【市场】\n暂无物品\n.宠物 挂售 <仓库编号/物品名> <价格>\n.宠物 购买宠物 <编号>');
       return seal.ext.newCmdExecuteResult(true);
     }
     const lines = ['【市场】', `在售: ${listings.length}件`];
@@ -817,7 +817,7 @@ function init() {
         lines.push(`#${id.slice(-4)} ${formatPet(item.pet)} ${item.price}金 卖家:${item.sellerName}`);
       }
     });
-    lines.push('.宠物 购买 <编号>');
+    lines.push('.宠物 购买宠物 <编号>');
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看市场', 'wanwu-all', '万象篇');
