@@ -87,13 +87,14 @@ const WebUIReporter = {
   },
 
   async _flush() {
-    if (this._queue.length === 0) return;
-    const batch = this._queue.splice(0, this._queue.length);
+    if (this._isFlushing || this._queue.length === 0) return;
+    this._isFlushing = true;
+    const batch = this._queue.splice(0, Math.min(this._queue.length, 100));
     try {
       // 兼容不支持 new URL() 的旧版引擎，直接通过简单正则验证 http(s)
       if (!/^https?:\/\//.test(this.config.endpoint)) {
         console.error('[WebUI Reporter] endpoint 格式无效，必须以 http:// 或 https:// 开头:', this.config.endpoint);
-        this._queue.unshift(...batch);
+        // 端点无效时丢弃数据，避免队列无限增长
         return;
       }
       const res = await fetch(`${this.config.endpoint}/api/report`, {
@@ -106,11 +107,13 @@ const WebUIReporter = {
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
-        this._queue.unshift(...batch);
+        if (this._queue.length < 1000) this._queue.unshift(...batch);
       }
     } catch (e) {
       console.error('[WebUI Reporter] 上报异常:', e);
-      this._queue.unshift(...batch);
+      if (this._queue.length < 1000) this._queue.unshift(...batch);
+    } finally {
+      this._isFlushing = false;
     }
   },
 
@@ -247,6 +250,21 @@ const WebUIReporter = {
     if (!patch || !patch.payload) return false;
     try {
       const payload = typeof patch.payload === 'string' ? JSON.parse(patch.payload) : patch.payload;
+
+      // 安全检查：防止原型链污染
+      const hasProto = (obj) => {
+        if (!obj || typeof obj !== 'object') return false;
+        if ('__proto__' in obj || 'constructor' in obj || 'prototype' in obj) return true;
+        for (const key in obj) {
+          if (Object.prototype.hasOwnProperty.call(obj, key) && hasProto(obj[key])) return true;
+        }
+        return false;
+      };
+      if (hasProto(payload)) {
+        console.error('[WebUI Reporter] 补丁包含非法字段');
+        return false;
+      }
+
       switch (patch.scope) {
         case 'species':
           if (payload.species && typeof SPECIES !== 'undefined') Object.assign(SPECIES, payload.species);
@@ -261,11 +279,11 @@ const WebUIReporter = {
           if (payload.config && typeof CONFIG !== 'undefined') Object.assign(CONFIG, payload.config);
           break;
         case 'shops':
-          return applyShopPatch(payload);
+          return typeof applyShopPatch === 'function' ? applyShopPatch(payload) : false;
         case 'encounters':
-          return applyEncounterPatch(payload);
+          return typeof applyEncounterPatch === 'function' ? applyEncounterPatch(payload) : false;
         case 'dungeons':
-          return applyDungeonPatch(payload);
+          return typeof applyDungeonPatch === 'function' ? applyDungeonPatch(payload) : false;
       }
       return true;
     } catch (e) {
@@ -6849,7 +6867,7 @@ cmd.solve = async (ctx, msg, argv) => {
       if (!playerItems[p1] || playerItems[p1] <= 0) return reply(`你没有 ${p1}`);
       const count = Math.max(1, parseInt(p2) || 1);
       if (playerItems[p1] < count) return reply(`你的 ${p1} 数量不足，当前拥有: ${playerItems[p1]}`);
-      
+
       const price = 10; // 系统回收固定价格 10 金币
       const total = price * count;
       

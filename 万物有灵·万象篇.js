@@ -804,8 +804,10 @@ function init() {
   }, '查看市场', 'wanwu-all', '万象篇');
 
   main.registerCommand('挂售', (ctx, msg, p) => {
-    const target = p.p1, price = parseInt(p.p2), count = parseInt(p.p3) || 1;
-    if (!target || isNaN(price)) return p.reply('用法: .宠物 挂售 <宠物编号/物品名> <价格> [数量]\n编号: 1-3队伍, 4-18仓库');
+    const target = p.p1;
+    let price = parseInt(p.p2);
+    let count = parseInt(p.p3) || 1;
+    if (!target || isNaN(price) || price <= 0 || count <= 0) return p.reply('用法: .宠物 挂售 <宠物编号/物品名> <价格> [数量]\n价格和数量必须大于0\n编号: 1-3队伍, 4-18仓库');
     
     const mainData = getUserData(main, p.uid);
     const listingId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
