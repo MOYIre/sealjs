@@ -1,0 +1,17 @@
+name: Purge jsDelivr Cache
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge 万物有灵.js
+        run: |
+          curl -fsSL "https://purge.jsdelivr.net/gh/MOYIre/sealjs@main/%E4%B8%87%E7%89%A9%E6%9C%89%E7%81%B5.js"
+
+      - name: Purge 万物有灵·万象篇.js
+        run: |
+          curl -fsSL "https://purge.jsdelivr.net/gh/MOYIre/sealjs@main/%E4%B8%87%E7%89%A9%E6%9C%89%E7%81%B5%C2%B7%E4%B8%87%E8%B1%A1%E7%AF%87.js"
