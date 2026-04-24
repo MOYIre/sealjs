@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.17
+// @version     4.3.19
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.17');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.19');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.17' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.19' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1093,19 +1093,15 @@ const GuildManager = {
       this._guilds = {};
     }
 
-    // 兼容旧数据：修复 leader 丢失导致会长显示 undefined
+    // 兼容旧数据：只补齐字段，不再自动删除空成员公会，避免全局表异常时误删真实公会
     for (const [guildName, guild] of Object.entries(this._guilds)) {
       if (!guild || typeof guild !== 'object') continue;
-      guild.members = Array.isArray(guild.members) ? guild.members : [];
-      // 去重，避免旧档重复加入导致成员数异常
-      guild.members = [...new Set(guild.members.filter(Boolean))];
-      // 清理空公会脏数据，避免出现“会长: 未知 / 成员: 0”
-      if (guild.members.length === 0) {
-        delete this._guilds[guildName];
-        continue;
-      }
-      if (!guild.leader || !guild.members.includes(guild.leader)) {
-        guild.leader = guild.members[0];
+      guild.name = guild.name || guildName;
+      guild.members = Array.isArray(guild.members) ? [...new Set(guild.members.filter(Boolean))] : [];
+      guild.level = guild.level || 1;
+      guild.bank = guild.bank || 0;
+      if (!guild.leader || (guild.members.length > 0 && !guild.members.includes(guild.leader))) {
+        guild.leader = guild.members[0] || '';
       }
     }
 
@@ -1119,12 +1115,67 @@ const GuildManager = {
 
   get guilds() { return this.load(); },
 
+  ensureGuildFromUser(uid, data) {
+    this.load();
+    const guildName = (data && data.guild || '').trim();
+    if (!guildName) return null;
+    let guild = this._guilds[guildName];
+    if (!guild) {
+      guild = this.rebuildGuildFromUsers(guildName, uid, data).guild;
+      return guild;
+    }
+    guild.name = guild.name || guildName;
+    guild.members = Array.isArray(guild.members) ? [...new Set(guild.members.filter(Boolean))] : [];
+    if (!guild.members.includes(uid)) guild.members.push(uid);
+    if (!guild.leader || !guild.members.includes(guild.leader)) guild.leader = guild.members[0];
+    guild.level = guild.level || 1;
+    guild.bank = guild.bank || 0;
+    this.save();
+    return guild;
+  },
+
+  rebuildGuildFromUsers(name, fallbackUid = '', fallbackData = null) {
+    this.load();
+    const guildName = (name || '').trim();
+    if (!guildName) return { success: false, msg: '请输入公会名称', guild: null };
+
+    const members = [];
+    try {
+      const savedNameMap = ext.storageGet('nameMap_global');
+      const nameMap = savedNameMap ? JSON.parse(savedNameMap) : {};
+      for (const uid of Object.keys(nameMap)) {
+        const raw = ext.storageGet('u_' + uid);
+        if (!raw) continue;
+        const userData = JSON.parse(raw);
+        if (userData && userData.guild === guildName) members.push(uid);
+      }
+    } catch (e) {
+      console.warn('[公会] 从玩家数据恢复公会失败:', e.message);
+    }
+
+    if (fallbackUid && fallbackData && fallbackData.guild === guildName) members.push(fallbackUid);
+    const uniqueMembers = [...new Set(members.filter(Boolean))];
+    const oldGuild = this._guilds[guildName] || {};
+    const guild = this._guilds[guildName] = {
+      name: oldGuild.name || guildName,
+      leader: uniqueMembers.includes(oldGuild.leader) ? oldGuild.leader : (uniqueMembers[0] || fallbackUid || ''),
+      members: uniqueMembers,
+      level: oldGuild.level || 1,
+      bank: oldGuild.bank || 0,
+    };
+    this.save();
+    return { success: true, msg: `已从玩家存档恢复公会【${guildName}】，成员${guild.members.length}/30`, guild };
+  },
+
   createGuild(uid, data, name) {
     this.load();
     const guildName = (name || '').trim();
     if (!guildName) return { success: false, msg: '请输入公会名称' };
     if (data.money < 5000) return { success: false, msg: '创建公会需要5000金币' };
-    if (data.guild) return { success: false, msg: '你已加入公会' };
+    if (data.guild) {
+      this.ensureGuildFromUser(uid, data);
+      return { success: false, msg: '你已加入公会' };
+    }
     if (this._guilds[guildName]) return { success: false, msg: '公会名已存在' };
     data.money -= 5000;
     this._guilds[guildName] = { name: guildName, leader: uid, members: [uid], level: 1, bank: 0 };
@@ -1136,7 +1187,10 @@ const GuildManager = {
     this.load();
     const guildName = (name || '').trim();
     if (!guildName) return { success: false, msg: '请输入公会名称' };
-    if (data.guild) return { success: false, msg: '你已加入公会' };
+    if (data.guild) {
+      this.ensureGuildFromUser(uid, data);
+      return { success: false, msg: '你已加入公会' };
+    }
     const guild = this._guilds[guildName];
     if (!guild) return { success: false, msg: '公会不存在' };
     guild.members = Array.isArray(guild.members) ? guild.members : [];
@@ -1147,6 +1201,9 @@ const GuildManager = {
     }
     if (guild.members.length >= 30) return { success: false, msg: '公会成员已满' };
     guild.members.push(uid);
+    if (!guild.leader || !guild.members.includes(guild.leader)) guild.leader = guild.members[0];
+    guild.level = guild.level || 1;
+    guild.bank = guild.bank || 0;
     data.guild = guildName;
     this.save();
     return { success: true, msg: `成功加入公会【${guildName}】` };
@@ -1166,12 +1223,12 @@ const GuildManager = {
     this.save();
     return { success: true, msg: '已退出公会' };
   },
-  getGuildInfo(data) {
+  getGuildInfo(uid, data) {
     this.load();
     if (!data.guild) return '你未加入公会';
-    const guild = this._guilds[data.guild];
-    if (!guild) return '公会不存在';
-    const leaderUid = guild.leader || (guild.members && guild.members[0]) || '';
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const leaderUid = guild.leader || guild.members[0] || '';
     const leaderName = leaderUid ? (DB.getName(leaderUid) || leaderUid.replace('QQ:', '')) : '未知';
     return `【${guild.name}】Lv.${guild.level}\n会长: ${leaderName}\n成员: ${guild.members.length}/30\n资金: ${guild.bank}`;
   },
@@ -6739,7 +6796,11 @@ cmd.solve = async (ctx, msg, argv) => {
   }
   //   公会系统
   if (action === '公会' || action === 'guild') {
-    if (!p1) return reply(GuildManager.getGuildInfo(data) + '\n\n用法: .宠物 公会 [创建/加入/退出] [名称]');
+    if (!p1) {
+      const info = GuildManager.getGuildInfo(uid, data);
+      save();
+      return reply(info + '\n\n用法: .宠物 公会 [创建/加入/退出/恢复] [名称]');
+    }
     if (p1 === '创建') {
       const result = GuildManager.createGuild(uid, data, p2);
       save();
@@ -6755,7 +6816,12 @@ cmd.solve = async (ctx, msg, argv) => {
       save();
       return reply(result.msg);
     }
-    return reply('用法: .宠物 公会 [创建/加入/退出] [名称]');
+    if (p1 === '恢复' || p1 === '重建') {
+      const result = GuildManager.rebuildGuildFromUsers(p2 || data.guild, uid, data);
+      save();
+      return reply(result.msg);
+    }
+    return reply('用法: .宠物 公会 [创建/加入/退出/恢复] [名称]');
   }
 
   //   组队系统
@@ -7567,7 +7633,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.17',
+  version: '4.3.19',
   ext,
 
   DB: {
