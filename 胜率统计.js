@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        命题集
 // @author      铭茗
-// @version     1.0.9
+// @version     1.0.10
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -11,7 +11,7 @@
 
 let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('命题集', '铭茗', '1.0.9');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.10');
   seal.ext.register(ext);
 } else {
   // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
@@ -211,12 +211,32 @@ function getPlayer(game, playerKey) {
   return null;
 }
 
+function parseOutcomeWord(s) {
+  const t = normalizeName(s).toLowerCase();
+  if (['胜', '赢', 'win', 'w', '+'].includes(t)) return { winN: 1, loseN: 0 };
+  if (['负', '输', '败', 'lose', 'loss', 'l', '-'].includes(t)) return { winN: 0, loseN: 1 };
+  return null;
+}
+
 function parseAddRest(rest) {
   const r = normalizeName(rest);
   if (!r) return null;
   const parts = r.split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return null;
+  if (parts.length < 1) return null;
 
+  const firstOutcome = parseOutcomeWord(parts[0]);
+  if (firstOutcome && parts.length > 1) {
+    const playerSpec = parts.slice(1).join(' ');
+    return { playerSpec: playerSpec || '我', winN: firstOutcome.winN, loseN: firstOutcome.loseN };
+  }
+
+  const outcome = parseOutcomeWord(parts[parts.length - 1]);
+  if (outcome) {
+    const playerSpec = parts.slice(0, -1).join(' ');
+    return { playerSpec: playerSpec || '我', winN: outcome.winN, loseN: outcome.loseN };
+  }
+
+  if (parts.length < 2) return null;
   const loseN = toNonNegativeInt(parts[parts.length - 1]);
   const winN = toNonNegativeInt(parts[parts.length - 2]);
   if (isNaN(winN) || isNaN(loseN)) return null;
@@ -261,8 +281,11 @@ function replyHelp(ctx, msg) {
     '━━━━━━━━ 录入 ━━━━━━━━',
     '.胜率 新增 <游戏> <玩家> <胜> <负>',
     '.胜率 新增 <游戏> <胜> <负>',
+    '.胜率 新增 <游戏> <玩家> 胜/负',
+    '.胜率 新增 <游戏> 胜/负 [@玩家]',
     '  └ 不写玩家时，默认记录为自己',
     '  └ 玩家名可以带空格；最后两个数字会被识别为胜/负',
+    '  └ “胜/负”写法会直接记录一场胜利或失败',
     '',
     '.胜率 撤销 [游戏]',
     '  └ 撤销你最近一次录入；可指定游戏',
@@ -294,6 +317,8 @@ function replyHelp(ctx, msg) {
     '.胜率 alias add botc 血染钟楼',
     '.胜率 botc 列表 20',
     '.胜率 新增 狼人杀 张 三 3 2',
+    '.胜率 新增 狼人杀 张三 胜',
+    '.胜率 新增 狼人杀 负 @玩家',
     '.胜率 撤销 狼人杀',
   ].join('\n');
 
