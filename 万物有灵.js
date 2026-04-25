@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.20
+// @version     4.3.21
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.20');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.21');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.20' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.21' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1108,11 +1108,37 @@ const GUILD_SKILLS = {
   '训练': { name: '训练', max: 5, baseCost: 1600, desc: '公会Boss参与奖励每级+2%' },
 };
 
+const GUILD_TASKS = {
+  daily: {
+    'daily_checkin': { name: '每日同心', desc: '公会成员累计签到', target: 5, action: 'checkIn', exp: 50, bank: 100, contribution: 5 },
+    'daily_donate': { name: '每日捐献', desc: '公会累计捐献金币', target: 2000, action: 'donate', exp: 40, bank: 120, contribution: 5 },
+    'daily_boss': { name: '首领试炼', desc: '累计挑战公会Boss', target: 3, action: 'bossAttack', exp: 60, bank: 150, contribution: 8 },
+    'daily_storage': { name: '物资互助', desc: '累计存入仓库道具', target: 3, action: 'storageDeposit', exp: 30, bank: 80, contribution: 4, userLimit: 1 },
+    'daily_shop': { name: '公会流通', desc: '累计兑换公会商店', target: 2, action: 'shopBuy', exp: 30, bank: 80, contribution: 4 },
+  },
+  weekly: {
+    'weekly_checkin': { name: '七日协作', desc: '本周累计签到', target: 20, action: 'checkIn', exp: 180, bank: 500, contribution: 15 },
+    'weekly_donate': { name: '共建资金', desc: '本周累计捐献金币', target: 15000, action: 'donate', exp: 220, bank: 800, contribution: 18 },
+    'weekly_boss': { name: '讨伐演练', desc: '本周累计挑战公会Boss', target: 15, action: 'bossAttack', exp: 260, bank: 900, contribution: 20 },
+    'weekly_storage': { name: '物资储备', desc: '本周累计存入仓库道具', target: 10, action: 'storageDeposit', exp: 140, bank: 450, contribution: 12, userLimit: 3 },
+  },
+};
+
 function guildDateKey(ts = Date.now()) {
   const d = new Date(ts);
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function guildWeekKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const day = d.getDay() || 7;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - day);
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
 const GuildManager = {
@@ -1191,6 +1217,7 @@ const GuildManager = {
     guild.daily.donated = guild.daily.donated || {};
     guild.daily.shop = guild.daily.shop || {};
     guild.daily.bossAttempts = guild.daily.bossAttempts || {};
+    this.normalizeTasks(guild);
     guild.logs = Array.isArray(guild.logs) ? guild.logs.slice(-20) : [];
     guild.storage = guild.storage || {};
     guild.skills = guild.skills || {};
@@ -1210,6 +1237,106 @@ const GuildManager = {
     guild.logs = guild.logs || [];
     guild.logs.push(`${new Date().toLocaleString()} ${text}`);
     if (guild.logs.length > 20) guild.logs = guild.logs.slice(-20);
+  },
+
+  normalizeTasks(guild) {
+    const today = guildDateKey();
+    const week = guildWeekKey();
+    guild.tasks = guild.tasks || {};
+    if (!guild.tasks.daily || guild.tasks.daily.date !== today) {
+      guild.tasks.daily = { date: today, progress: {}, claimed: {}, contributors: {}, userProgress: {} };
+    }
+    if (!guild.tasks.weekly || guild.tasks.weekly.week !== week) {
+      guild.tasks.weekly = { week, progress: {}, claimed: {}, contributors: {}, userProgress: {} };
+    }
+    guild.tasks.daily.progress = guild.tasks.daily.progress || {};
+    guild.tasks.daily.claimed = guild.tasks.daily.claimed || {};
+    guild.tasks.daily.contributors = guild.tasks.daily.contributors || {};
+    guild.tasks.daily.userProgress = guild.tasks.daily.userProgress || {};
+    guild.tasks.weekly.progress = guild.tasks.weekly.progress || {};
+    guild.tasks.weekly.claimed = guild.tasks.weekly.claimed || {};
+    guild.tasks.weekly.contributors = guild.tasks.weekly.contributors || {};
+    guild.tasks.weekly.userProgress = guild.tasks.weekly.userProgress || {};
+  },
+
+  addTaskProgress(guild, action, uid, amount = 1) {
+    this.normalizeTasks(guild);
+    const n = Math.max(1, Math.floor(Number(amount) || 1));
+    for (const period of ['daily', 'weekly']) {
+      const defs = GUILD_TASKS[period] || {};
+      const state = guild.tasks[period];
+      for (const [id, task] of Object.entries(defs)) {
+        if (task.action !== action) continue;
+        let add = n;
+        if (task.userLimit) {
+          state.userProgress[id] = state.userProgress[id] || {};
+          const used = state.userProgress[id][uid] || 0;
+          add = Math.min(add, Math.max(0, task.userLimit - used));
+          if (add <= 0) continue;
+          state.userProgress[id][uid] = used + add;
+        }
+        state.progress[id] = Math.min(task.target, (state.progress[id] || 0) + add);
+        state.contributors[id] = state.contributors[id] || {};
+        state.contributors[id][uid] = true;
+      }
+    }
+  },
+
+  claimTask(uid, data, period, taskId) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    let periodKey = period === 'weekly' || period === '周常' || period === '每周' ? 'weekly' : 'daily';
+    let id = taskId;
+    if (!id && GUILD_TASKS.daily[period]) {
+      periodKey = 'daily';
+      id = period;
+    } else if (!id && GUILD_TASKS.weekly[period]) {
+      periodKey = 'weekly';
+      id = period;
+    }
+    const defs = GUILD_TASKS[periodKey] || {};
+    const task = defs[id];
+    if (!task) return { success: false, msg: `任务不存在，可用: ${Object.keys(defs).join('、')}` };
+    this.normalizeTasks(guild);
+    const state = guild.tasks[periodKey];
+    const progress = state.progress[id] || 0;
+    if (progress < task.target) return { success: false, msg: `任务未完成：${progress}/${task.target}` };
+    if (state.claimed[id]) return { success: false, msg: '该任务奖励已领取' };
+    const contributors = Object.keys(state.contributors[id] || {}).filter(memberId => guild.members.includes(memberId));
+    if (contributors.length === 0) contributors.push(uid);
+    const eachContribution = Math.max(1, Math.floor(task.contribution / Math.max(1, contributors.length)));
+    for (const memberId of contributors) {
+      const member = this.getMember(guild, memberId);
+      member.contribution = (member.contribution || 0) + eachContribution;
+      member.totalContribution = (member.totalContribution || 0) + eachContribution;
+    }
+    guild.exp += task.exp;
+    guild.bank += task.bank;
+    state.claimed[id] = uid;
+    const ups = this.checkLevelUp(guild);
+    this.addLog(guild, `${this.getMemberName(uid)} 领取${periodKey === 'daily' ? '每日' : '每周'}任务【${task.name}】奖励`);
+    this.save();
+    return { success: true, msg: `任务奖励领取成功：公会经验+${task.exp}，资金+${task.bank}\n参与成员贡献+${eachContribution}${ups.length ? `\n公会升级到 Lv.${guild.level}！` : ''}` };
+  },
+
+  formatTasks(uid, data, period = 'daily') {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const periodKey = period === 'weekly' || period === '周常' || period === '每周' ? 'weekly' : 'daily';
+    this.normalizeTasks(guild);
+    const defs = GUILD_TASKS[periodKey] || {};
+    const state = guild.tasks[periodKey];
+    const title = periodKey === 'daily' ? `每日任务 ${state.date}` : `每周任务 ${state.week}`;
+    const lines = [`【公会${title}】`];
+    for (const [id, task] of Object.entries(defs)) {
+      const progress = Math.min(task.target, state.progress[id] || 0);
+      const done = progress >= task.target;
+      const claimed = state.claimed[id] ? '已领' : (done ? '可领' : '未完成');
+      lines.push(`${task.name}(${id}) ${progress}/${task.target} ${claimed}\n- ${task.desc}；奖励: 经验${task.exp}/资金${task.bank}/贡献${task.contribution}`);
+    }
+    lines.push(`领取: .宠物公会 任务 领取 ${periodKey === 'daily' ? 'daily' : 'weekly'} <任务ID>`);
+    this.save();
+    return lines.join('\n');
   },
 
   checkLevelUp(guild) {
@@ -1382,6 +1509,7 @@ const GuildManager = {
     guild.exp += 10;
     guild.bank += 20;
     guild.daily.checkIns = (guild.daily.checkIns || 0) + 1;
+    this.addTaskProgress(guild, 'checkIn', uid, 1);
     data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + money);
     const ups = this.checkLevelUp(guild);
     this.addLog(guild, `${this.getMemberName(uid)} 签到，贡献+${contribution}`);
@@ -1410,6 +1538,7 @@ const GuildManager = {
     member.totalContribution += contribution;
     guild.bank += real;
     guild.exp += contribution;
+    this.addTaskProgress(guild, 'donate', uid, real);
     const ups = this.checkLevelUp(guild);
     this.addLog(guild, `${this.getMemberName(uid)} 捐献${real}金币`);
     this.save();
@@ -1514,6 +1643,7 @@ const GuildManager = {
     guild.daily.shop[uid][name] = bought + 1;
     data.items = data.items || {};
     data.items[item.item] = (data.items[item.item] || 0) + item.count;
+    this.addTaskProgress(guild, 'shopBuy', uid, 1);
     this.addLog(guild, `${this.getMemberName(uid)} 兑换 ${name}`);
     this.save();
     return { success: true, msg: `兑换成功：${item.item}x${item.count}，消耗${item.cost}贡献` };
@@ -1530,6 +1660,7 @@ const GuildManager = {
     data.items[itemName] -= n;
     if (data.items[itemName] <= 0) delete data.items[itemName];
     guild.storage[itemName] = (guild.storage[itemName] || 0) + n;
+    this.addTaskProgress(guild, 'storageDeposit', uid, n);
     this.addLog(guild, `${this.getMemberName(uid)} 存入 ${itemName}x${n}`);
     this.save();
     return { success: true, msg: `已存入公会仓库：${itemName}x${n}` };
@@ -1634,6 +1765,7 @@ const GuildManager = {
     if (boss.hp <= 0 || boss.killed) return { success: false, msg: '今日公会Boss已被击败' };
     member.bossAttempts = attempts + 1;
     guild.daily.bossAttempts[uid] = member.bossAttempts;
+    this.addTaskProgress(guild, 'bossAttack', uid, 1);
     pet.energy -= 20;
     const skillBoost = 1 + ((guild.skills['猎手'] || 0) * 0.02);
     const damage = Math.max(1, Math.floor(((pet.atk || 10) * 3 + (pet.level || 1) * 8 - boss.def + Math.floor(Math.random() * 50)) * skillBoost));
@@ -7236,7 +7368,7 @@ cmd.solve = async (ctx, msg, argv) => {
   }
   //   公会系统
   if (action === '公会' || action === 'guild') {
-    const usage = '用法: .宠物 公会 [信息/成员/签到/捐献/商店/兑换/仓库/技能/Boss/公告/转让/任命/取消任命/踢出/日志/创建/加入/退出/恢复] [参数]';
+    const usage = '用法: .宠物 公会 [信息/成员/签到/捐献/任务/商店/兑换/仓库/技能/Boss/公告/转让/任命/取消任命/踢出/日志/创建/加入/退出/恢复] [参数]';
     const gSub = actionArgs[1] || '';
     const gArg1 = actionArgs[2] || '';
     const gArg2 = actionArgs[3] || '';
@@ -7271,6 +7403,14 @@ cmd.solve = async (ctx, msg, argv) => {
       const result = GuildManager.donate(uid, data, gSub);
       save();
       return reply(result.msg);
+    }
+    if (p1 === '任务') {
+      if (gSub === '领取') {
+        const result = GuildManager.claimTask(uid, data, gArg1, gArg2);
+        save();
+        return reply(result.msg);
+      }
+      return reply(GuildManager.formatTasks(uid, data, gSub));
     }
     if (p1 === '公告') {
       const result = GuildManager.setNotice(uid, data, gRest);
@@ -8151,7 +8291,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.20',
+  version: '4.3.21',
   ext,
 
   DB: {
