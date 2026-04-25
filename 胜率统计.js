@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        命题集
 // @author      铭茗
-// @version     1.0.12
+// @version     1.0.13
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -11,7 +11,7 @@
 
 let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('命题集', '铭茗', '1.0.12');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.13');
   seal.ext.register(ext);
 } else {
   // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
@@ -693,6 +693,7 @@ function handleQuery(ctx, msg, cmdArgs, fixedGameName) {
 const cmdWinrate = seal.ext.newCmdItemInfo();
 cmdWinrate.name = '胜率';
 cmdWinrate.help = '胜率统计，输入 .胜率 help 查看用法';
+cmdWinrate.allowDelegate = true;
 cmdWinrate.solve = (ctx, msg, cmdArgs) => {
   const sub = cmdArgs.getArgN(1);
 
@@ -734,6 +735,7 @@ function makeGameCmd(commandName, canonicalGameName) {
   const cmd = seal.ext.newCmdItemInfo();
   cmd.name = `${commandName}胜率`;
   cmd.help = `用法：.${commandName}胜率 [新增|撤销|列表 N|玩家]\n例如：.${commandName}胜率 新增 1 0`;
+  cmd.allowDelegate = true;
   cmd.solve = (ctx, msg, cmdArgs) => {
     const sub = cmdArgs.getArgN(1);
 
