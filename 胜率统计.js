@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        命题集
 // @author      铭茗
-// @version     1.0.8
+// @version     1.0.9
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -11,7 +11,7 @@
 
 let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('命题集', '铭茗', '1.0.8');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.9');
   seal.ext.register(ext);
 } else {
   // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
@@ -96,16 +96,54 @@ function getSelfPlayer(ctx) {
   return { key, name };
 }
 
-function parsePlayerSpec(ctx, spec) {
+function normalizeUserId(uid) {
+  const s = normalizeName(uid);
+  if (!s) return '';
+  if (s.indexOf(':') >= 0) return s;
+  if (/^\d{3,}$/.test(s)) return 'QQ:' + s;
+  return s;
+}
+
+function getPlayerKeyAliases(playerKey) {
+  const k = normalizeName(playerKey);
+  if (!k) return [];
+
+  const qq = k.match(/^QQ:(\d{5,})$/);
+  if (qq) return [k, qq[1]];
+
+  if (/^\d{5,}$/.test(k)) return ['QQ:' + k, k];
+  return [k];
+}
+
+function getAtPlayerSpec(ctx, msg, cmdArgs) {
+  const atInfo = (cmdArgs && (cmdArgs.atInfo || cmdArgs.at)) || (msg && (msg.atInfo || msg.at)) || (ctx && (ctx.atInfo || ctx.at)) || [];
+  if (atInfo.length > 0 && atInfo[0].userId) {
+    return {
+      key: normalizeUserId(atInfo[0].userId),
+      name: atInfo[0].name || atInfo[0].nickname || atInfo[0].userId,
+    };
+  }
+  return null;
+}
+
+function parsePlayerSpec(ctx, msg, cmdArgs, spec) {
+  const atPlayer = getAtPlayerSpec(ctx, msg, cmdArgs);
+  if (atPlayer) return atPlayer;
+
   const s = normalizeName(spec);
   if (!s || s === '我' || s === '自己' || s === '本人' || s === 'me') {
     return getSelfPlayer(ctx);
   }
 
-  // 允许写 @123456 或 123456
-  const m = s.match(/^@?(\d{3,})$/);
-  if (m) {
-    return { key: m[1], name: m[1] };
+  // 兼容 SealDice 原始 CQ 码、@123456、纯 QQ 号
+  const cqMatch = s.match(/\[CQ:at,qq=(\d+)\]/);
+  if (cqMatch) {
+    return { key: normalizeUserId(cqMatch[1]), name: cqMatch[1] };
+  }
+
+  const qqMatch = s.match(/^@?(\d{5,})$/);
+  if (qqMatch) {
+    return { key: normalizeUserId(qqMatch[1]), name: qqMatch[1] };
   }
 
   return { key: s, name: s };
@@ -161,14 +199,16 @@ function ensurePlayer(game, playerKey, displayName) {
 }
 
 function getPlayer(game, playerKey) {
-  const k = normalizeName(playerKey);
-  if (!k) return null;
-  const rec = game.players ? game.players[k] : null;
-  if (!rec || typeof rec !== 'object') return null;
-  if (typeof rec.win !== 'number') rec.win = 0;
-  if (typeof rec.lose !== 'number') rec.lose = 0;
-  if (!rec.name) rec.name = k;
-  return rec;
+  const keys = getPlayerKeyAliases(playerKey);
+  for (const k of keys) {
+    const rec = game.players ? game.players[k] : null;
+    if (!rec || typeof rec !== 'object') continue;
+    if (typeof rec.win !== 'number') rec.win = 0;
+    if (typeof rec.lose !== 'number') rec.lose = 0;
+    if (!rec.name) rec.name = k;
+    return rec;
+  }
+  return null;
 }
 
 function parseAddRest(rest) {
@@ -296,7 +336,7 @@ function handleAdd(ctx, msg, cmdArgs, fixedGameName) {
     return;
   }
 
-  const p = parsePlayerSpec(ctx, playerSpec);
+  const p = parsePlayerSpec(ctx, msg, cmdArgs, playerSpec);
   const rec = ensurePlayer(g.game, p.key, p.name);
 
   const nextWin = rec.win + winN;
@@ -555,7 +595,7 @@ function handleQuery(ctx, msg, cmdArgs, fixedGameName) {
 
   // 个人（指定玩家）
   if (arg2 && arg2 !== '我的' && arg2 !== '我') {
-    const p = parsePlayerSpec(ctx, arg2);
+    const p = parsePlayerSpec(ctx, msg, cmdArgs, arg2);
     const rec = getPlayer(game, p.key);
     if (!rec) {
       seal.replyToSender(ctx, msg, `【${g.gameKey}】暂无玩家“${p.name}”的记录`);
