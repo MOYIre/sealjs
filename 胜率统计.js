@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        命题集
 // @author      铭茗
-// @version     1.0.10
+// @version     1.0.11
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -11,7 +11,7 @@
 
 let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('命题集', '铭茗', '1.0.10');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.11');
   seal.ext.register(ext);
 } else {
   // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
@@ -96,6 +96,11 @@ function getSelfPlayer(ctx) {
   return { key, name };
 }
 
+function isSelfName(ctx, s) {
+  const name = normalizeName(ctx.player && ctx.player.name);
+  return !!name && normalizeName(s) === name;
+}
+
 function normalizeUserId(uid) {
   const s = normalizeName(uid);
   if (!s) return '';
@@ -131,7 +136,7 @@ function parsePlayerSpec(ctx, msg, cmdArgs, spec) {
   if (atPlayer) return atPlayer;
 
   const s = normalizeName(spec);
-  if (!s || s === '我' || s === '自己' || s === '本人' || s === 'me') {
+  if (!s || s === '我' || s === '自己' || s === '本人' || s === 'me' || isSelfName(ctx, s)) {
     return getSelfPlayer(ctx);
   }
 
@@ -196,6 +201,25 @@ function ensurePlayer(game, playerKey, displayName) {
   if (typeof game.players[k].win !== 'number') game.players[k].win = 0;
   if (typeof game.players[k].lose !== 'number') game.players[k].lose = 0;
   return game.players[k];
+}
+
+function mergePlayerRecords(game, targetKey, aliasKey) {
+  const target = normalizeName(targetKey);
+  const alias = normalizeName(aliasKey);
+  if (!target || !alias || target === alias || !game.players || !game.players[alias]) return;
+
+  const from = game.players[alias];
+  const to = ensurePlayer(game, target, from.name || target);
+  to.win += typeof from.win === 'number' ? from.win : 0;
+  to.lose += typeof from.lose === 'number' ? from.lose : 0;
+  delete game.players[alias];
+}
+
+function mergeSelfNameRecord(ctx, game, playerKey) {
+  if (normalizeName(playerKey) !== normalizeName(ctx.player.userId)) return;
+  const name = normalizeName(ctx.player.name);
+  if (!name) return;
+  mergePlayerRecords(game, ctx.player.userId, name);
 }
 
 function getPlayer(game, playerKey) {
@@ -362,6 +386,7 @@ function handleAdd(ctx, msg, cmdArgs, fixedGameName) {
   }
 
   const p = parsePlayerSpec(ctx, msg, cmdArgs, playerSpec);
+  mergeSelfNameRecord(ctx, g.game, p.key);
   const rec = ensurePlayer(g.game, p.key, p.name);
 
   const nextWin = rec.win + winN;
