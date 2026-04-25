@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.21
+// @version     4.3.22
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.21');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.22');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.21' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.22' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1124,6 +1124,49 @@ const GUILD_TASKS = {
   },
 };
 
+const GUILD_BOSS_CONFIG = {
+  energyCost: 20,
+  dailyChallengeLimit: 3,
+  minDamageRateForParticipate: 0.005,
+  minDamageRateForRank: 0.03,
+  difficulties: {
+    '简单': { name: '简单', hpRate: 0.6, atkRate: 0.8, rewardRate: 0.7, unlock: 1 },
+    '普通': { name: '普通', hpRate: 1, atkRate: 1, rewardRate: 1, unlock: 1 },
+    '困难': { name: '困难', hpRate: 1.8, atkRate: 1.25, rewardRate: 1.35, unlock: 3 },
+    '噩梦': { name: '噩梦', hpRate: 3, atkRate: 1.6, rewardRate: 1.8, unlock: 5 },
+  },
+  phases: [
+    { name: '稳固', minRate: 0.7, damageTakenRate: 1, skillRateAdd: 0 },
+    { name: '压迫', minRate: 0.3, damageTakenRate: 0.9, skillRateAdd: 0.1 },
+    { name: '狂暴', minRate: 0, damageTakenRate: 0.85, skillRateAdd: 0.2 },
+  ],
+  skills: {
+    '厚甲': { name: '厚甲', desc: '触发时本次受到伤害降低25%' },
+    '狂怒': { name: '狂怒', desc: '触发时本次反击额外消耗5精力' },
+    '诅咒': { name: '诅咒', desc: '触发时本次最终伤害降低15%' },
+    '破绽': { name: '破绽', desc: '触发时本次最终伤害提高20%' },
+    '护盾': { name: '护盾', desc: '触发时生成少量护盾' },
+  },
+  participateReward: {
+    '简单': { money: 20, contribution: 2 },
+    '普通': { money: 30, contribution: 3 },
+    '困难': { money: 40, contribution: 4 },
+    '噩梦': { money: 55, contribution: 5 },
+  },
+  killReward: {
+    '简单': { money: 60, contribution: 5, guildExp: 30, guildBank: 60 },
+    '普通': { money: 100, contribution: 8, guildExp: 50, guildBank: 100 },
+    '困难': { money: 150, contribution: 12, guildExp: 80, guildBank: 150 },
+    '噩梦': { money: 220, contribution: 18, guildExp: 120, guildBank: 220 },
+  },
+  rankReward: [
+    { rank: 1, money: 80, contribution: 8, dropRateAdd: 0.2 },
+    { rank: 2, money: 50, contribution: 5, dropRateAdd: 0.1 },
+    { rank: 3, money: 30, contribution: 3, dropRateAdd: 0.05 },
+  ],
+  historyLimit: 10,
+};
+
 function guildDateKey(ts = Date.now()) {
   const d = new Date(ts);
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1223,6 +1266,8 @@ const GuildManager = {
     guild.skills = guild.skills || {};
     guild.shopDate = guild.shopDate || guildDateKey();
     guild.boss = guild.boss || null;
+    guild.bossHistory = Array.isArray(guild.bossHistory) ? guild.bossHistory.slice(-GUILD_BOSS_CONFIG.historyLimit) : [];
+    guild.bossDifficulty = guild.bossDifficulty || '普通';
     if (!guild.leader || (guild.members.length > 0 && !guild.members.includes(guild.leader))) guild.leader = guild.members[0] || '';
     for (const uid of guild.members) this.getMember(guild, uid);
     for (const uid of Object.keys(guild.memberData)) {
@@ -1725,27 +1770,159 @@ const GuildManager = {
     const today = guildDateKey();
     if (!guild.boss || guild.boss.date !== today) {
       const lv = guild.level || 1;
-      const maxHp = 3000 + lv * 1200 + guild.members.length * 300;
+      const difficultyName = guild.bossDifficulty || '普通';
+      const difficulty = GUILD_BOSS_CONFIG.difficulties[difficultyName] || GUILD_BOSS_CONFIG.difficulties['普通'];
+      const maxHp = Math.floor((3000 + lv * 1200 + guild.members.length * 300) * difficulty.hpRate);
+      const skills = Object.keys(GUILD_BOSS_CONFIG.skills);
+      const bossSkill = skills[(lv + guild.members.length + today.length) % skills.length];
       guild.boss = {
         date: today,
         name: `公会守卫兽·Lv${lv}`,
+        difficulty: difficulty.name,
+        skill: bossSkill,
+        phase: '稳固',
+        shield: 0,
+        skillUses: {},
         maxHp,
         hp: maxHp,
-        atk: 80 + lv * 15,
-        def: 20 + lv * 5,
+        atk: Math.floor((80 + lv * 15) * difficulty.atkRate),
+        def: Math.floor((20 + lv * 5) * difficulty.atkRate),
         damage: {},
+        participants: {},
+        rewards: {},
         killed: false,
+        startedAt: Date.now(),
       };
     }
+    guild.boss.damage = guild.boss.damage || {};
+    guild.boss.participants = guild.boss.participants || {};
+    guild.boss.rewards = guild.boss.rewards || {};
+    guild.boss.skillUses = guild.boss.skillUses || {};
+    guild.boss.difficulty = guild.boss.difficulty || guild.bossDifficulty || '普通';
+    guild.boss.skill = guild.boss.skill || '厚甲';
+    guild.boss.shield = guild.boss.shield || 0;
+    if ((guild.boss.killed || guild.boss.hp <= 0) && guild.boss.rewardSettled === undefined) guild.boss.rewardSettled = true;
     return guild.boss;
+  },
+
+  getBossPhase(boss) {
+    const rate = boss.maxHp > 0 ? boss.hp / boss.maxHp : 0;
+    return GUILD_BOSS_CONFIG.phases.find(p => rate >= p.minRate) || GUILD_BOSS_CONFIG.phases[GUILD_BOSS_CONFIG.phases.length - 1];
+  },
+
+  getBossDropPool(guild, difficultyName, rankBonus = 0) {
+    const bossLevel = (guild.level || 1) * 5 + (difficultyName === '噩梦' ? 20 : difficultyName === '困难' ? 12 : difficultyName === '普通' ? 5 : 0);
+    const pools = bossLevel >= 41
+      ? ['高级进化石', '天赋果实', '神话契约碎片', '进化石']
+      : bossLevel >= 21
+        ? ['进化石', '高级进化石', '天赋果实', '宠物粮']
+        : ['宠物粮', '进化石', '捉宠符咒'];
+    const rareRate = Math.min(0.35, 0.12 + rankBonus + (difficultyName === '噩梦' ? 0.08 : difficultyName === '困难' ? 0.04 : 0));
+    if (Math.random() > rareRate) return null;
+    return pools[Math.floor(Math.random() * pools.length)];
+  },
+
+  setBossDifficulty(uid, data, difficultyName) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return { success: false, msg: '你未加入公会' };
+    if (!this.isManager(guild, uid)) return { success: false, msg: '只有会长/副会长可设置Boss难度' };
+    const difficulty = GUILD_BOSS_CONFIG.difficulties[difficultyName];
+    if (!difficulty) return { success: false, msg: `可选难度: ${Object.keys(GUILD_BOSS_CONFIG.difficulties).join('、')}` };
+    if ((guild.level || 1) < difficulty.unlock) return { success: false, msg: `${difficulty.name}难度需要公会Lv.${difficulty.unlock}` };
+    const boss = this.getBoss(guild);
+    if (boss.date === guildDateKey() && (Object.keys(boss.damage || {}).length > 0 || boss.killed)) return { success: false, msg: '今日Boss已开始或已结算，不能修改难度' };
+    guild.bossDifficulty = difficulty.name;
+    guild.boss = null;
+    this.addLog(guild, `${this.getMemberName(uid)} 设置今日Boss难度为${difficulty.name}`);
+    this.save();
+    return { success: true, msg: `公会Boss难度已设置为【${difficulty.name}】` };
+  },
+
+  grantBossReward(guild, boss, uid, data, reward, rankBonus = null) {
+    const member = this.getMember(guild, uid);
+    const rewardRate = 1 + ((guild.skills['训练'] || 0) * 0.02);
+    const money = Math.floor((reward.money + (rankBonus?.money || 0)) * rewardRate);
+    const contribution = reward.contribution + (rankBonus?.contribution || 0);
+    data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + money);
+    member.contribution = (member.contribution || 0) + contribution;
+    member.totalContribution = (member.totalContribution || 0) + contribution;
+    const item = this.getBossDropPool(guild, boss.difficulty, rankBonus?.dropRateAdd || 0);
+    if (item) {
+      data.items = data.items || {};
+      data.items[item] = (data.items[item] || 0) + 1;
+    }
+    boss.rewards[uid] = true;
+    return { money, contribution, item };
+  },
+
+  settleBossRewards(guild, boss, killerUid, killerData) {
+    if (boss.rewardSettled) return { lines: [], exp: 0, bank: 0 };
+    const difficulty = boss.difficulty || '普通';
+    const killReward = GUILD_BOSS_CONFIG.killReward[difficulty] || GUILD_BOSS_CONFIG.killReward['普通'];
+    const participateReward = GUILD_BOSS_CONFIG.participateReward[difficulty] || GUILD_BOSS_CONFIG.participateReward['普通'];
+    const eligibleDamage = Math.max(1, Math.floor(boss.maxHp * GUILD_BOSS_CONFIG.minDamageRateForParticipate));
+    const rankDamage = Math.max(1, Math.floor(boss.maxHp * GUILD_BOSS_CONFIG.minDamageRateForRank));
+    const rank = Object.entries(boss.damage || {}).sort((a, b) => b[1] - a[1]);
+    const rewardLines = [];
+    for (const [id, damage] of rank) {
+      if (damage < eligibleDamage) continue;
+      const playerData = id === killerUid ? killerData : DB.get(id);
+      if (!playerData) continue;
+      const rankIndex = rank.findIndex(([rankId]) => rankId === id);
+      const rankReward = rankIndex >= 0 && rankIndex < 3 && damage >= rankDamage ? GUILD_BOSS_CONFIG.rankReward[rankIndex] : null;
+      const result = this.grantBossReward(guild, boss, id, playerData, killReward, rankReward);
+      DB.save(id, playerData);
+      rewardLines.push(`${this.getMemberName(id)} 获得${result.money}金币、贡献+${result.contribution}${result.item ? `、${result.item}x1` : ''}`);
+    }
+    if (rewardLines.length === 0) {
+      const result = this.grantBossReward(guild, boss, killerUid, killerData, participateReward, null);
+      rewardLines.push(`${this.getMemberName(killerUid)} 获得${result.money}金币、贡献+${result.contribution}${result.item ? `、${result.item}x1` : ''}`);
+    }
+    guild.exp += killReward.guildExp;
+    guild.bank += killReward.guildBank;
+    boss.rewardSettled = true;
+    this.checkLevelUp(guild);
+    return { lines: rewardLines, exp: killReward.guildExp, bank: killReward.guildBank };
+  },
+
+  recordBossHistory(guild, boss) {
+    const rank = Object.entries(boss.damage || {}).sort((a, b) => b[1] - a[1]);
+    const top3 = rank.slice(0, 3).map(([id, damage]) => ({ id, name: this.getMemberName(id), damage, rate: boss.maxHp ? Math.floor(damage / boss.maxHp * 1000) / 10 : 0 }));
+    const mvp = top3[0];
+    guild.bossHistory = guild.bossHistory || [];
+    guild.bossHistory.push({
+      date: boss.date,
+      name: boss.name,
+      difficulty: boss.difficulty || '普通',
+      skill: boss.skill || '厚甲',
+      killed: !!boss.killed,
+      totalDamage: rank.reduce((sum, [, damage]) => sum + damage, 0),
+      maxHp: boss.maxHp,
+      participants: rank.length,
+      mvpName: mvp?.name || '无',
+      mvpDamage: mvp?.damage || 0,
+      top3,
+    });
+    guild.bossHistory = guild.bossHistory.slice(-GUILD_BOSS_CONFIG.historyLimit);
   },
 
   formatBoss(uid, data) {
     const guild = this.ensureGuildFromUser(uid, data);
     if (!guild) return '你未加入公会';
     const boss = this.getBoss(guild);
-    const status = boss.killed || boss.hp <= 0 ? '今日已击败' : `HP: ${boss.hp}/${boss.maxHp}`;
-    const lines = [`【公会Boss】${boss.name}`, status, `.宠物公会 Boss 攻击 <宠物编号>`, '.宠物公会 Boss 排行'];
+    const phase = this.getBossPhase(boss);
+    const skill = GUILD_BOSS_CONFIG.skills[boss.skill] || GUILD_BOSS_CONFIG.skills['厚甲'];
+    const status = boss.killed || boss.hp <= 0 ? '今日已击败' : `HP: ${boss.hp}/${boss.maxHp}${boss.shield ? ` 护盾:${boss.shield}` : ''}`;
+    const lines = [
+      `【公会Boss】${boss.name}`,
+      `难度:${boss.difficulty || '普通'} 阶段:${phase.name} 技能:${skill.name}`,
+      skill.desc,
+      status,
+      `.宠物公会 Boss 攻击 <宠物编号>`,
+      '.宠物公会 Boss 排行',
+      '.宠物公会 Boss 难度 <简单/普通/困难/噩梦>',
+      '.宠物公会 Boss 历史',
+    ];
     this.save();
     return lines.join('\n');
   },
@@ -1755,42 +1932,73 @@ const GuildManager = {
     if (!guild) return { success: false, msg: '你未加入公会' };
     if (!pet) return { success: false, msg: '请指定宠物编号' };
     if (pet.hp <= 0) return { success: false, msg: '宠物已阵亡' };
-    if ((pet.energy || 0) < 20) return { success: false, msg: '宠物精力不足(需要20)' };
+    if ((pet.energy || 0) < GUILD_BOSS_CONFIG.energyCost) return { success: false, msg: `宠物精力不足(需要${GUILD_BOSS_CONFIG.energyCost})` };
     const member = this.getMember(guild, uid);
     const today = guildDateKey();
     if (member.bossDate !== today) { member.bossDate = today; member.bossAttempts = 0; }
     const attempts = Math.max(member.bossAttempts || 0, guild.daily.bossAttempts[uid] || 0);
-    if (attempts >= 3) return { success: false, msg: '今日公会Boss挑战次数已用完' };
+    if (attempts >= GUILD_BOSS_CONFIG.dailyChallengeLimit) return { success: false, msg: '今日公会Boss挑战次数已用完' };
     const boss = this.getBoss(guild);
     if (boss.hp <= 0 || boss.killed) return { success: false, msg: '今日公会Boss已被击败' };
     member.bossAttempts = attempts + 1;
     guild.daily.bossAttempts[uid] = member.bossAttempts;
     this.addTaskProgress(guild, 'bossAttack', uid, 1);
-    pet.energy -= 20;
+    pet.energy -= GUILD_BOSS_CONFIG.energyCost;
+
+    const phase = this.getBossPhase(boss);
+    boss.phase = phase.name;
     const skillBoost = 1 + ((guild.skills['猎手'] || 0) * 0.02);
-    const damage = Math.max(1, Math.floor(((pet.atk || 10) * 3 + (pet.level || 1) * 8 - boss.def + Math.floor(Math.random() * 50)) * skillBoost));
+    let damage = Math.max(1, Math.floor(((pet.atk || 10) * 3 + (pet.level || 1) * 8 - boss.def + Math.floor(Math.random() * 50)) * skillBoost * phase.damageTakenRate));
+    const skillRate = 0.2 + phase.skillRateAdd;
+    const effects = [];
+    if (Math.random() < skillRate) {
+      if (boss.skill === '厚甲') {
+        damage = Math.max(1, Math.floor(damage * 0.75));
+        effects.push('厚甲减免了部分伤害');
+      } else if (boss.skill === '诅咒') {
+        damage = Math.max(1, Math.floor(damage * 0.85));
+        effects.push('诅咒压低了本次伤害');
+      } else if (boss.skill === '破绽') {
+        damage = Math.max(1, Math.floor(damage * 1.2));
+        effects.push('Boss露出破绽，伤害提高');
+      } else if (boss.skill === '护盾' && (boss.skillUses.shield || 0) < 3) {
+        const shield = Math.max(1, Math.floor(boss.maxHp * 0.03));
+        boss.shield = (boss.shield || 0) + shield;
+        boss.skillUses.shield = (boss.skillUses.shield || 0) + 1;
+        effects.push(`Boss召唤护盾+${shield}`);
+      } else if (boss.skill === '狂怒' && (boss.skillUses.rage || 0) < 2) {
+        const extraCost = Math.min(5, pet.energy || 0);
+        pet.energy -= extraCost;
+        boss.skillUses.rage = (boss.skillUses.rage || 0) + 1;
+        effects.push(`狂怒额外消耗${extraCost}精力`);
+      }
+    }
+
+    let shieldDamage = 0;
+    if ((boss.shield || 0) > 0) {
+      shieldDamage = Math.min(boss.shield, damage);
+      boss.shield -= shieldDamage;
+      damage -= shieldDamage;
+    }
     boss.hp = Math.max(0, boss.hp - damage);
-    boss.damage[uid] = (boss.damage[uid] || 0) + damage;
+    const totalDamage = damage + shieldDamage;
+    boss.damage[uid] = (boss.damage[uid] || 0) + totalDamage;
+    boss.participants[uid] = true;
     const counter = Math.max(1, boss.atk - (pet.def || 0) + Math.floor(Math.random() * 20));
     pet.hp = Math.max(1, (pet.hp || 1) - counter);
-    let msg = `造成${damage}伤害，Boss HP:${boss.hp}/${boss.maxHp}\n${pet.name}受到${counter}反击伤害`;
+    let msg = `阶段【${phase.name}】造成${totalDamage}伤害${shieldDamage ? `(护盾吸收${shieldDamage})` : ''}，Boss HP:${boss.hp}/${boss.maxHp}\n${pet.name}受到${counter}反击伤害`;
+    if (effects.length) msg += `\n${effects.join('\n')}`;
     if (boss.hp <= 0) {
       boss.killed = true;
-      const rewardRate = 1 + ((guild.skills['训练'] || 0) * 0.02);
-      const money = Math.floor((500 + guild.level * 120) * rewardRate);
-      const contribution = 30;
-      data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + money);
-      member.contribution += contribution;
-      member.totalContribution += contribution;
-      guild.exp += 80 + guild.level * 10;
-      guild.bank += 300 + guild.level * 50;
-      const items = ['进化石', '高级进化石', '天赋果实'];
-      const item = items[Math.floor(Math.random() * items.length)];
-      data.items = data.items || {};
-      data.items[item] = (data.items[item] || 0) + 1;
-      this.checkLevelUp(guild);
-      this.addLog(guild, `${this.getMemberName(uid)} 击败公会Boss`);
-      msg += `\n【击杀】获得${money}金币、贡献+${contribution}、${item}x1`;
+      const settled = this.settleBossRewards(guild, boss, uid, data);
+      this.recordBossHistory(guild, boss);
+      const rank = Object.entries(boss.damage || {}).sort((a, b) => b[1] - a[1]);
+      const mvp = rank[0];
+      this.addLog(guild, `击败${boss.difficulty || '普通'}公会Boss，MVP:${mvp ? this.getMemberName(mvp[0]) : '无'}`);
+      msg += `\n【击杀公告】${guild.name}击败了${boss.difficulty || '普通'}难度${boss.name}！`;
+      if (mvp) msg += `\nMVP:${this.getMemberName(mvp[0])} ${mvp[1]}伤害`;
+      msg += `\n公会获得经验+${settled.exp}、资金+${settled.bank}`;
+      if (settled.lines.length) msg += `\n【奖励】\n${settled.lines.join('\n')}`;
     }
     this.save();
     return { success: true, msg };
@@ -1802,7 +2010,24 @@ const GuildManager = {
     const boss = this.getBoss(guild);
     const rank = Object.entries(boss.damage || {}).sort((a, b) => b[1] - a[1]).slice(0, 10);
     if (rank.length === 0) return '暂无公会Boss伤害记录';
-    return ['【公会Boss伤害排行】', ...rank.map(([id, dmg], i) => `${i + 1}. ${this.getMemberName(id)} - ${dmg}`)].join('\n');
+    const rankDamage = Math.max(1, Math.floor(boss.maxHp * GUILD_BOSS_CONFIG.minDamageRateForRank));
+    return ['【公会Boss伤害排行】', ...rank.map(([id, dmg], i) => {
+      const reward = i < 3 && dmg >= rankDamage ? ' 排名奖励' : '';
+      const rate = boss.maxHp ? Math.floor(dmg / boss.maxHp * 1000) / 10 : 0;
+      return `${i + 1}. ${this.getMemberName(id)} - ${dmg}(${rate}%)${reward}`;
+    })].join('\n');
+  },
+
+  formatBossHistory(uid, data) {
+    const guild = this.ensureGuildFromUser(uid, data);
+    if (!guild) return '你未加入公会';
+    const history = (guild.bossHistory || []).slice(-5).reverse();
+    if (history.length === 0) return '暂无公会Boss历史记录';
+    return ['【公会Boss历史】', ...history.map(h => {
+      const result = h.killed ? '已击败' : '未击败';
+      const top = (h.top3 || []).map((r, i) => `${i + 1}.${r.name}${r.damage}`).join(' / ') || '无';
+      return `${h.date} ${h.difficulty || '普通'} ${h.name}(${h.skill || '无'}) ${result}\n参战:${h.participants} 总伤害:${h.totalDamage}/${h.maxHp} MVP:${h.mvpName} ${h.mvpDamage}\n前三:${top}`;
+    })].join('\n');
   },
 };
 
@@ -7466,13 +7691,19 @@ cmd.solve = async (ctx, msg, argv) => {
     if (p1 === 'Boss' || p1 === 'boss') {
       if (!gSub) return reply(GuildManager.formatBoss(uid, data));
       if (gSub === '排行' || gSub === 'rank') return reply(GuildManager.formatBossRank(uid, data));
+      if (gSub === '历史' || gSub === 'history') return reply(GuildManager.formatBossHistory(uid, data));
+      if (gSub === '难度' || gSub === 'difficulty') {
+        const result = GuildManager.setBossDifficulty(uid, data, gArg1 || '普通');
+        save();
+        return reply(result.msg);
+      }
       if (gSub === '攻击' || gSub === 'attack') {
         const pet = getPet(gArg1 || '1');
         const result = GuildManager.attackBoss(uid, data, pet);
         save();
         return reply(result.msg);
       }
-      return reply('用法: .宠物公会 Boss [攻击/排行] [宠物编号]');
+      return reply('用法: .宠物公会 Boss [攻击/排行/难度/历史] [参数]');
     }
     if (p1 === '恢复' || p1 === '重建') {
       const result = GuildManager.rebuildGuildFromUsers(gRest || data.guild, uid, data);
@@ -8291,7 +8522,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.21',
+  version: '4.3.22',
   ext,
 
   DB: {
