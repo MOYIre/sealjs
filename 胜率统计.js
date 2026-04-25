@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        命题集
 // @author      铭茗
-// @version     1.0.11
+// @version     1.0.12
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -11,7 +11,7 @@
 
 let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('命题集', '铭茗', '1.0.11');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.12');
   seal.ext.register(ext);
 } else {
   // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
@@ -120,7 +120,7 @@ function getPlayerKeyAliases(playerKey) {
   return [k];
 }
 
-function getAtPlayerSpec(ctx, msg, cmdArgs) {
+function getAtPlayerSpec(ctx, msg, cmdArgs, text) {
   const atInfo = (cmdArgs && (cmdArgs.atInfo || cmdArgs.at)) || (msg && (msg.atInfo || msg.at)) || (ctx && (ctx.atInfo || ctx.at)) || [];
   if (atInfo.length > 0 && atInfo[0].userId) {
     return {
@@ -128,11 +128,21 @@ function getAtPlayerSpec(ctx, msg, cmdArgs) {
       name: atInfo[0].name || atInfo[0].nickname || atInfo[0].userId,
     };
   }
+
+  const cqMatch = normalizeName(text).match(/\[CQ:at,qq=(\d+)\]/);
+  if (cqMatch) {
+    return { key: normalizeUserId(cqMatch[1]), name: cqMatch[1] };
+  }
+
   return null;
 }
 
+function stripAtFromText(s) {
+  return normalizeName(s).replace(/\[CQ:at,qq=\d+\]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function parsePlayerSpec(ctx, msg, cmdArgs, spec) {
-  const atPlayer = getAtPlayerSpec(ctx, msg, cmdArgs);
+  const atPlayer = getAtPlayerSpec(ctx, msg, cmdArgs, spec);
   if (atPlayer) return atPlayer;
 
   const s = normalizeName(spec);
@@ -243,7 +253,7 @@ function parseOutcomeWord(s) {
 }
 
 function parseAddRest(rest) {
-  const r = normalizeName(rest);
+  const r = stripAtFromText(rest);
   if (!r) return null;
   const parts = r.split(/\s+/).filter(Boolean);
   if (parts.length < 1) return null;
@@ -385,7 +395,7 @@ function handleAdd(ctx, msg, cmdArgs, fixedGameName) {
     return;
   }
 
-  const p = parsePlayerSpec(ctx, msg, cmdArgs, playerSpec);
+  const p = parsePlayerSpec(ctx, msg, cmdArgs, playerSpec || rest);
   mergeSelfNameRecord(ctx, g.game, p.key);
   const rec = ensurePlayer(g.game, p.key, p.name);
 
