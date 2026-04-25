@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.22
+// @version     4.3.23
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.22');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.23');
   seal.ext.register(ext);
 }
 
@@ -106,7 +106,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.22' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.23' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -2338,6 +2338,8 @@ const WorldBossManager = {
           spawnDate: today,
           spawnHour: currentHour,
           damageDealt: {},
+          attempts: {},
+          rewardedUsers: {},
           killers: [],
         };
         this.save();
@@ -2365,32 +2367,112 @@ const WorldBossManager = {
   attackBoss(uid, name, pet) {
     this.load();
     if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
-    
-    // 计算伤害
-    const baseDamage = pet.atk * 2 + Math.floor(Math.random() * pet.atk);
-    const defense = this._boss.def;
-    const damage = Math.max(1, baseDamage - defense + Math.floor(Math.random() * 50));
-    
-    this._boss.currentHp -= damage;
-    this._boss.damageDealt[uid] = (this._boss.damageDealt[uid] || 0) + damage;
-    
-    let result = { success: true, damage, currentHp: this._boss.currentHp, maxHp: this._boss.maxHp };
-    
-    // Boss反击
-    const counterDamage = Math.floor(this._boss.atk * 0.3);
-    pet.hp = Math.max(0, pet.hp - counterDamage);
+    this._boss.damageDealt = this._boss.damageDealt || {};
+    this._boss.attempts = this._boss.attempts || {};
+    this._boss.rewardedUsers = this._boss.rewardedUsers || {};
+    const attempts = this._boss.attempts[uid] || 0;
+    if (attempts >= 3) return { success: false, msg: '本轮世界Boss挑战次数已用完' };
+    if (!pet || pet.hp <= 0) return { success: false, msg: '宠物已阵亡' };
+    if ((pet.energy || 0) < 20) return { success: false, msg: '宠物精力不足(需要20)' };
+    pet.energy -= 20;
+    const baseDamage = (pet.atk || 10) * 2 + Math.floor(Math.random() * Math.max(1, pet.atk || 10));
+    const defense = this._boss.def || 0;
+    const damage = Math.min(this._boss.currentHp, Math.max(1, baseDamage - defense + Math.floor(Math.random() * 50)));
+    this._boss.attempts[uid] = attempts + 1;
+    this.save();
+    return this.applyDamage(uid, name, damage, pet);
+  },
+
+  applyDamage(uid, name, damage, pet = null) {
+    this.load();
+    if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
+    if (this._boss.settled) return { success: false, msg: '世界Boss已结算' };
+    this._boss.damageDealt = this._boss.damageDealt || {};
+    this._boss.killers = this._boss.killers || [];
+    const applied = Math.min(Math.max(0, Math.floor(damage || 0)), this._boss.currentHp || 0);
+    this._boss.currentHp = Math.max(0, (this._boss.currentHp || 0) - applied);
+    this._boss.damageDealt[uid] = (this._boss.damageDealt[uid] || 0) + applied;
+    const result = { success: true, damage: applied, currentHp: this._boss.currentHp, maxHp: this._boss.maxHp };
+    const counterDamage = pet ? Math.floor((this._boss.atk || 0) * 0.3) : 0;
+    if (pet && counterDamage > 0) pet.hp = Math.max(0, (pet.hp || 0) - counterDamage);
     result.counterDamage = counterDamage;
-    
-    // 检查是否击杀
     if (this._boss.currentHp <= 0) {
       result.killed = true;
-      result.rewards = this.calculateRewards(uid, name);
-      this._boss.killers.push({ uid, name });
-      this._boss = null;
+      result.rewards = this.settleRewards(uid, name);
     }
-    
     this.save();
     return result;
+  },
+
+  canChallenge(uid) {
+    this.load();
+    if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
+    if (this._boss.settled) return { success: false, msg: '世界Boss已结算' };
+    this._boss.attempts = this._boss.attempts || {};
+    if ((this._boss.attempts[uid] || 0) >= 3) return { success: false, msg: '本轮世界Boss挑战次数已用完' };
+    return { success: true };
+  },
+
+  consumeAttempt(uid) {
+    this.load();
+    if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
+    this._boss.attempts = this._boss.attempts || {};
+    if ((this._boss.attempts[uid] || 0) >= 3) return { success: false, msg: '本轮世界Boss挑战次数已用完' };
+    this._boss.attempts[uid] = (this._boss.attempts[uid] || 0) + 1;
+    this.save();
+    return { success: true };
+  },
+
+  applyTeamDamage(damageByUid, members, killerUid, killerName) {
+    this.load();
+    if (!this._boss) return { success: false, msg: '当前没有世界Boss' };
+    if (this._boss.settled) return { success: false, msg: '世界Boss已结算' };
+    this._boss.damageDealt = this._boss.damageDealt || {};
+    const totalDamage = Object.values(damageByUid || {}).reduce((sum, n) => sum + Math.max(0, Math.floor(n || 0)), 0);
+    const appliedTotal = Math.min(totalDamage, this._boss.currentHp || 0);
+    let remain = appliedTotal;
+    const entries = Object.entries(damageByUid || {}).filter(([, n]) => n > 0);
+    for (let i = 0; i < entries.length; i++) {
+      const [id, dmg] = entries[i];
+      const applied = i === entries.length - 1 ? remain : Math.min(remain, Math.floor(appliedTotal * dmg / Math.max(1, totalDamage)));
+      remain -= applied;
+      this._boss.damageDealt[id] = (this._boss.damageDealt[id] || 0) + Math.max(0, applied);
+    }
+    this._boss.currentHp = Math.max(0, (this._boss.currentHp || 0) - appliedTotal);
+    const result = { success: true, damage: appliedTotal, currentHp: this._boss.currentHp, maxHp: this._boss.maxHp };
+    if (this._boss.currentHp <= 0) {
+      result.killed = true;
+      result.rewards = this.settleRewards(killerUid, killerName);
+    }
+    this.save();
+    return result;
+  },
+
+  settleRewards(killerUid, killerName) {
+    if (!this._boss || this._boss.settled) return [];
+    this._boss.settled = true;
+    this._boss.killers = this._boss.killers || [];
+    this._boss.killers.push({ uid: killerUid, name: killerName });
+    const rank = Object.entries(this._boss.damageDealt || {}).sort((a, b) => b[1] - a[1]);
+    const eligible = Math.max(1, Math.floor((this._boss.maxHp || 1) * 0.01));
+    const rewards = [];
+    for (const [id, dmg] of rank) {
+      if (dmg < eligible || this._boss.rewardedUsers?.[id]) continue;
+      const playerData = DB.get(id);
+      const isMvp = id === rank[0]?.[0];
+      const money = 1500 + Math.floor(Math.random() * 1500) + (isMvp ? 800 : 0);
+      const pool = isMvp ? ['神话召唤石', '龙之心', '天赋果实'] : ['进化石', '高级进化石', '天赋果实'];
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      playerData.money = Math.min(CONFIG.maxMoney, (playerData.money || 0) + money);
+      playerData.items = playerData.items || {};
+      playerData.items[item] = (playerData.items[item] || 0) + 1;
+      DB.save(id, playerData);
+      this._boss.rewardedUsers = this._boss.rewardedUsers || {};
+      this._boss.rewardedUsers[id] = true;
+      rewards.push({ uid: id, name: DB.getName(id) || id.replace('QQ:', ''), money, item, damage: dmg });
+    }
+    this._boss = null;
+    return rewards;
   },
 
   // 计算奖励
@@ -3400,21 +3482,21 @@ const ELEMENT_MARK = { '火': '[火]', '水': '[水]', '草': '[草]', '电': '[
 const FOODS = {
   '面包': { hp: 5, atk: 0, def: 0, energy: 10, cost: 10, affection: [3, 4] },
   '烤肉': { hp: 15, atk: 2, def: 2, energy: 20, cost: 30, affection: [5, 6] },
-  '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 24, affection: [2, 3] },
+  '咖啡': { hp: 0, atk: 0, def: 0, energy: 50, cost: 80, affection: [2, 3] },
   '药水': { hp: 50, atk: 0, def: 0, energy: 0, cost: 40, affection: [2, 3] },
   '牛奶': { hp: 10, atk: 0, def: 2, energy: 15, cost: 15, affection: [4, 5] },
   '鸡蛋': { hp: 8, atk: 1, def: 1, energy: 12, cost: 12, affection: [4, 5] },
-  '苹果': { hp: 5, atk: 0, def: 0, energy: 20, cost: 10, affection: [3, 4] },
+  '苹果': { hp: 5, atk: 0, def: 0, energy: 20, cost: 25, affection: [3, 4] },
   '鱼干': { hp: 12, atk: 1, def: 1, energy: 15, cost: 18, affection: [4, 5] },
   '蜂蜜': { hp: 15, atk: 0, def: 0, energy: 30, cost: 25, affection: [5, 6] },
   '蘑菇': { hp: 0, atk: 3, def: 0, energy: 10, cost: 20, affection: [3, 4] },
   '坚果': { hp: 0, atk: 0, def: 5, energy: 5, cost: 15, affection: [3, 4] },
   '牛排': { hp: 25, atk: 3, def: 3, energy: 30, cost: 50, affection: [6, 8] },
-  '能量棒': { hp: 0, atk: 0, def: 0, energy: 80, cost: 40, affection: [2, 3] },
+  '能量棒': { hp: 0, atk: 0, def: 0, energy: 80, cost: 180, affection: [2, 3] },
   '治疗药': { hp: 80, atk: 0, def: 0, energy: 0, cost: 60, affection: [1, 2] },
   '宠物粮': { hp: 12, atk: 0, def: 0, energy: 18, cost: 16, affection: [4, 5] },
   '生命药剂': { hp: 120, atk: 0, def: 0, energy: 0, cost: 90, affection: [2, 3] },
-  '精力药剂': { hp: 0, atk: 0, def: 0, energy: 120, cost: 95, affection: [2, 3] },
+  '精力药剂': { hp: 0, atk: 0, def: 0, energy: 120, cost: 300, affection: [2, 3] },
   '海鲜大餐': { hp: 30, atk: 2, def: 2, energy: 40, cost: 65, affection: [6, 8] },
   '香草沙拉': { hp: 18, atk: 0, def: 1, energy: 28, cost: 28, affection: [5, 6] },
   '炭烤玉米': { hp: 10, atk: 1, def: 1, energy: 22, cost: 20, affection: [4, 5] },
@@ -4975,21 +5057,26 @@ const Battle = {
 
     // ATB行动条系统
     const ACTION_THRESHOLD = 100;
+    const safeSpeed = (v) => {
+      v = Number(v);
+      return Number.isFinite(v) && v > 0 ? v : 1;
+    };
     // 马类首回合先手：初始行动值+50
     let atb1 = p1.species === '马' ? 50 : 0;
     let atb2 = p2.species === '马' ? 50 : 0;
     let atb1Ally = p1Ally?.species === '马' ? 50 : 0;
     let atb2Ally = p2Ally?.species === '马' ? 50 : 0;
-    const spd1 = p1.spd || 100;
-    const spd2 = p2.spd || 100;
-    const spd1Ally = p1Ally ? (p1Ally.spd || 100) : 0;
-    const spd2Ally = p2Ally ? (p2Ally.spd || 100) : 0;
+    const spd1 = safeSpeed(p1.spd || 100);
+    const spd2 = safeSpeed(p2.spd || 100);
+    const spd1Ally = p1Ally ? safeSpeed(p1Ally.spd || 100) : 0;
+    const spd2Ally = p2Ally ? safeSpeed(p2Ally.spd || 100) : 0;
 
     const getAllActionOrder = () => {
       // 累积行动值（减速效果减少50%行动值）
       const getSpd = (unit, baseSpd) => {
-        if (unit.slowed && unit.slowed > 0) return Math.floor(baseSpd * 0.5);
-        return baseSpd;
+        const spd = safeSpeed(baseSpd);
+        if (unit.slowed && unit.slowed > 0) return Math.max(1, Math.floor(spd * 0.5));
+        return spd;
       };
       atb1 += getSpd(p1, spd1);
       atb2 += getSpd(p2, spd2);
@@ -5034,9 +5121,15 @@ const Battle = {
       return { ended: false };
     };
 
-    while (turn <= 20) {
+    let safety = 0;
+    while (turn <= 20 && safety++ < 200) {
       const actions = getAllActionOrder();
-      if (actions.length === 0) continue;
+      if (actions.length === 0) {
+        logs.push(`\n--- 第${turn}回合 ---`);
+        logs.push('[系统] 本回合无人可行动');
+        turn++;
+        continue;
+      }
 
       logs.push(`\n--- 第${turn}回合 ---`);
 
@@ -7817,6 +7910,8 @@ cmd.solve = async (ctx, msg, argv) => {
       }
 
       const fighters = [];
+      const skipped = [];
+      WorldBossManager.load();
       for (const member of myTeam.members) {
         const memberData = DB.get(member.uid);
         if (memberData && memberData.pets.length > 0) {
@@ -7826,13 +7921,25 @@ cmd.solve = async (ctx, msg, argv) => {
             pet = PetFactory.getStrongestPet(memberData.pets);
           }
           const energyCost = isWorldBoss ? 20 : difficulty.energyCost;
+          const challenge = isWorldBoss ? WorldBossManager.canChallenge(member.uid) : { success: true };
+          if (!challenge.success) {
+            skipped.push(`${member.name}(${challenge.msg})`);
+            continue;
+          }
           if (pet && pet.hp > 0 && pet.energy >= energyCost) {
+            if (isWorldBoss) {
+              const consumed = WorldBossManager.consumeAttempt(member.uid);
+              if (!consumed.success) {
+                skipped.push(`${member.name}(${consumed.msg})`);
+                continue;
+              }
+            }
             pet.energy -= energyCost;
-            fighters.push({ pet, name: member.name, uid: member.uid, data: memberData });
+            fighters.push({ pet, name: member.name, uid: member.uid, data: memberData, damage: 0 });
           }
         }
       }
-      if (fighters.length === 0) return reply('没有可出战的宠物');
+      if (fighters.length === 0) return reply(skipped.length ? `没有可出战的宠物\n${skipped.join('\n')}` : '没有可出战的宠物');
 
       const teamSize = fighters.length;
       const hpScale = isWorldBoss ? 1 : (1 + Math.max(0, teamSize - 1) * 0.5);
@@ -7853,9 +7960,11 @@ cmd.solve = async (ctx, msg, argv) => {
         for (const f of fighters) {
           if (f.pet.hp <= 0 || bossHp <= 0) continue;
           const damage = Math.max(1, f.pet.atk - bossData.bossDef + Math.floor(Math.random() * 20));
-          bossHp -= damage;
-          totalDamage += damage;
-          logs.push(`${f.name}的${f.pet.name}造成${damage}伤害 (Boss剩余:${Math.max(0, bossHp)})`);
+          const actualDamage = Math.min(damage, Math.max(0, bossHp));
+          bossHp -= actualDamage;
+          f.damage = (f.damage || 0) + actualDamage;
+          totalDamage += actualDamage;
+          logs.push(`${f.name}的${f.pet.name}造成${actualDamage}伤害 (Boss剩余:${Math.max(0, bossHp)})`);
         }
         if (bossHp <= 0) break;
         const aliveFighters = fighters.filter(f => f.pet.hp > 0);
@@ -7874,20 +7983,17 @@ cmd.solve = async (ctx, msg, argv) => {
         logs.push(`\n【胜利】击败${bossData.name}！`);
 
         if (isWorldBoss) {
-          // 世界Boss奖励更丰富
-          const moneyEach = 3000 + Math.floor(Math.random() * 5000);
-          const items = ['神话召唤石', '龙之心', '天赋果实', '进化石'];
-          for (const f of fighters) {
-            f.data.money = (f.data.money || 0) + moneyEach;
-            f.data.items = f.data.items || {};
-            const item = items[Math.floor(Math.random() * items.length)];
-            f.data.items[item] = (f.data.items[item] || 0) + 1;
-            DB.save(f.uid, f.data);
-            logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+          const damageByUid = {};
+          fighters.forEach(f => { damageByUid[f.uid] = (damageByUid[f.uid] || 0) + (f.damage || 0); });
+          const result = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
+          if (!result.success) return reply(result.msg);
+          const rewards = Array.isArray(result.rewards) ? result.rewards : [];
+          if (rewards.length) {
+            logs.push('【世界Boss结算】');
+            rewards.forEach(r => logs.push(`${r.name}: ${r.money}金币, ${r.item}（${r.damage}伤害）`));
+          } else {
+            logs.push('无达标奖励成员');
           }
-          // 清除世界Boss
-          WorldBossManager._boss = null;
-          WorldBossManager.save();
         } else {
           const moneyEach = bossData.rewards.money[0] + Math.floor(Math.random() * Math.max(1, bossData.rewards.money[1] - bossData.rewards.money[0] + 1));
           const item = bossData.rewards.items[Math.floor(Math.random() * bossData.rewards.items.length)];
@@ -7902,15 +8008,12 @@ cmd.solve = async (ctx, msg, argv) => {
         return reply(logs.slice(0, 25).join('\n'));
       } else {
         if (isWorldBoss) {
-          // 更新世界Boss血量
-          WorldBossManager._boss.currentHp = bossHp;
-          // 记录伤害
-          for (const f of fighters) {
-            WorldBossManager._boss.damageDealt[f.uid] = (WorldBossManager._boss.damageDealt[f.uid] || 0) + Math.floor(totalDamage / fighters.length);
-          }
-          WorldBossManager.save();
-          logs.push(`\n【撤退】对${bossData.name}造成${totalDamage}点伤害`);
-          logs.push(`Boss剩余HP: ${bossHp}/${bossData.maxHp}`);
+          const damageByUid = {};
+          fighters.forEach(f => { damageByUid[f.uid] = (damageByUid[f.uid] || 0) + (f.damage || 0); });
+          const result = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
+          if (!result.success) return reply(result.msg);
+          logs.push(`\n【撤退】对${bossData.name}造成${result.damage}点伤害`);
+          logs.push(`Boss剩余HP: ${result.currentHp}/${result.maxHp}`);
         } else {
           logs.push(`\n【失败】被${bossData.name}击败...`);
         }
@@ -7952,14 +8055,14 @@ cmd.solve = async (ctx, msg, argv) => {
       save();
       const lines = [`【攻击世界Boss】`, `${pet.name}造成${result.damage}伤害`, `Boss HP: ${result.currentHp}/${result.maxHp}`, `${pet.name}受到${result.counterDamage}反击伤害`];
       if (result.killed) {
-        lines.push(`\n【击杀成功】你击败了世界Boss！获得: ${result.rewards.money}金币`);
-        data.money = (data.money || 0) + result.rewards.money;
-        data.items = data.items || {};
-        for (const item of result.rewards.items) {
-          data.items[item] = (data.items[item] || 0) + 1;
-          lines.push(`获得: ${item}`);
+        lines.push('\n【击杀成功】世界Boss已被击败！');
+        const rewards = Array.isArray(result.rewards) ? result.rewards : [];
+        if (rewards.length) {
+          lines.push('【结算奖励】');
+          rewards.forEach(r => lines.push(`${r.name}: ${r.money}金币、${r.item}x1（${r.damage}伤害）`));
+        } else {
+          lines.push('无达标奖励成员');
         }
-        save();
       }
       return reply(lines.join('\n'));
     }
@@ -8522,7 +8625,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.22',
+  version: '4.3.23',
   ext,
 
   DB: {
