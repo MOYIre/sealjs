@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name        胜率统计
+// @name        命题集
 // @author      铭茗
-// @version     1.0.6
+// @version     1.0.7
 // @description 手动录入胜负，统计各游戏胜率并支持排行榜/个人查询
 // @timestamp   1777248000
 // 2026-04-25
@@ -9,10 +9,17 @@
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/胜率统计.js
 // ==/UserScript==
 
-let ext = seal.ext.find('胜率统计');
+let ext = seal.ext.find('命题集') || seal.ext.find('胜率统计');
 if (!ext) {
-  ext = seal.ext.new('胜率统计', '铭茗', '1.0.6');
+  ext = seal.ext.new('命题集', '铭茗', '1.0.7');
   seal.ext.register(ext);
+} else {
+  // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
+  try {
+    ext.name = '命题集';
+  } catch (e) {
+    // ignore
+  }
 }
 
 // 全局共享数据
@@ -208,7 +215,7 @@ function popUndo(db, operatorId, predicate) {
 
 function replyHelp(ctx, msg) {
   const text = [
-    '【胜率统计】手动录入胜负并查询胜率（全局共享数据）',
+    '【命题集】手动录入胜负并查询胜率（全局共享数据）',
     '提示：录入胜负时会自动创建玩家，无需提前新建。',
     '',
     '录入：',
