@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.24
+// @version     4.3.25
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.24');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.25');
   seal.ext.register(ext);
 }
 
@@ -86,6 +86,11 @@ const WebUIReporter = {
 
   reportBattleLog(log) {
     if (!this.config.enabled || !this.config.endpoint) return;
+
+    const lines = Array.isArray(log.logs)
+      ? log.logs.filter(line => typeof line === 'string')
+      : [];
+
     this._queue.push({
       type: 'battle_log',
       timestamp: Date.now(),
@@ -96,9 +101,12 @@ const WebUIReporter = {
         target: log.target || '',
         result: log.result || '',
         turns: log.turns || 0,
+        rounds: log.rounds || log.turns || 0,
         damage: log.damage || 0,
         rewards: log.rewards || [],
         tags: log.tags || [],
+        logs: lines,
+        logText: typeof log.logText === 'string' ? log.logText : lines.join('\n'),
       }
     });
     if (this._queue.length >= 50) void this._flush();  // 异步刷新，不阻塞
@@ -131,7 +139,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.24' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.25' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -7001,6 +7009,8 @@ cmd.solve = async (ctx, msg, argv) => {
           target: targetName || targetUid || 'NPC',
           result: result.draw ? 'draw' : (result.winner === pet1Copy ? 'win' : 'lose'),
           turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+          logs: Array.isArray(result.logs) ? result.logs : logs,
+          logText: Array.isArray(result.logs) ? result.logs.join('\n') : logs.join('\n'),
           tags: isNPC ? ['野生'] : ['PVP'],
         });
       }
@@ -8837,7 +8847,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.24',
+  version: '4.3.25',
   ext,
 
   DB: {
