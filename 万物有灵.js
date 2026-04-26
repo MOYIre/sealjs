@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.25
+// @version     4.3.26
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.25');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.26');
   seal.ext.register(ext);
 }
 
@@ -139,7 +139,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.25' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.26' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -7003,12 +7003,19 @@ cmd.solve = async (ctx, msg, argv) => {
 
       // 上报战斗日志到WebUI
       if (WebUIReporter.config.enabled) {
+        const rewardSourceText = Array.isArray(logs) ? logs.join('\n') : '';
+        const rewardMatch = rewardSourceText.match(/获得\s*(\d+)\s*经验[，,]\s*(\d+)\s*金币/);
+        const rewardExp = rewardMatch ? Number(rewardMatch[1] || 0) : 0;
+        const rewardGold = rewardMatch ? Number(rewardMatch[2] || 0) : 0;
         WebUIReporter.reportBattleLog({
           zone: isNPC ? '野外' : 'PVP',
           actor: myName || uid,
           target: targetName || targetUid || 'NPC',
           result: result.draw ? 'draw' : (result.winner === pet1Copy ? 'win' : 'lose'),
           turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+          rewards: { exp: rewardExp, gold: rewardGold },
+          exp: rewardExp,
+          gold: rewardGold,
           logs: Array.isArray(result.logs) ? result.logs : logs,
           logText: Array.isArray(result.logs) ? result.logs.join('\n') : logs.join('\n'),
           tags: isNPC ? ['野生'] : ['PVP'],
@@ -8847,7 +8854,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.25',
+  version: '4.3.26',
   ext,
 
   DB: {
