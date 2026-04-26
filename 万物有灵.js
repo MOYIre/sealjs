@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.23
+// @version     4.3.24
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1776702930
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.23');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.24');
   seal.ext.register(ext);
 }
 
@@ -31,12 +31,15 @@ const WebUIReporter = {
   _installedMods: null,
   _lastPatchDigest: '',
   _lastPatchCheckAt: 0,
+  _isSyncingCompensations: false,
+  _compAcked: null,
 
   init(options = {}) {
     this.config = { ...this.config, ...options };
     if (this.config.enabled && this.config.endpoint) {
       this._startPeriodicReport();
       this._loadInstalledMods();
+      this._loadCompAcked();
       console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
     }
   },
@@ -56,6 +59,28 @@ const WebUIReporter = {
       ext.storageSet('webui_installed_mods', JSON.stringify(this._installedMods || []));
     } catch (e) {
       console.error('[WebUI Reporter] 保存已安装 Mod 失败:', e);
+    }
+  },
+
+  _loadCompAcked() {
+    if (this._compAcked) return this._compAcked;
+    try {
+      const saved = ext.storageGet('webui_comp_acked');
+      const parsed = saved ? JSON.parse(saved) : {};
+      this._compAcked = parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      this._compAcked = {};
+    }
+    return this._compAcked;
+  },
+
+  _saveCompAcked() {
+    try {
+      ext.storageSet('webui_comp_acked', JSON.stringify(this._compAcked || {}));
+      return true;
+    } catch (e) {
+      console.error('[WebUI Reporter] 保存补偿幂等缓存失败:', e);
+      return false;
     }
   },
 
@@ -106,7 +131,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.23' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.24' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -135,6 +160,12 @@ const WebUIReporter = {
         await this._autoSyncPatches();
       } catch (e) {
         console.error('[WebUI Reporter] 自动检查补丁失败:', e);
+      }
+
+      try {
+        await this.syncCompensations();
+      } catch (e) {
+        console.error('[WebUI Reporter] 自动同步补偿失败:', e);
       }
     }, this.config.reportInterval);
   },
@@ -306,6 +337,175 @@ const WebUIReporter = {
       return (data.data || []).filter(p => p.status === '生效中');
     } catch (e) {
       return [];
+    }
+  },
+
+  async fetchPendingCompensations(limit = 20) {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+      const res = await fetch(`${this.config.endpoint}/api/compensation/pending?limit=${safeLimit}`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.data) ? data.data : [];
+    } catch (e) {
+      console.error('[WebUI Reporter] 拉取补偿失败:', e);
+      return [];
+    }
+  },
+
+  async ackCompensation(idemKey, payload) {
+    if (!this.config.enabled || !this.config.endpoint) return false;
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/compensation/ack`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.token}`,
+        },
+        body: JSON.stringify({ idemKey, ...payload }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[WebUI Reporter] 回执补偿失败:', e);
+      return false;
+    }
+  },
+
+  applyCompensationToPlayer(item) {
+    const uid = String(item?.uid || '').trim();
+    if (!uid) {
+      return { ok: false, error: 'uid 为空' };
+    }
+
+    const data = DB.get(uid);
+    if (!data || typeof data !== 'object') {
+      return { ok: false, error: '玩家数据不存在' };
+    }
+
+    const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
+
+    const goldRaw = payload.gold ?? payload.money ?? 0;
+    const gold = Math.floor(Number(goldRaw || 0));
+    if (Number.isFinite(gold) && gold !== 0) {
+      data.money = Math.max(0, Number(data.money || 0) + gold);
+      if (data.money > CONFIG.maxMoney) data.money = CONFIG.maxMoney;
+    }
+
+    const items = payload.items && typeof payload.items === 'object' ? payload.items : {};
+    data.items = data.items || {};
+    const appliedItems = {};
+    for (const [name, countRaw] of Object.entries(items)) {
+      const count = Math.floor(Number(countRaw || 0));
+      if (!name || !Number.isFinite(count) || count <= 0) continue;
+      data.items[name] = (data.items[name] || 0) + count;
+      appliedItems[name] = count;
+    }
+
+    DB.save(uid, data);
+
+    return {
+      ok: true,
+      result: {
+        uid,
+        gold: Number.isFinite(gold) ? gold : 0,
+        items: appliedItems,
+      },
+    };
+  },
+
+  async syncCompensations() {
+    if (this._isSyncingCompensations) {
+      return { total: 0, success: 0, failed: 0, skipped: true };
+    }
+
+    this._isSyncingCompensations = true;
+    try {
+      const list = await this.fetchPendingCompensations(20);
+      if (!list.length) return { total: 0, success: 0, failed: 0 };
+
+      const ackedMap = this._loadCompAcked();
+      let success = 0;
+      let failed = 0;
+
+      for (const item of list) {
+        try {
+          const idemKey = String(item.idemKey || '').trim();
+          if (!idemKey) {
+            failed++;
+            continue;
+          }
+
+          if (ackedMap[idemKey]) {
+            const ackOk = await this.ackCompensation(idemKey, {
+              status: 'issued',
+              ackBy: 'wanwu_plugin',
+              ackResult: ackedMap[idemKey],
+            });
+            if (ackOk) {
+              delete ackedMap[idemKey];
+              if (!this._saveCompAcked()) {
+                failed++;
+                console.error('[WebUI Reporter] 清理补偿幂等缓存失败:', idemKey);
+              } else {
+                success++;
+              }
+            } else {
+              failed++;
+            }
+            continue;
+          }
+
+          const ret = this.applyCompensationToPlayer(item);
+          if (!ret.ok) {
+            await this.ackCompensation(idemKey, {
+              status: 'failed',
+              ackBy: 'wanwu_plugin',
+              error: ret.error || 'unknown_error',
+            });
+            failed++;
+            continue;
+          }
+
+          ackedMap[idemKey] = ret.result;
+          if (!this._saveCompAcked()) {
+            delete ackedMap[idemKey];
+            failed++;
+            console.error('[WebUI Reporter] 写入补偿幂等缓存失败，已阻断发放回执:', idemKey);
+            continue;
+          }
+
+          const ackOk = await this.ackCompensation(idemKey, {
+            status: 'issued',
+            ackBy: 'wanwu_plugin',
+            ackResult: ret.result,
+          });
+          if (ackOk) {
+            delete ackedMap[idemKey];
+            if (!this._saveCompAcked()) {
+              failed++;
+              console.error('[WebUI Reporter] 清理补偿幂等缓存失败:', idemKey);
+            } else {
+              success++;
+            }
+          } else {
+            failed++;
+          }
+        } catch (e) {
+          failed++;
+          console.error('[WebUI Reporter] 单条补偿处理失败:', e);
+        }
+      }
+
+      if (success > 0 || failed > 0) {
+        console.log(`[WebUI Reporter] 补偿同步完成: 成功${success}, 失败${failed}`);
+      }
+
+      return { total: list.length, success, failed };
+    } finally {
+      this._isSyncingCompensations = false;
     }
   },
 
@@ -5483,7 +5683,8 @@ const HELP_PAGES = {
 .宠物 webui 启用 - 启用WebUI上报
 .宠物 webui 禁用 - 禁用WebUI上报
 .宠物 webui 同步 - 立即同步数据
-.宠物 webui 补丁 - 拉取并应用补丁`,
+.宠物 webui 补丁 - 拉取并应用补丁
+.宠物 webui 补偿 - 立即拉取并发放补偿`,
 };
 
 cmd.solve = async (ctx, msg, argv) => {
@@ -8500,6 +8701,7 @@ cmd.solve = async (ctx, msg, argv) => {
       lines.push('.宠物 webui 启用/禁用');
       lines.push('.宠物 webui 同步');
       lines.push('.宠物 webui 补丁');
+      lines.push('.宠物 webui 补偿');
       return reply(lines.join('\n'));
     }
 
@@ -8575,7 +8777,17 @@ cmd.solve = async (ctx, msg, argv) => {
       const queueSize = WebUIReporter._queue.length;
       console.log(`[WebUI Reporter] 准备同步数据，当前队列长度: ${queueSize}`);
       await WebUIReporter._flush();
-      return reply(`【数据已同步】\n处理了 ${queueSize} 条数据`);
+      const compensationRet = await WebUIReporter.syncCompensations();
+      return reply(`【数据已同步】\n处理了 ${queueSize} 条上报\n补偿: 总计${compensationRet.total} 成功${compensationRet.success} 失败${compensationRet.failed}`);
+    }
+
+    // .宠物 webui 补偿 - 立即拉取并发放补偿
+    if (p1 === '补偿' || p1 === 'compensation') {
+      if (!WebUIReporter.config.enabled) {
+        return reply('WebUI未启用');
+      }
+      const ret = await WebUIReporter.syncCompensations();
+      return reply(`【补偿同步完成】\n总计: ${ret.total}\n成功: ${ret.success}\n失败: ${ret.failed}`);
     }
 
     // .宠物 webui 补丁 - 拉取并应用补丁
@@ -8625,7 +8837,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.23',
+  version: '4.3.24',
   ext,
 
   DB: {
