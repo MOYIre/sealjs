@@ -224,6 +224,12 @@ const WebUIReporter = {
       } catch (e) {
         console.error('[WebUI Reporter] 自动同步补偿失败:', e);
       }
+
+      try {
+        await this.syncAdminCommands();
+      } catch (e) {
+        console.error('[WebUI Reporter] 自动同步管理指令失败:', e);
+      }
     }, this.config.reportInterval);
   },
 
@@ -563,6 +569,177 @@ const WebUIReporter = {
       return { total: list.length, success, failed };
     } finally {
       this._isSyncingCompensations = false;
+    }
+  },
+
+  async fetchPendingAdminCommands(limit = 20) {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+      const res = await fetch(`${this.config.endpoint}/api/admin-commands/pending?limit=${safeLimit}`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.data) ? data.data : [];
+    } catch (e) {
+      console.error('[WebUI Reporter] 拉取管理指令失败:', e);
+      return [];
+    }
+  },
+
+  async ackAdminCommand(cmdId, payload) {
+    if (!this.config.enabled || !this.config.endpoint) return false;
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/admin-commands/ack`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.token}`,
+        },
+        body: JSON.stringify({ cmdId, ...payload }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[WebUI Reporter] 回执管理指令失败:', e);
+      return false;
+    }
+  },
+
+  executeAdminCommand(cmd) {
+    try {
+      const type = cmd.cmdType;
+      const payload = cmd.payload || {};
+
+      switch (type) {
+        case 'UPDATE_PLAYER': {
+          const uid = String(payload.uid || '').trim();
+          if (!uid) return { ok: false, error: '缺少uid' };
+          const data = DB.get(uid);
+          if (!data) return { ok: false, error: '玩家不存在' };
+
+          if (typeof payload.money === 'number') {
+            data.money = Math.max(0, Math.min(CONFIG.maxMoney, payload.money));
+          }
+          if (payload.player && data.player) {
+            if (typeof payload.player.level === 'number') data.player.level = payload.player.level;
+            if (typeof payload.player.energy === 'number') data.player.energy = payload.player.energy;
+          }
+          if (payload.items && typeof payload.items === 'object') {
+            data.items = data.items || {};
+            for (const [itemName, count] of Object.entries(payload.items)) {
+              if (count <= 0) delete data.items[itemName];
+              else data.items[itemName] = count;
+            }
+          }
+          DB.save(uid, data);
+          return { ok: true, result: { uid, updated: true } };
+        }
+        case 'CONTROL_WORLD_BOSS': {
+          const action = payload.action; // 'spawn', 'kill', 'setHp'
+          if (action === 'spawn') {
+            WorldBossManager.checkAndSpawn(true); // 强制刷新
+            return { ok: true, result: { action: 'spawn', boss: WorldBossManager.load() } };
+          } else if (action === 'kill') {
+            const boss = WorldBossManager.load();
+            if (boss) {
+              boss.currentHp = 0;
+              boss.closed = true;
+              WorldBossManager.save();
+              return { ok: true, result: { action: 'kill' } };
+            }
+            return { ok: false, error: '当前无世界Boss' };
+          } else if (action === 'setHp' && typeof payload.hp === 'number') {
+            const boss = WorldBossManager.load();
+            if (boss && !boss.closed) {
+              boss.currentHp = Math.max(0, Math.min(boss.maxHp, payload.hp));
+              WorldBossManager.save();
+              return { ok: true, result: { action: 'setHp', hp: boss.currentHp } };
+            }
+            return { ok: false, error: '当前无存活的世界Boss' };
+          }
+          return { ok: false, error: '未知Boss操作' };
+        }
+        case 'UPDATE_GUILD': {
+          const guildName = payload.guildName;
+          if (!guildName) return { ok: false, error: '缺少公会名' };
+          GuildManager.load();
+          const guild = GuildManager._guilds[guildName];
+          if (!guild) return { ok: false, error: '公会不存在' };
+
+          if (payload.action === 'disband') {
+            delete GuildManager._guilds[guildName];
+            GuildManager.save();
+            return { ok: true, result: { action: 'disband', guildName } };
+          }
+          if (typeof payload.bank === 'number') guild.bank = Math.max(0, payload.bank);
+          if (typeof payload.level === 'number') guild.level = Math.max(1, payload.level);
+          GuildManager.save();
+          return { ok: true, result: { action: 'update', guildName } };
+        }
+        case 'MANAGE_MARKET': {
+          if (payload.action === 'delist' && payload.listingId) {
+            const market = typeof loadMarket === 'function' ? loadMarket() : null;
+            if (market && market.listings && market.listings[payload.listingId]) {
+              delete market.listings[payload.listingId];
+              if (typeof saveMarket === 'function') saveMarket();
+              return { ok: true, result: { action: 'delist', listingId: payload.listingId } };
+            }
+            return { ok: false, error: '订单不存在' };
+          }
+          return { ok: false, error: '未知市场操作' };
+        }
+        case 'UPDATE_GLOBAL_CONFIG': {
+          if (payload.config && typeof CONFIG !== 'undefined') {
+            Object.assign(CONFIG, payload.config);
+            return { ok: true, result: { updatedKeys: Object.keys(payload.config) } };
+          }
+          return { ok: false, error: '配置参数无效' };
+        }
+        default:
+          return { ok: false, error: '未知指令类型' };
+      }
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  async syncAdminCommands() {
+    if (this._isSyncingCommands) return;
+    this._isSyncingCommands = true;
+    try {
+      const list = await this.fetchPendingAdminCommands(10);
+      if (!list.length) return;
+
+      let success = 0;
+      let failed = 0;
+
+      for (const cmd of list) {
+        try {
+          const cmdId = String(cmd.id || '').trim();
+          if (!cmdId) continue;
+
+          const ret = this.executeAdminCommand(cmd);
+          
+          await this.ackAdminCommand(cmdId, {
+            status: ret.ok ? 'success' : 'failed',
+            result: ret.ok ? ret.result : undefined,
+            error: ret.ok ? undefined : ret.error,
+          });
+
+          if (ret.ok) success++;
+          else failed++;
+        } catch (e) {
+          failed++;
+          console.error('[WebUI Reporter] 单条指令处理失败:', e);
+        }
+      }
+
+      if (success > 0 || failed > 0) {
+        console.log(`[WebUI Reporter] 管理指令执行完成: 成功${success}, 失败${failed}`);
+      }
+    } finally {
+      this._isSyncingCommands = false;
     }
   },
 
