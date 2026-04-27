@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.31
+// @version     4.3.32
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.31');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.32');
   seal.ext.register(ext);
 }
 
@@ -188,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.31' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.32' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -3923,17 +3923,6 @@ const ITEMS = {
 };
 
 //   玩家系统  
-// 锻炼类型 (v3.6.9 削弱)
-const TRAIN_TYPES = {
-  '力量训练': { attr: 'str', baseGain: [1, 2], energyCost: 15, desc: '提升力量，增加宠物攻击加成' },
-  '敏捷训练': { attr: 'agi', baseGain: [1, 2], energyCost: 15, desc: '提升敏捷，增加宠物速度加成' },
-  '智力训练': { attr: 'int', baseGain: [1, 2], energyCost: 15, desc: '提升智力，增加宠物精力加成' },
-  '体质训练': { attr: 'vit', baseGain: [1, 2], energyCost: 15, desc: '提升体质，增加宠物生命加成' },
-  '冥想': { attr: 'exp', baseGain: [10, 25], energyCost: 25, desc: '获得玩家经验' },
-};
-
-const DAILY_TRAIN_LIMIT = 5;  // 每日锻炼次数上限
-
 // 玩家装备
 const PLAYER_EQUIPMENT = {
   weapon: {
@@ -5669,8 +5658,6 @@ const HELP_PAGES = {
 
   训练师: `【训练师系统】
 .宠物 训练师 - 查看训练师信息
-.宠物 锻炼 [项目] - 锻炼提升属性(每日5次)
-  力量训练/敏捷训练/智力训练/体质训练/冥想
 .宠物 装备玩家 [装备名] - 装备训练师装备
 .宠物 学习技能 [技能名] - 学习训练师技能书
 
@@ -8535,80 +8522,6 @@ cmd.solve = async (ctx, msg, argv) => {
       player.skills?.length > 0 ? player.skills.map(s => `${s}: ${PLAYER_SKILL_BOOKS[s]?.desc || ''}`).join('\n') : '未学习任何技能',
     ];
     return reply(lines.join('\n'));
-  }
-
-  if (action === '锻炼' || action === 'train') {
-    const player = data.player;
-    const today = new Date().toDateString();
-
-    // 重置每日锻炼次数
-    if (player.lastTrainDate !== today) {
-      player.dailyTrain = 0;
-      player.lastTrainDate = today;
-    }
-
-    // 玩家精力自然恢复（每小时恢复20点）
-    const lastActive = data.lastActiveTime || Date.now();
-    const hoursPassed = (Date.now() - lastActive) / 3600000;
-    player.energy = Math.min(player.maxEnergy, player.energy + Math.floor(hoursPassed * 20));
-    data.lastActiveTime = Date.now();
-
-    if (!p1) {
-      const lines = ['【锻炼项目】', `今日剩余: ${DAILY_TRAIN_LIMIT - player.dailyTrain}次`, `玩家精力: ${player.energy}/${player.maxEnergy}`, ''];
-      for (const [name, train] of Object.entries(TRAIN_TYPES)) {
-        lines.push(`${name}: ${train.desc} (消耗${train.energyCost}精力)`);
-      }
-      return reply(lines.join('\n'));
-    }
-
-    const train = TRAIN_TYPES[p1];
-    if (!train) return reply('未知的锻炼项目');
-
-    if (player.dailyTrain >= DAILY_TRAIN_LIMIT) {
-      return reply(`今日锻炼次数已用完(${DAILY_TRAIN_LIMIT}次)，请明天再来`);
-    }
-
-    // 检查玩家精力
-    if (player.energy < train.energyCost) return reply(`精力不足，需要${train.energyCost}点（当前${player.energy}/${player.maxEnergy}）`);
-
-    // v3.6.10 属性上限检查
-    if (train.attr !== 'exp') {
-      const pLevel = player.level || 1;
-      const attrCap = 10 + Math.floor(pLevel * 1.5);
-      if (player[train.attr] >= attrCap) {
-        return reply(`【${p1}失败】\n${{str:'力量',agi:'敏捷',int:'智力',vit:'体质'}[train.attr]}已达当前等级上限(${attrCap})\n请先提升训练师等级`);
-      }
-    }
-
-    // 执行锻炼
-    player.energy -= train.energyCost;
-    player.dailyTrain++;
-
-    const gain = train.baseGain[0] + Math.floor(Math.random() * (train.baseGain[1] - train.baseGain[0] + 1));
-
-    if (train.attr === 'exp') {
-      player.exp += gain;
-      let levelUp = false;
-      while (player.exp >= (PLAYER_EXP_TABLE[player.level] || player.level * 500)) {
-        player.exp -= PLAYER_EXP_TABLE[player.level] || player.level * 500;
-        player.level++;
-        player.str += 1;
-        player.agi += 1;
-        player.int += 1;
-        player.vit += 1;
-        levelUp = true;
-      }
-      save();
-      if (levelUp) {
-        return reply(`【冥想完成】\n获得 ${gain} 经验\n恭喜升级！训练师等级提升到 Lv.${player.level}\n全属性+1`);
-      }
-      return reply(`【冥想完成】\n获得 ${gain} 经验\n当前: ${player.exp}/${PLAYER_EXP_TABLE[player.level] || player.level * 500}`);
-    } else {
-      player[train.attr] += gain;
-      const attrNames = { str: '力量', agi: '敏捷', int: '智力', vit: '体质' };
-      save();
-      return reply(`【${p1}完成】\n${attrNames[train.attr]} +${gain}\n当前${attrNames[train.attr]}: ${player[train.attr]}`);
-    }
   }
 
   if (action === '装备玩家' || action === 'equip') {
