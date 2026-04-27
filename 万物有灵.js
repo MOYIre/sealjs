@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.28
+// @version     4.3.29
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.28');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.29');
   seal.ext.register(ext);
 }
 
@@ -188,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.28' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.29' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -2306,12 +2306,23 @@ const TeamManager = {
     }
 
     // 兼容旧档：补齐成员与时间字段，避免空字段导致链路异常
-    for (const team of Object.values(this._teams)) {
-      if (!team || typeof team !== 'object') continue;
-      team.members = Array.isArray(team.members) ? team.members : [];
+    for (const [id, team] of Object.entries(this._teams)) {
+      if (!team || typeof team !== 'object') {
+        delete this._teams[id];
+        continue;
+      }
+      team.id = team.id || id;
+      team.members = Array.isArray(team.members) ? team.members.filter(m => m && m.uid) : [];
+      team.members.forEach(m => {
+        m.name = m.name || DB.getName(m.uid) || m.uid || '玩家';
+        m.petIdx = Math.max(0, Number(m.petIdx) || 0);
+      });
       if (!team.leader && team.members.length > 0) {
         team.leader = team.members[0].uid;
-        team.leaderName = team.members[0].name || team.members[0].uid || '玩家';
+      }
+      if (!team.leaderName && team.leader) {
+        const leader = team.members.find(m => m.uid === team.leader);
+        team.leaderName = leader?.name || DB.getName(team.leader) || team.leader || '玩家';
       }
       team.status = team.status || 'recruiting';
       team.createdAt = team.createdAt || Date.now();
@@ -2452,9 +2463,10 @@ const TeamManager = {
     return { success: true, msg: '战斗开始！' };
   },
   // 获取用户所在队伍
-  getUserTeam(uid) {
+  getUserTeam(uid, includeCompleted = false) {
     this.load();
     for (const team of Object.values(this._teams)) {
+      if (!includeCompleted && team.status === 'completed') continue;
       if (team.members.find(m => m.uid === uid)) {
         return team;
       }
@@ -2469,6 +2481,15 @@ const TeamManager = {
     this.save();
   },
 
+  completeTeam(teamId) {
+    this.load();
+    const team = this._teams[teamId];
+    if (!team) return;
+    team.status = 'completed';
+    team.updatedAt = Date.now();
+    this.save();
+  },
+
   // 清理过期队伍（30分钟未活动）
   cleanExpiredTeams() {
     this.load();
@@ -2477,7 +2498,7 @@ const TeamManager = {
     let cleaned = 0;
     for (const [id, team] of Object.entries(this._teams)) {
       const lastActiveAt = team.updatedAt || team.createdAt || 0;
-      if (now - lastActiveAt > expireTime) {
+      if (now - lastActiveAt > expireTime || team.status === 'completed') {
         delete this._teams[id];
         cleaned++;
       }
@@ -5562,7 +5583,35 @@ const Battle = {
   },
 };
 
-//   命令处理  
+function pushCompactBattleLogs(logs, fightLogs, maxFightLogs = CONFIG.fightLogLimit) {
+  if (!Array.isArray(fightLogs) || fightLogs.length === 0) return;
+  if (fightLogs.length <= maxFightLogs) {
+    logs.push(...fightLogs);
+    return;
+  }
+
+  const turnStarts = [];
+  fightLogs.forEach((log, i) => {
+    if (typeof log === 'string' && log.includes('--- 第') && log.includes('回合 ---')) {
+      turnStarts.push(i);
+    }
+  });
+
+  if (turnStarts.length <= 2) {
+    logs.push(...fightLogs.slice(0, 6));
+    logs.push('\n...（战斗太激烈，省略部分回合）...\n');
+    logs.push(...fightLogs.slice(-6));
+    return;
+  }
+
+  const headTurnEnd = turnStarts[2];
+  const tailTurnStart = turnStarts[turnStarts.length - 2];
+  logs.push(...fightLogs.slice(0, headTurnEnd));
+  logs.push('\n...（战斗太激烈，省略中间回合）...\n');
+  logs.push(...fightLogs.slice(tailTurnStart));
+}
+
+//   命令处理
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '宠物';
 cmd.help = `【万物有灵】宠物养成对战系统
@@ -6266,30 +6315,8 @@ cmd.solve = async (ctx, msg, argv) => {
 
       logs.push(`遭遇 ${RARITY_MARK[wildPet.rarity]}${ELEMENT_MARK[wildPet.element]} ${wildPet.name}(${wildPet.species}) Lv.${wildPet.level}${regionInfo}${weatherInfo}`);
 
-      // 日志截断：按回合截断，确保回合完整性
       const maxFightLogs = CONFIG.fightLogLimit - 3;
-      const fightLogs = result.logs;
-      if (fightLogs.length <= maxFightLogs) {
-        logs.push(...fightLogs);
-      } else {
-        const turnStarts = [];
-        fightLogs.forEach((log, i) => {
-          if (log.includes('--- 第') && log.includes('回合 ---')) {
-            turnStarts.push(i);
-          }
-        });
-        if (turnStarts.length <= 2) {
-          logs.push(...fightLogs.slice(0, 6));
-          logs.push('\n...（战斗太激烈，省略部分回合）...\n');
-          logs.push(...fightLogs.slice(-6));
-        } else {
-          const headTurnEnd = turnStarts[2];
-          const tailTurnStart = turnStarts[turnStarts.length - 2];
-          logs.push(...fightLogs.slice(0, headTurnEnd));
-          logs.push('\n...（战斗太激烈，省略中间回合）...\n');
-          logs.push(...fightLogs.slice(tailTurnStart));
-        }
-      }
+      pushCompactBattleLogs(logs, result.logs, maxFightLogs);
 
       if (result.draw) {
         logs.push(`\n[平局] ${fighter.name}和 ${wildPet.name} 同归于尽，它逃跑了...`);
@@ -8203,14 +8230,17 @@ cmd.solve = async (ctx, msg, argv) => {
 
       const fighters = [];
       const skipped = [];
+      const teamSnapshot = JSON.parse(JSON.stringify(myTeam));
       WorldBossManager.load();
-      for (const member of myTeam.members) {
+      for (const member of teamSnapshot.members) {
         const memberData = DB.get(member.uid);
         if (memberData && memberData.pets.length > 0) {
           // 如果没有设置宠物或设置的宠物不存在，使用最强宠物
-          let pet = memberData.pets[member.petIdx];
+          let petIdx = Math.max(0, Number(member.petIdx) || 0);
+          let pet = memberData.pets[petIdx];
           if (!pet) {
             pet = PetFactory.getStrongestPet(memberData.pets);
+            petIdx = Math.max(0, memberData.pets.indexOf(pet));
           }
           const energyCost = isWorldBoss ? 20 : difficulty.energyCost;
           const challenge = isWorldBoss ? WorldBossManager.canChallenge(member.uid) : { success: true };
@@ -8227,59 +8257,75 @@ cmd.solve = async (ctx, msg, argv) => {
               }
             }
             pet.energy -= energyCost;
-            fighters.push({ pet, name: member.name, uid: member.uid, data: memberData, damage: 0 });
+            const fighter = JSON.parse(JSON.stringify(pet));
+            fighter._teamUid = member.uid;
+            fighter._teamPetIdx = petIdx;
+            fighters.push({ pet, fighter, name: member.name, uid: member.uid, data: memberData, damage: 0 });
+          } else if (pet) {
+            skipped.push(`${member.name}(${pet.hp <= 0 ? '宠物已阵亡' : `精力不足，需要${energyCost}点`})`);
           }
+        } else {
+          skipped.push(`${member.name}(没有宠物)`);
         }
       }
       if (fighters.length === 0) return reply(skipped.length ? `没有可出战的宠物\n${skipped.join('\n')}` : '没有可出战的宠物');
 
       const teamSize = fighters.length;
       const hpScale = isWorldBoss ? 1 : (1 + Math.max(0, teamSize - 1) * 0.5);
-      let bossHp = Math.floor(bossData.bossHp * hpScale);
       const bossMaxHp = Math.floor((isWorldBoss ? bossData.maxHp : bossData.bossHp) * hpScale);
+      const bossFighter = {
+        id: 'team_boss_' + Date.now(),
+        name: bossData.name,
+        species: bossData.name,
+        element: bossData.element || '超能',
+        rarity: '普通',
+        level: Math.max(1, Math.floor((bossData.bossAtk || 80) / 10)),
+        maxHp: bossMaxHp,
+        hp: Math.floor(bossData.bossHp * hpScale),
+        atk: bossData.bossAtk,
+        def: bossData.bossDef,
+        spd: bossData.spd || 100,
+        maxEnergy: 999,
+        energy: 999,
+        skills: bossData.skills || ['冲撞'],
+      };
       const logs = [
-        `【组队${isWorldBoss ? '世界Boss' : '副本'}】${myTeam.dungeon}${isWorldBoss ? '' : ` [${difficultyName}]`}`,
+        `【组队${isWorldBoss ? '世界Boss' : '副本'}】${teamSnapshot.dungeon}${isWorldBoss ? '' : ` [${difficultyName}]`}`,
         `队伍 vs ${bossData.name}`,
         `参战人数: ${teamSize}人，敌方生命倍率 x${hpScale.toFixed(1)}`,
-        `敌方生命: ${bossHp}/${bossMaxHp}`,
+        `敌方生命: ${bossFighter.hp}/${bossFighter.maxHp}`,
       ];
-      let round = 0;
-      let totalDamage = 0;
+      if (skipped.length) logs.push(`未参战: ${skipped.join('、')}`);
 
-      while (bossHp > 0 && fighters.some(f => f.pet.hp > 0) && round < 30) {
-        round++;
-        logs.push(`\n--- 第${round}回合 ---`);
-        for (const f of fighters) {
-          if (f.pet.hp <= 0 || bossHp <= 0) continue;
-          const damage = Math.max(1, f.pet.atk - bossData.bossDef + Math.floor(Math.random() * 20));
-          const actualDamage = Math.min(damage, Math.max(0, bossHp));
-          bossHp -= actualDamage;
-          f.damage = (f.damage || 0) + actualDamage;
-          totalDamage += actualDamage;
-          logs.push(`${f.name}的${f.pet.name}造成${actualDamage}伤害 (Boss剩余:${Math.max(0, bossHp)})`);
+      const primary = fighters[0].fighter;
+      const ally = fighters[1]?.fighter || null;
+      const result = Battle.run(primary, bossFighter, ally);
+      pushCompactBattleLogs(logs, result.logs, CONFIG.battleLogLimit);
+
+      const totalDamage = Math.min(bossMaxHp, Math.max(0, bossMaxHp - Math.max(0, bossFighter.hp)));
+      fighters.forEach(f => {
+        const beforeHp = f.pet.hp;
+        if (f.fighter === primary || f.fighter === ally) {
+          applyBattleInjuryCap(f.pet, f.fighter.hp);
         }
-        if (bossHp <= 0) break;
-        const aliveFighters = fighters.filter(f => f.pet.hp > 0);
-        if (aliveFighters.length > 0) {
-          const target = aliveFighters[Math.floor(Math.random() * aliveFighters.length)];
-          const damage = Math.max(1, bossData.bossAtk - target.pet.def + Math.floor(Math.random() * 30));
-          target.pet.hp = Math.max(0, target.pet.hp - damage);
-          logs.push(`${bossData.name}攻击${target.name}的${target.pet.name}，造成${damage}伤害`);
+        f.damage = Math.floor(totalDamage / fighters.length);
+        if (f === fighters[fighters.length - 1]) {
+          f.damage += totalDamage - fighters.reduce((sum, item) => sum + (item.damage || 0), 0);
         }
-      }
+        f.pet.hp = Math.max(1, f.pet.hp || beforeHp);
+        DB.save(f.uid, f.data);
+      });
+      TeamManager.completeTeam(myTeam.id);
 
-      for (const f of fighters) { f.pet.hp = Math.max(1, f.pet.hp); DB.save(f.uid, f.data); }
-      TeamManager.deleteTeam(myTeam.id);
-
-      if (bossHp <= 0) {
+      if (result.winner === primary || result.winner === ally || bossFighter.hp <= 0) {
         logs.push(`\n【胜利】击败${bossData.name}！`);
 
         if (isWorldBoss) {
           const damageByUid = {};
           fighters.forEach(f => { damageByUid[f.uid] = (damageByUid[f.uid] || 0) + (f.damage || 0); });
-          const result = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
-          if (!result.success) return reply(result.msg);
-          const rewards = Array.isArray(result.rewards) ? result.rewards : [];
+          const bossResult = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
+          if (!bossResult.success) return reply(bossResult.msg);
+          const rewards = Array.isArray(bossResult.rewards) ? bossResult.rewards : [];
           if (rewards.length) {
             logs.push('【世界Boss结算】');
             rewards.forEach(r => logs.push(`${r.name}: ${r.money}金币, ${r.item}（${r.damage}伤害）`));
@@ -8297,19 +8343,19 @@ cmd.solve = async (ctx, msg, argv) => {
             logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
           }
         }
-        return reply(logs.slice(0, 25).join('\n'));
+        return reply(logs.join('\n'));
       } else {
         if (isWorldBoss) {
           const damageByUid = {};
           fighters.forEach(f => { damageByUid[f.uid] = (damageByUid[f.uid] || 0) + (f.damage || 0); });
-          const result = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
-          if (!result.success) return reply(result.msg);
-          logs.push(`\n【撤退】对${bossData.name}造成${result.damage}点伤害`);
-          logs.push(`Boss剩余HP: ${result.currentHp}/${result.maxHp}`);
+          const bossResult = WorldBossManager.applyTeamDamage(damageByUid, fighters, uid, myName || '队伍');
+          if (!bossResult.success) return reply(bossResult.msg);
+          logs.push(`\n【撤退】对${bossData.name}造成${bossResult.damage}点伤害`);
+          logs.push(`Boss剩余HP: ${bossResult.currentHp}/${bossResult.maxHp}`);
         } else {
           logs.push(`\n【失败】被${bossData.name}击败...`);
         }
-        return reply(logs.slice(0, 25).join('\n'));
+        return reply(logs.join('\n'));
       }
     }
     return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
@@ -8774,8 +8820,9 @@ cmd.solve = async (ctx, msg, argv) => {
 
   //   WebUI管理
   if (action === 'webui') {
-    // 权限检查：仅限骰主使用 (privilegeLevel >= 100)
-    if (ctx.privilegeLevel < 100) {
+    // 验证命令允许普通用户（骰主用于绑定自身QQ），其他命令仅限骰主
+    const isOwner = ctx.privilegeLevel >= 100;
+    if (!isOwner && p1 !== '验证' && p1 !== 'verify') {
       return reply('【权限不足】\nWebUI 相关命令仅限骰主使用。');
     }
 
