@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.27
+// @version     4.3.28
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.27');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.28');
   seal.ext.register(ext);
 }
 
@@ -188,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.27' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.28' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -4050,35 +4050,51 @@ const DB = {
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
       data.playerItems = data.playerItems ?? {};
 
-      // 精力自动恢复：每小时恢复10%精力
+      let energyRecovered = false;
       const now = Date.now();
-      const lastCheck = data.lastEnergyCheck || now;
-      const hoursPassed = (now - lastCheck) / 3600000;
+      const lastCheck = data.lastEnergyCheck || data.lastActiveTime || 0;
+      const hoursPassed = lastCheck > 0 ? (now - lastCheck) / 3600000 : 0;
       if (hoursPassed >= 0.1) { // 至少6分钟才恢复
         const recoverRate = 0.1; // 每小时恢复10%
-        
+
         // 恢复所有宠物精力
         for (const pet of data.pets) {
+          pet.maxEnergy = pet.maxEnergy ?? pet.energy ?? 100;
+          pet.energy = pet.energy ?? pet.maxEnergy;
           if (pet.energy < pet.maxEnergy) {
             // 慵懒性格：精力恢复速度+100%
             const petRecoverRate = pet.nature === '慵懒' ? recoverRate * (NATURES['慵懒'].energyRegenMod || 2.0) : recoverRate;
+            const beforeEnergy = pet.energy;
             pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * petRecoverRate));
+            if (pet.energy !== beforeEnergy) energyRecovered = true;
           }
         }
         for (const pet of data.storage || []) {
+          pet.maxEnergy = pet.maxEnergy ?? pet.energy ?? 100;
+          pet.energy = pet.energy ?? pet.maxEnergy;
           if (pet.energy < pet.maxEnergy) {
             // 慵懒性格：精力恢复速度+100%
             const petRecoverRate = pet.nature === '慵懒' ? recoverRate * (NATURES['慵懒'].energyRegenMod || 2.0) : recoverRate;
+            const beforeEnergy = pet.energy;
             pet.energy = Math.min(pet.maxEnergy, pet.energy + Math.floor(pet.maxEnergy * hoursPassed * petRecoverRate));
+            if (pet.energy !== beforeEnergy) energyRecovered = true;
           }
         }
-        
+
         // 恢复玩家精力
         if (data.player.energy < data.player.maxEnergy) {
+          const beforeEnergy = data.player.energy;
           data.player.energy = Math.min(data.player.maxEnergy, data.player.energy + Math.floor(data.player.maxEnergy * hoursPassed * recoverRate));
+          if (data.player.energy !== beforeEnergy) energyRecovered = true;
         }
-        
+
         data.lastEnergyCheck = now;
+      } else if (!data.lastEnergyCheck) {
+        data.lastEnergyCheck = now;
+      }
+
+      if (energyRecovered || !d.includes('"lastEnergyCheck"')) {
+        ext.storageSet('u_' + userId, JSON.stringify(data));
       }
 
       return data;
