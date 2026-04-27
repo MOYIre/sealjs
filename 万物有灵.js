@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.29
+// @version     4.3.30
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.29');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.30');
   seal.ext.register(ext);
 }
 
@@ -188,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.29' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.30' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -2510,9 +2510,9 @@ const TeamManager = {
 
 //   副本系统
 const DUNGEON_DIFFICULTIES = {
-  '普通': { hp: 1, atk: 1, def: 1, reward: 1, energyCost: 30 },
-  '困难': { hp: 1.35, atk: 1.25, def: 1.2, reward: 1.4, energyCost: 40 },
-  '噩梦': { hp: 1.8, atk: 1.55, def: 1.45, reward: 1.9, energyCost: 55 },
+  '普通': { hp: 1, atk: 1, def: 1, reward: 1, energyCost: 20 },
+  '困难': { hp: 1.35, atk: 1.25, def: 1.2, reward: 1.4, energyCost: 30 },
+  '噩梦': { hp: 1.8, atk: 1.55, def: 1.45, reward: 1.9, energyCost: 45 },
 };
 
 const DUNGEONS = {
@@ -4076,7 +4076,7 @@ const DB = {
       const lastCheck = data.lastEnergyCheck || data.lastActiveTime || 0;
       const hoursPassed = lastCheck > 0 ? (now - lastCheck) / 3600000 : 0;
       if (hoursPassed >= 0.1) { // 至少6分钟才恢复
-        const recoverRate = 0.1; // 每小时恢复10%
+        const recoverRate = 0.2; // 每小时恢复20%
 
         // 恢复所有宠物精力
         for (const pet of data.pets) {
@@ -8547,10 +8547,10 @@ cmd.solve = async (ctx, msg, argv) => {
       player.lastTrainDate = today;
     }
 
-    // 玩家精力自然恢复（每小时恢复10点）
+    // 玩家精力自然恢复（每小时恢复20点）
     const lastActive = data.lastActiveTime || Date.now();
     const hoursPassed = (Date.now() - lastActive) / 3600000;
-    player.energy = Math.min(player.maxEnergy, player.energy + Math.floor(hoursPassed * 10));
+    player.energy = Math.min(player.maxEnergy, player.energy + Math.floor(hoursPassed * 20));
     data.lastActiveTime = Date.now();
 
     if (!p1) {

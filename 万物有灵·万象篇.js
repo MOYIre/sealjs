@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.3
+// @version     3.2.4
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696319
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.3');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.4');
   seal.ext.register(ext);
 }
 
@@ -297,10 +297,10 @@ const EXPLORE_AREAS = [
 ];
 
 const WORK_TYPES = [
-  { name: '看家', gold: [10, 20], energy: 10 },
-  { name: '送货', gold: [20, 40], energy: 20 },
-  { name: '狩猎', gold: [30, 60], energy: 30 },
-  { name: '护送', gold: [50, 100], energy: 40 },
+  { name: '看家', gold: [10, 20], energy: 5 },
+  { name: '送货', gold: [20, 40], energy: 10 },
+  { name: '狩猎', gold: [30, 60], energy: 15 },
+  { name: '护送', gold: [50, 100], energy: 20 },
 ];
 
 const ACHIEVEMENTS = {
@@ -1284,7 +1284,7 @@ function init() {
     if (!result) return p.reply('请指定正确的宠物编号\n(1-3队伍，4-18仓库)');
     const pet = result.pet;
     if (pet.hp <= 0) return p.reply('宠物已阵亡，无法探险');
-    if (pet.energy < 30) return p.reply('宠物精力不足，需要30点精力');
+    if (pet.energy < 15) return p.reply('宠物精力不足，需要15点精力');
     const area = EXPLORE_AREAS.find(a => a.name === p.p2);
     if (!area) return p.reply(`未知区域\n可用: ${EXPLORE_AREAS.map(a => a.name).join('、')}`);
 
@@ -1295,7 +1295,7 @@ function init() {
     if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return p.reply('该宠物正在执行任务');
 
     data.explore.push({ petId: pet.id, endTime: now + EXT_CONFIG.exploreTime * 60000, area: area.name });
-    pet.energy -= 30;
+    pet.energy -= 15;
     p.save();
     DB.ext.save(p.uid, data);
     TaskNotifier.register(p.uid, ctx, msg);
