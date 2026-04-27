@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.26
+// @version     4.3.27
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1776702930
+// @timestamp   1777276340
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.26');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.27');
   seal.ext.register(ext);
 }
 
@@ -122,6 +122,55 @@ const WebUIReporter = {
     });
   },
 
+  reportGeneric(type, data, uid = '') {
+    if (!this.config.enabled || !this.config.endpoint) return;
+    this._queue.push({
+      type,
+      timestamp: Date.now(),
+      uid,
+      data
+    });
+  },
+
+  buildPlayerSummary(uid, data) {
+    const pets = Array.isArray(data?.pets) ? data.pets : [];
+    const storage = Array.isArray(data?.storage) ? data.storage : [];
+    const allPets = pets.concat(storage);
+    const topPet = allPets.slice().sort((a, b) => {
+      const bp = (b?.level || 1) * ((b?.atk || 0) + (b?.def || 0) + (b?.maxHp || b?.hp || 0));
+      const ap = (a?.level || 1) * ((a?.atk || 0) + (a?.def || 0) + (a?.maxHp || a?.hp || 0));
+      return bp - ap;
+    })[0] || null;
+    return {
+      uid,
+      name: (typeof DB !== 'undefined' && DB.getName ? DB.getName(uid) : '') || String(uid || '').replace('QQ:', ''),
+      level: Number(data?.player?.level || 1),
+      money: Number(data?.money || 0),
+      petCount: allPets.length,
+      guildId: data?.guild || '',
+      riskScore: 0,
+      player: data?.player || {},
+      pets,
+      storage,
+      topPet: topPet ? {
+        id: topPet.id || '',
+        name: topPet.name || '',
+        level: Number(topPet.level || 1),
+        rarity: topPet.rarity || '',
+        element: topPet.element || '',
+        hp: Number(topPet.hp || 0),
+        maxHp: Number(topPet.maxHp || topPet.hp || 0),
+        atk: Number(topPet.atk || 0),
+        def: Number(topPet.def || 0),
+      } : null,
+      updatedAt: Date.now(),
+    };
+  },
+
+  reportPlayerSnapshot(uid, data) {
+    this.reportPlayerData(uid, this.buildPlayerSummary(uid, data));
+  },
+
   async _flush() {
     if (this._isFlushing || this._queue.length === 0) return;
     this._isFlushing = true;
@@ -139,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.26' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.27' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1415,6 +1464,9 @@ const GuildManager = {
 
   save() {
     ext.storageSet('guilds', JSON.stringify(this._guilds || {}));
+    if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+      WebUIReporter.reportGeneric('guild_snapshot', { guilds: this._guilds || {} });
+    }
   },
 
   get guilds() { return this.load(); },
@@ -2479,6 +2531,9 @@ const WorldBossManager = {
       ext.storageSet('worldBoss', JSON.stringify(this._boss));
     } else {
       ext.storageSet('worldBoss', '');
+    }
+    if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+      WebUIReporter.reportGeneric('world_boss', this._boss || { closed: true, currentHp: 0, maxHp: 0, updatedAt: Date.now() });
     }
   },
 
@@ -4040,6 +4095,9 @@ const DB = {
         data.money = CONFIG.maxMoney;
       }
       ext.storageSet('u_' + userId, JSON.stringify(data));
+      if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+        WebUIReporter.reportPlayerSnapshot(userId, data);
+      }
     } catch (e) {
       console.log('[万物有灵] 数据保存失败:', e);
     }
@@ -8854,7 +8912,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.26',
+  version: '4.3.27',
   ext,
 
   DB: {
@@ -9023,6 +9081,9 @@ const WanwuYouling = {
     this._marketData = data;
     if (!this.Storage.setJSON('market_global', data)) {
       console.log('[万物有灵] 市场数据保存失败');
+    }
+    if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+      WebUIReporter.reportGeneric('market_snapshot', data || { listings: {} });
     }
   },
 
