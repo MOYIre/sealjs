@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.32
+// @version     4.3.34
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.32');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.34');
   seal.ext.register(ext);
 }
 
@@ -171,6 +171,51 @@ const WebUIReporter = {
     this.reportPlayerData(uid, this.buildPlayerSummary(uid, data));
   },
 
+  reportMapTopology() {
+    if (!this.config.enabled || !this.config.endpoint) return;
+    const mapTopology = { nodes: [], edges: [] };
+    
+    // 遍历 REGIONS 生成节点和物理连线
+    Object.entries(REGIONS).forEach(([id, data]) => {
+      mapTopology.nodes.push({
+        id: `region_${id}`,
+        type: 'region',
+        label: data.name,
+        position: { x: data.ui?.x || 0, y: data.ui?.y || 0 },
+        data: data
+      });
+      
+      (data.connections || []).forEach(targetId => {
+        mapTopology.edges.push({
+          id: `edge_${id}_${targetId}`,
+          source: `region_${id}`,
+          target: `region_${targetId}`,
+          type: 'path'
+        });
+      });
+    });
+
+    // 遍历 TOWNS 生成节点和从属连线
+    Object.entries(TOWNS).forEach(([id, data]) => {
+      mapTopology.nodes.push({
+        id: `town_${id}`,
+        type: 'town',
+        label: data.name,
+        position: { x: data.ui?.x || 0, y: data.ui?.y || 0 },
+        data: data
+      });
+      
+      mapTopology.edges.push({
+        id: `edge_${id}_${data.region}`,
+        source: `town_${id}`,
+        target: `region_${data.region}`,
+        type: 'hierarchy' 
+      });
+    });
+
+    this.reportGeneric('map_topology', mapTopology);
+  },
+
   async _flush() {
     if (this._isFlushing || this._queue.length === 0) return;
     this._isFlushing = true;
@@ -188,7 +233,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.32' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.34' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -229,6 +274,13 @@ const WebUIReporter = {
         await this.syncAdminCommands();
       } catch (e) {
         console.error('[WebUI Reporter] 自动同步管理指令失败:', e);
+      }
+
+      // 定期上报地图拓扑（3分钟一次，或者按需）
+      this._mapReportTicks = (this._mapReportTicks || 0) + 1;
+      if (this._mapReportTicks >= 3) {
+        this.reportMapTopology();
+        this._mapReportTicks = 0;
       }
     }, this.config.reportInterval);
   },
@@ -695,6 +747,36 @@ const WebUIReporter = {
             return { ok: true, result: { updatedKeys: Object.keys(payload.config) } };
           }
           return { ok: false, error: '配置参数无效' };
+        }
+        case 'UPDATE_MAP_TOPOLOGY': {
+          let updatedCount = 0;
+          if (Array.isArray(payload.nodes)) {
+            for (const node of payload.nodes) {
+              if (!node.id || !node.position) continue;
+              if (node.id.startsWith('region_')) {
+                const id = node.id.replace('region_', '');
+                if (REGIONS[id]) {
+                  REGIONS[id].ui = REGIONS[id].ui || {};
+                  REGIONS[id].ui.x = node.position.x;
+                  REGIONS[id].ui.y = node.position.y;
+                  if (node.data?.connections) REGIONS[id].connections = node.data.connections;
+                  updatedCount++;
+                }
+              } else if (node.id.startsWith('town_')) {
+                const id = node.id.replace('town_', '');
+                if (TOWNS[id]) {
+                  TOWNS[id].ui = TOWNS[id].ui || {};
+                  TOWNS[id].ui.x = node.position.x;
+                  TOWNS[id].ui.y = node.position.y;
+                  updatedCount++;
+                }
+              }
+            }
+            // 立即广播新的地图拓扑
+            this.reportMapTopology();
+            return { ok: true, result: { action: 'update_map', updatedCount } };
+          }
+          return { ok: false, error: '缺少 nodes 数组' };
         }
         default:
           return { ok: false, error: '未知指令类型' };
@@ -3244,6 +3326,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '雨天': 1.2, '晴天': 1 },
+    ui: { x: 400, y: 300, icon: 'tree' },
+    connections: ['草原', '山脉', '洞穴'],
   },
   '火山': {
     name: '熔岩火山',
@@ -3252,6 +3336,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '晴天': 1.3, '雨天': 0.7 },
+    ui: { x: 700, y: 150, icon: 'volcano' },
+    connections: ['山脉', '沙漠'],
   },
   '海洋': {
     name: '蔚蓝海域',
@@ -3260,6 +3346,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '雨天': 1.3, '暴风': 1.1 },
+    ui: { x: 150, y: 500, icon: 'water' },
+    connections: ['草原', '遗迹'],
   },
   '沙漠': {
     name: '死亡沙漠',
@@ -3268,6 +3356,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: true, // 夜晚更活跃
     weatherMod: { '晴天': 1.2, '沙暴': 1.5 },
+    ui: { x: 750, y: 400, icon: 'sun' },
+    connections: ['遗迹', '火山'],
   },
   '山脉': {
     name: '龙脊山脉',
@@ -3276,6 +3366,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '暴风': 1.2, '晴天': 1 },
+    ui: { x: 550, y: 150, icon: 'mountain' },
+    connections: ['森林', '火山'],
   },
   '洞穴': {
     name: '幽暗洞穴',
@@ -3284,6 +3376,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: {},
+    ui: { x: 550, y: 350, icon: 'moon' },
+    connections: ['森林', '遗迹'],
   },
   '草原': {
     name: '风之草原',
@@ -3292,6 +3386,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '晴天': 1.2, '雨天': 0.9 },
+    ui: { x: 250, y: 250, icon: 'leaf' },
+    connections: ['森林', '海洋'],
   },
   '遗迹': {
     name: '古代遗迹',
@@ -3300,6 +3396,8 @@ const REGIONS = {
     dayOnly: false,
     nightOnly: true,
     weatherMod: { '晴天': 0.8, '雨天': 1.1 },
+    ui: { x: 450, y: 550, icon: 'star' },
+    connections: ['海洋', '洞穴', '沙漠'],
   },
 };
 
@@ -3530,14 +3628,14 @@ const EventManager = {
 //   社会系统  
 // 城镇定义
 const TOWNS = {
-  'forest_village': { name: '翠林村', region: '森林', desc: '隐藏在茂密森林中的宁静村落', npcs: ['elder', 'herbalist', 'hunter'] },
-  'volcano_fortress': { name: '炎焰堡', region: '火山', desc: '建立在火山脚下的坚固堡垒', npcs: ['blacksmith', 'warrior', 'merchant'] },
-  'ocean_port': { name: '碧波港', region: '海洋', desc: '繁忙的海港城市，商船云集', npcs: ['captain', 'fisherman', 'trader'] },
-  'desert_oasis': { name: '绿洲镇', region: '沙漠', desc: '沙漠中唯一的绿洲', npcs: ['nomad', 'sage', 'merchant'] },
-  'mountain_city': { name: '云端城', region: '山脉', desc: '高耸入云的山城', npcs: ['eagle_master', 'monk', 'trader'] },
-  'cave_hideout': { name: '暗影洞窟', region: '洞穴', desc: '神秘地下组织的据点', npcs: ['shadow_dealer', 'rogue', 'mystic'] },
-  'grassland_camp': { name: '游牧营', region: '草原', desc: '游牧民族的临时营地', npcs: ['chieftain', 'beast_tamer', 'scout'] },
-  'ruin_tower': { name: '遗迹塔', region: '遗迹', desc: '古代文明残留的神秘高塔', npcs: ['archaeologist', 'wizard', 'guardian'] },
+  'forest_village': { name: '翠林村', region: '森林', desc: '隐藏在茂密森林中的宁静村落', npcs: ['elder', 'herbalist', 'hunter'], ui: { x: 400, y: 350, icon: 'home' } },
+  'volcano_fortress': { name: '炎焰堡', region: '火山', desc: '建立在火山脚下的坚固堡垒', npcs: ['blacksmith', 'warrior', 'merchant'], ui: { x: 750, y: 100, icon: 'castle' } },
+  'ocean_port': { name: '碧波港', region: '海洋', desc: '繁忙的海港城市，商船云集', npcs: ['captain', 'fisherman', 'trader'], ui: { x: 100, y: 550, icon: 'anchor' } },
+  'desert_oasis': { name: '绿洲镇', region: '沙漠', desc: '沙漠中唯一的绿洲', npcs: ['nomad', 'sage', 'merchant'], ui: { x: 800, y: 450, icon: 'palm-tree' } },
+  'mountain_city': { name: '云端城', region: '山脉', desc: '高耸入云的山城', npcs: ['eagle_master', 'monk', 'trader'], ui: { x: 500, y: 100, icon: 'cloud' } },
+  'cave_hideout': { name: '暗影洞窟', region: '洞穴', desc: '神秘地下组织的据点', npcs: ['shadow_dealer', 'rogue', 'mystic'], ui: { x: 600, y: 380, icon: 'skull' } },
+  'grassland_camp': { name: '游牧营', region: '草原', desc: '游牧民族的临时营地', npcs: ['chieftain', 'beast_tamer', 'scout'], ui: { x: 200, y: 200, icon: 'tent' } },
+  'ruin_tower': { name: '遗迹塔', region: '遗迹', desc: '古代文明残留的神秘高塔', npcs: ['archaeologist', 'wizard', 'guardian'], ui: { x: 500, y: 600, icon: 'monument' } },
 };
 
 const CITY_FOOD_SHOPS = {
