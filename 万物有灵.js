@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.30
+// @version     4.3.31
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.30');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.31');
   seal.ext.register(ext);
 }
 
@@ -188,7 +188,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.30' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.31' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -647,7 +647,7 @@ const CONFIG = {
   // 战斗相关
   battleLogLimit: 20,
   battleLogPvPLimit: 20,
-  battleEnergyCost: 20,
+  battleEnergyCost: 15,
   battleHpLoss: 10,
   // 斗殴相关
   fightLogLimit: 20,
@@ -6323,7 +6323,7 @@ cmd.solve = async (ctx, msg, argv) => {
         if (!isPlayerFight) {
           const pet = getPet(p1);
           applyBattleInjuryCap(pet, fighter.hp);
-          pet.energy = Math.max(0, pet.energy - 20);
+          pet.energy = Math.max(0, pet.energy - 15);
           save();
         }
       } else if (result.winner === fighter) {
@@ -6539,7 +6539,7 @@ cmd.solve = async (ctx, msg, argv) => {
         if (!isPlayerFight) {
           const pet = getPet(p1);
           applyBattleInjuryCap(pet, fighter.hp);
-          pet.energy = Math.max(0, pet.energy - 20);
+          pet.energy = Math.max(0, pet.energy - 15);
         }
 
         // 双人战斗：玩家精力消耗
@@ -6558,7 +6558,7 @@ cmd.solve = async (ctx, msg, argv) => {
         if (!isPlayerFight) {
           const pet = getPet(p1);
           applyBattleInjuryCap(pet, fighter.hp);
-          pet.energy = Math.max(0, pet.energy - 20);
+          pet.energy = Math.max(0, pet.energy - 15);
         }
         // 双人战斗：玩家精力消耗
         if (playerFighter) {
