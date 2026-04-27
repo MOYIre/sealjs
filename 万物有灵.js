@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.34
+// @version     4.3.35
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.34');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.35');
   seal.ext.register(ext);
 }
 
@@ -216,6 +216,93 @@ const WebUIReporter = {
     this.reportGeneric('map_topology', mapTopology);
   },
 
+  _loadAnnouncementSeen() {
+    try {
+      const saved = ext.storageGet('webui_announcement_seen');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  _saveAnnouncementSeen(ids) {
+    try {
+      ext.storageSet('webui_announcement_seen', JSON.stringify(Array.isArray(ids) ? ids.slice(0, 100) : []));
+      return true;
+    } catch (e) {
+      console.error('[WebUI Reporter] 保存公告已读缓存失败:', e);
+      return false;
+    }
+  },
+
+  async fetchAnnouncements() {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/announcement`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.data) ? data.data : [];
+    } catch (e) {
+      console.error('[WebUI Reporter] 拉取公告失败:', e);
+      return [];
+    }
+  },
+
+  formatAnnouncementList(list, onlyUnread = false) {
+    const seen = new Set(this._loadAnnouncementSeen());
+    const rows = (Array.isArray(list) ? list : [])
+      .filter(item => item && typeof item === 'object')
+      .filter(item => !onlyUnread || !seen.has(String(item.id || item.title || '')))
+      .slice(0, 5);
+
+    if (!rows.length) return onlyUnread ? '【WebUI公告】\n暂无未读公告' : '【WebUI公告】\n暂无公告';
+
+    const lines = [onlyUnread ? '【WebUI未读公告】' : '【WebUI公告】', ''];
+    for (const item of rows) {
+      const badge = item.badge ? `【${item.badge}】` : '';
+      const body = String(item.body || '').trim();
+      lines.push(`${badge}${item.title || '未命名公告'}`);
+      if (body) lines.push(body.length > 120 ? `${body.slice(0, 120)}...` : body);
+      lines.push('');
+    }
+    lines.push('查看: .宠物 webui 公告');
+    lines.push('标记已读: .宠物 webui 公告 已读');
+    return lines.join('\n');
+  },
+
+  async syncAnnouncements(options = {}) {
+    if (!this.config.enabled || !this.config.endpoint) return { total: 0, unread: [], announcements: [] };
+    const announcements = await this.fetchAnnouncements();
+    const seenIds = this._loadAnnouncementSeen();
+    const seen = new Set(seenIds);
+    const unread = announcements.filter(item => {
+      const id = String(item?.id || item?.title || '');
+      return id && !seen.has(id);
+    });
+
+    if (options.markRead) {
+      const next = announcements
+        .map(item => String(item?.id || item?.title || ''))
+        .filter(Boolean)
+        .concat(seenIds);
+      this._saveAnnouncementSeen([...new Set(next)]);
+    }
+
+    if (announcements.length) {
+      this.reportGeneric('announcement_read', {
+        total: announcements.length,
+        unread: unread.length,
+        latestId: announcements[0]?.id || '',
+        latestTitle: announcements[0]?.title || '',
+      });
+    }
+
+    return { total: announcements.length, unread, announcements };
+  },
+
   async _flush() {
     if (this._isFlushing || this._queue.length === 0) return;
     this._isFlushing = true;
@@ -233,7 +320,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.34' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.35' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -274,6 +361,15 @@ const WebUIReporter = {
         await this.syncAdminCommands();
       } catch (e) {
         console.error('[WebUI Reporter] 自动同步管理指令失败:', e);
+      }
+
+      try {
+        const ret = await this.syncAnnouncements();
+        if (ret.unread.length) {
+          console.log(`[WebUI Reporter] 有 ${ret.unread.length} 条未读公告，请使用 .宠物 webui 公告 查看`);
+        }
+      } catch (e) {
+        console.error('[WebUI Reporter] 自动同步公告失败:', e);
       }
 
       // 定期上报地图拓扑（3分钟一次，或者按需）
@@ -877,6 +973,7 @@ const WebUIReporter = {
       endpoint: this.config.endpoint,
       queueSize: this._queue.length,
       installedMods: this.getInstalledMods().length,
+      knownAnnouncements: this._loadAnnouncementSeen().length,
     };
   }
 };
@@ -9022,10 +9119,12 @@ cmd.solve = async (ctx, msg, argv) => {
       lines.push(`端点: ${status.endpoint || '未配置'}`);
       lines.push(`队列: ${status.queueSize} 条待发送`);
       lines.push(`已安装Mod: ${status.installedMods} 个`);
+      lines.push(`已读公告: ${status.knownAnnouncements} 条`);
       lines.push('', '命令:');
       lines.push('.宠物 webui 配置 <端点> <Token>');
       lines.push('.宠物 webui 启用/禁用');
       lines.push('.宠物 webui 同步');
+      lines.push('.宠物 webui 公告');
       lines.push('.宠物 webui 补丁');
       lines.push('.宠物 webui 补偿');
       return reply(lines.join('\n'));
@@ -9104,7 +9203,8 @@ cmd.solve = async (ctx, msg, argv) => {
       console.log(`[WebUI Reporter] 准备同步数据，当前队列长度: ${queueSize}`);
       await WebUIReporter._flush();
       const compensationRet = await WebUIReporter.syncCompensations();
-      return reply(`【数据已同步】\n处理了 ${queueSize} 条上报\n补偿: 总计${compensationRet.total} 成功${compensationRet.success} 失败${compensationRet.failed}`);
+      const announcementRet = await WebUIReporter.syncAnnouncements();
+      return reply(`【数据已同步】\n处理了 ${queueSize} 条上报\n补偿: 总计${compensationRet.total} 成功${compensationRet.success} 失败${compensationRet.failed}\n公告: 总计${announcementRet.total} 未读${announcementRet.unread.length}`);
     }
 
     // .宠物 webui 补偿 - 立即拉取并发放补偿
@@ -9114,6 +9214,20 @@ cmd.solve = async (ctx, msg, argv) => {
       }
       const ret = await WebUIReporter.syncCompensations();
       return reply(`【补偿同步完成】\n总计: ${ret.total}\n成功: ${ret.success}\n失败: ${ret.failed}`);
+    }
+
+    // .宠物 webui 公告 - 拉取 WebUI 公告
+    if (p1 === '公告' || p1 === 'announcement') {
+      if (!WebUIReporter.config.enabled) {
+        return reply('WebUI未启用');
+      }
+      const markRead = p2 === '已读' || p2 === 'read';
+      const unreadOnly = p2 === '未读' || p2 === 'unread';
+      const ret = await WebUIReporter.syncAnnouncements({ markRead });
+      if (markRead) {
+        return reply(`【WebUI公告】\n已标记 ${ret.total} 条公告为已读`);
+      }
+      return reply(WebUIReporter.formatAnnouncementList(ret.announcements, unreadOnly));
     }
 
     // .宠物 webui 补丁 - 拉取并应用补丁
