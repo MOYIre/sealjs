@@ -23,7 +23,7 @@ export async function onRequestPost(context) {
     let command;
     
     try {
-      command = await env.WWYL_KV.get(key, 'json');
+      command = await env.XBSKV.get(key, 'json');
     } catch (e) {
       console.error('KV读取失败:', e);
       return new Response(JSON.stringify({
@@ -51,7 +51,7 @@ export async function onRequestPost(context) {
     command.completedAt = Date.now();
     
     try {
-      await env.WWYL_KV.put(key, JSON.stringify(command));
+      await env.XBSKV.put(key, JSON.stringify(command));
     } catch (e) {
       console.error('KV更新失败:', e);
     }

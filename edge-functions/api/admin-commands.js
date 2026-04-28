@@ -16,10 +16,10 @@ export async function onRequestGet(context) {
   
   try {
     // 从KV获取所有指令
-    const list = await env.WWYL_KV.list({ prefix: 'admin_command:' });
+    const list = await env.XBSKV.list({ prefix: 'admin_command:' });
     
     for (const key of list.keys) {
-      const data = await env.WWYL_KV.get(key.name, 'json');
+      const data = await env.XBSKV.get(key.name, 'json');
       if (data) commands.push(data);
     }
   } catch (e) {
@@ -73,7 +73,7 @@ export async function onRequestPost(context) {
     
     // 存储到KV
     try {
-      await env.WWYL_KV.put(`admin_command:${command.id}`, JSON.stringify(command));
+      await env.XBSKV.put(`admin_command:${command.id}`, JSON.stringify(command));
     } catch (e) {
       console.error('KV存储失败:', e);
     }
@@ -114,8 +114,8 @@ export async function onRequestDelete(context) {
   
   try {
     const key = `admin_command:${id}`;
-    const existing = await env.WWYL_KV.get(key, 'json');
-    
+    const existing = await env.XBSKV.get(key, 'json');
+
     if (!existing) {
       return new Response(JSON.stringify({
         success: false,
@@ -125,8 +125,8 @@ export async function onRequestDelete(context) {
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
-    await env.WWYL_KV.delete(key);
+
+    await env.XBSKV.delete(key);
     
     return new Response(JSON.stringify({
       success: true,
