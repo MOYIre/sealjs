@@ -1,12 +1,9 @@
-// 管理指令回执 API
+// 管理指令回执 API (使用KV存储)
 // 路由: /api/admin-commands/ack
-
-// 模拟数据库存储 (与 admin-commands.js 共享)
-const adminCommands = new Map();
 
 // 回执指令结果
 export async function onRequestPost(context) {
-  const { request } = context;
+  const { request, env } = context;
   
   try {
     const body = await request.json();
@@ -22,7 +19,22 @@ export async function onRequestPost(context) {
       });
     }
     
-    const command = adminCommands.get(cmdId);
+    const key = `admin_command:${cmdId}`;
+    let command;
+    
+    try {
+      command = await env.WWYL_KV.get(key, 'json');
+    } catch (e) {
+      console.error('KV读取失败:', e);
+      return new Response(JSON.stringify({
+        success: false,
+        error: '读取指令失败'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
     if (!command) {
       return new Response(JSON.stringify({
         success: false,
@@ -38,7 +50,11 @@ export async function onRequestPost(context) {
     command.result = result || '';
     command.completedAt = Date.now();
     
-    adminCommands.set(cmdId, command);
+    try {
+      await env.WWYL_KV.put(key, JSON.stringify(command));
+    } catch (e) {
+      console.error('KV更新失败:', e);
+    }
     
     return new Response(JSON.stringify({
       success: true,

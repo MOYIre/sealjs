@@ -1,8 +1,5 @@
-// 管理指令 API
+// 管理指令 API (使用KV存储)
 // 路由: /api/admin-commands
-
-// 模拟数据库存储
-const adminCommands = new Map();
 
 // 生成唯一ID
 function generateId() {
@@ -11,11 +8,25 @@ function generateId() {
 
 // 获取所有指令
 export async function onRequestGet(context) {
-  const { request } = context;
+  const { request, env } = context;
   const url = new URL(request.url);
   const status = url.searchParams.get('status');
   
-  let commands = Array.from(adminCommands.values());
+  let commands = [];
+  
+  try {
+    // 从KV获取所有指令
+    const list = await env.WWYL_KV.list({ prefix: 'admin_command:' });
+    
+    for (const key of list.keys) {
+      const data = await env.WWYL_KV.get(key.name, 'json');
+      if (data) commands.push(data);
+    }
+  } catch (e) {
+    console.error('KV读取失败:', e);
+    // 回退到内存
+    commands = [];
+  }
   
   // 按状态过滤
   if (status && status !== 'all') {
@@ -35,7 +46,7 @@ export async function onRequestGet(context) {
 
 // 创建新指令
 export async function onRequestPost(context) {
-  const { request } = context;
+  const { request, env } = context;
   
   try {
     const body = await request.json();
@@ -60,7 +71,12 @@ export async function onRequestPost(context) {
       createdAt: Date.now()
     };
     
-    adminCommands.set(command.id, command);
+    // 存储到KV
+    try {
+      await env.WWYL_KV.put(`admin_command:${command.id}`, JSON.stringify(command));
+    } catch (e) {
+      console.error('KV存储失败:', e);
+    }
     
     return new Response(JSON.stringify({
       success: true,
@@ -82,7 +98,7 @@ export async function onRequestPost(context) {
 
 // 删除指令
 export async function onRequestDelete(context) {
-  const { request } = context;
+  const { request, env } = context;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   
@@ -96,22 +112,35 @@ export async function onRequestDelete(context) {
     });
   }
   
-  if (!adminCommands.has(id)) {
+  try {
+    const key = `admin_command:${id}`;
+    const existing = await env.WWYL_KV.get(key, 'json');
+    
+    if (!existing) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: '指令不存在'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    await env.WWYL_KV.delete(key);
+    
+    return new Response(JSON.stringify({
+      success: true,
+      message: '删除成功'
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (e) {
     return new Response(JSON.stringify({
       success: false,
-      error: '指令不存在'
+      error: '删除失败: ' + e.message
     }), {
-      status: 404,
+      status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
   }
-  
-  adminCommands.delete(id);
-  
-  return new Response(JSON.stringify({
-    success: true,
-    message: '删除成功'
-  }), {
-    headers: { 'Content-Type': 'application/json' }
-  });
 }
