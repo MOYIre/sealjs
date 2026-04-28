@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.36
+// @version     4.3.37
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.35');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.37');
   seal.ext.register(ext);
 }
 
@@ -8780,10 +8780,10 @@ cmd.solve = async (ctx, msg, argv) => {
             DB.save(f.uid, f.data);
             logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
           }
-          
+
           if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
             WebUIReporter.reportBattleLog({
-              zone: myTeam.dungeon,
+              zone: '世界Boss',
               actor: myName || uid,
               target: bossData.name,
               result: 'win',
@@ -8793,7 +8793,7 @@ cmd.solve = async (ctx, msg, argv) => {
               gold: moneyEach,
               logs: logs,
               logText: logs.join('\n'),
-              tags: ['副本', '多人'],
+              tags: ['世界Boss', '多人'],
             });
           }
         }
@@ -8827,10 +8827,10 @@ cmd.solve = async (ctx, msg, argv) => {
           }
         } else {
           logs.push(`\n【失败】被${bossData.name}击败...`);
-          
+
           if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
             WebUIReporter.reportBattleLog({
-              zone: myTeam.dungeon,
+              zone: '世界Boss',
               actor: myName || uid,
               target: bossData.name,
               result: 'lose',
@@ -8840,7 +8840,7 @@ cmd.solve = async (ctx, msg, argv) => {
               gold: 0,
               logs: logs,
               logText: logs.join('\n'),
-              tags: ['副本', '多人'],
+              tags: ['世界Boss', '多人'],
             });
           }
         }
