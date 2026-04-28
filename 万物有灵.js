@@ -8347,11 +8347,28 @@ cmd.solve = async (ctx, msg, argv) => {
       data.money += money;
       data.items[item] = (data.items[item] || 0) + 1;
       save();
-      
+
       const resultLog = `【胜利】击败${bossName}！获得: ${money}金币, ${item}`;
       let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
       if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
       finalLogs.push(resultLog);
+
+      if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+        WebUIReporter.reportBattleLog({
+          zone: p1,
+          actor: myName || uid,
+          target: bossName,
+          result: 'win',
+          turns: round,
+          rewards: { exp: 0, gold: money },
+          exp: 0,
+          gold: money,
+          logs: finalLogs,
+          logText: finalLogs.join('\n'),
+          tags: ['副本'],
+        });
+      }
+
       return reply(finalLogs.join('\n'));
     } else {
       save();
@@ -8359,6 +8376,23 @@ cmd.solve = async (ctx, msg, argv) => {
       let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
       if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
       finalLogs.push(resultLog);
+
+      if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+        WebUIReporter.reportBattleLog({
+          zone: p1,
+          actor: myName || uid,
+          target: bossName,
+          result: 'lose',
+          turns: round,
+          rewards: { exp: 0, gold: 0 },
+          exp: 0,
+          gold: 0,
+          logs: finalLogs,
+          logText: finalLogs.join('\n'),
+          tags: ['副本'],
+        });
+      }
+
       return reply(finalLogs.join('\n'));
     }
   }
@@ -8691,6 +8725,22 @@ cmd.solve = async (ctx, msg, argv) => {
           } else {
             logs.push('无达标奖励成员');
           }
+          
+          if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+            WebUIReporter.reportBattleLog({
+              zone: '世界Boss',
+              actor: myName || uid,
+              target: bossData.name,
+              result: 'win',
+              turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+              rewards: { exp: 0, gold: 0 },
+              exp: 0,
+              gold: 0,
+              logs: logs.slice(0, 15),
+              logText: logs.slice(0, 15).join('\n'),
+              tags: ['世界Boss', '多人'],
+            });
+          }
         } else {
           const moneyEach = bossData.rewards.money[0] + Math.floor(Math.random() * Math.max(1, bossData.rewards.money[1] - bossData.rewards.money[0] + 1));
           const item = bossData.rewards.items[Math.floor(Math.random() * bossData.rewards.items.length)];
@@ -8700,6 +8750,22 @@ cmd.solve = async (ctx, msg, argv) => {
             f.data.items[item] = (f.data.items[item] || 0) + 1;
             DB.save(f.uid, f.data);
             logs.push(`${f.name}获得: ${moneyEach}金币, ${item}`);
+          }
+          
+          if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+            WebUIReporter.reportBattleLog({
+              zone: myTeam.dungeon,
+              actor: myName || uid,
+              target: bossData.name,
+              result: 'win',
+              turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+              rewards: { exp: 0, gold: moneyEach },
+              exp: 0,
+              gold: moneyEach,
+              logs: logs.slice(0, 15),
+              logText: logs.slice(0, 15).join('\n'),
+              tags: ['副本', '多人'],
+            });
           }
         }
         return reply(logs.join('\n'));
@@ -8711,8 +8777,40 @@ cmd.solve = async (ctx, msg, argv) => {
           if (!bossResult.success) return reply(bossResult.msg);
           logs.push(`\n【撤退】对${bossData.name}造成${bossResult.damage}点伤害`);
           logs.push(`Boss剩余HP: ${bossResult.currentHp}/${bossResult.maxHp}`);
+          
+          if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+            WebUIReporter.reportBattleLog({
+              zone: '世界Boss',
+              actor: myName || uid,
+              target: bossData.name,
+              result: 'draw',
+              turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+              rewards: { exp: 0, gold: 0 },
+              exp: 0,
+              gold: 0,
+              logs: logs.slice(0, 15),
+              logText: logs.slice(0, 15).join('\n'),
+              tags: ['世界Boss', '多人'],
+            });
+          }
         } else {
           logs.push(`\n【失败】被${bossData.name}击败...`);
+          
+          if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+            WebUIReporter.reportBattleLog({
+              zone: myTeam.dungeon,
+              actor: myName || uid,
+              target: bossData.name,
+              result: 'lose',
+              turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+              rewards: { exp: 0, gold: 0 },
+              exp: 0,
+              gold: 0,
+              logs: logs.slice(0, 15),
+              logText: logs.slice(0, 15).join('\n'),
+              tags: ['副本', '多人'],
+            });
+          }
         }
         return reply(logs.join('\n'));
       }
@@ -8751,6 +8849,23 @@ cmd.solve = async (ctx, msg, argv) => {
       if (!result.success) return reply(result.msg);
       save();
       const lines = [`【攻击世界Boss】`, `${pet.name}造成${result.damage}伤害`, `Boss HP: ${result.currentHp}/${result.maxHp}`, `${pet.name}受到${result.counterDamage}反击伤害`];
+      
+      if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+        WebUIReporter.reportBattleLog({
+          zone: '世界Boss',
+          actor: myName || uid,
+          target: spawnResult.boss.name,
+          result: result.killed ? 'win' : 'draw',
+          turns: 1,
+          rewards: { exp: 0, gold: 0 },
+          exp: 0,
+          gold: 0,
+          logs: lines,
+          logText: lines.join('\n'),
+          tags: ['世界Boss'],
+        });
+      }
+
       if (result.killed) {
         lines.push('\n【击杀成功】世界Boss已被击败！');
         const rewards = Array.isArray(result.rewards) ? result.rewards : [];
