@@ -6950,7 +6950,10 @@ cmd.solve = async (ctx, msg, argv) => {
         });
       }
       
-      reply(logs.join('\n'));
+      // 群聊回复截断长日志
+      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+      if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
+      reply(replyLogs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 捉宠错误:', e);
       reply('捉宠过程发生错误，请稍后重试');
@@ -7499,7 +7502,10 @@ cmd.solve = async (ctx, msg, argv) => {
         });
       }
 
-      reply(logs.join('\n'));
+      // 群聊回复截断长日志
+      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+      if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
+      reply(replyLogs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 对战错误:', e);
       reply('对战过程发生错误，请稍后重试');
@@ -8791,7 +8797,10 @@ cmd.solve = async (ctx, msg, argv) => {
             });
           }
         }
-        return reply(logs.join('\n'));
+        // 群聊回复截断长日志
+        let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+        if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
+        return reply(replyLogs.join('\n'));
       } else {
         if (isWorldBoss) {
           const damageByUid = {};
@@ -8835,7 +8844,10 @@ cmd.solve = async (ctx, msg, argv) => {
             });
           }
         }
-        return reply(logs.join('\n'));
+        // 群聊回复截断长日志
+        let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+        if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
+        return reply(replyLogs.join('\n'));
       }
     }
     return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
@@ -8899,7 +8911,10 @@ cmd.solve = async (ctx, msg, argv) => {
           lines.push('无达标奖励成员');
         }
       }
-      return reply(lines.join('\n'));
+      // 群聊回复截断长日志
+      let replyLines = lines.length > 15 ? lines.slice(0, 14) : lines.slice();
+      if (lines.length > 15) replyLines.push('...（省略部分回合）...');
+      return reply(replyLines.join('\n'));
     }
     if (p1 === '排行' || p1 === 'rank') {
       if (!spawnResult.boss) return reply('当前没有世界Boss');
