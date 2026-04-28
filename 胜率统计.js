@@ -14,7 +14,6 @@ if (!ext) {
   ext = seal.ext.new('命题集', '铭茗', '1.0.13');
   seal.ext.register(ext);
 } else {
-  // 兼容旧扩展名：尽量复用，避免热重载出现重复扩展
   try {
     ext.name = '命题集';
   } catch (e) {
@@ -312,7 +311,7 @@ function replyHelp(ctx, msg) {
     '【命题集】',
     '手动录入胜负，计算胜率并展示排行榜（全局共享数据）',
     '',
-    '━━━━━━━━ 录入 ━━━━━━━━',
+    '━━━━━━━录入━━━━━━━',
     '.胜率 新增 <游戏> <玩家> <胜> <负>',
     '.胜率 新增 <游戏> <胜> <负>',
     '.胜率 新增 <游戏> <玩家> 胜/负',
@@ -327,13 +326,13 @@ function replyHelp(ctx, msg) {
     '.胜率 游戏列表',
     '  └ 查看已记录的游戏',
     '',
-    '━━━━━━━━ 别名 alias ━━━━━━━━',
+    '━━━━━━━别名━━━━━━━',
     '.胜率 alias add <别名> <标准游戏名>',
     '.胜率 alias del <别名>',
     '.胜率 alias list',
     '.胜率 alias clear',
     '',
-    '━━━━━━━━ 查询 ━━━━━━━━',
+    '━━━━━━━查询━━━━━━━',
     '.胜率 <游戏>',
     '  └ 默认显示排行榜 + 你的数据',
     '',
@@ -343,11 +342,11 @@ function replyHelp(ctx, msg) {
     '.胜率 <游戏> <玩家/QQ/@QQ/我>',
     '  └ 查询指定玩家',
     '',
-    '━━━━━━━━ 快捷 ━━━━━━━━',
+    '━━━━━━━快捷━━━━━━━',
     '.狼人杀胜率 [新增|撤销|列表 N|玩家]',
     '.血染钟楼胜率 [新增|撤销|列表 N|玩家]',
     '',
-    '━━━━━━━━ 示例 ━━━━━━━━',
+    '━━━━━━━示例━━━━━━━',
     '.胜率 alias add botc 血染钟楼',
     '.胜率 botc 列表 20',
     '.胜率 新增 狼人杀 张 三 3 2',
@@ -689,7 +688,6 @@ function handleQuery(ctx, msg, cmdArgs, fixedGameName) {
   seal.replyToSender(ctx, msg, lines.join('\n'));
 }
 
-// ==================== 命令：.胜率 ====================
 const cmdWinrate = seal.ext.newCmdItemInfo();
 cmdWinrate.name = '胜率';
 cmdWinrate.help = '胜率统计，输入 .胜率 help 查看用法';
@@ -723,14 +721,14 @@ cmdWinrate.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  // sub 当作游戏名
+  //当作游戏名
   handleQuery(ctx, msg, cmdArgs, null);
   return seal.ext.newCmdExecuteResult(true);
 };
 
 ext.cmdMap['胜率'] = cmdWinrate;
 
-// ==================== 快捷命令：.狼人杀胜率 / .血染钟楼胜率 ====================
+//  快捷命令：.狼人杀胜率 / .血染钟楼胜率 
 function makeGameCmd(commandName, canonicalGameName) {
   const cmd = seal.ext.newCmdItemInfo();
   cmd.name = `${commandName}胜率`;
@@ -755,7 +753,6 @@ function makeGameCmd(commandName, canonicalGameName) {
       return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 兼容：直接写 “列表 20” 或 “张三”
     handleQuery(ctx, msg, cmdArgs, canonicalGameName);
     return seal.ext.newCmdExecuteResult(true);
   };
@@ -763,6 +760,5 @@ function makeGameCmd(commandName, canonicalGameName) {
   return cmd;
 }
 
-// fixed quick commands
 ext.cmdMap['狼人杀胜率'] = makeGameCmd('狼人杀', '狼人杀');
 ext.cmdMap['血染钟楼胜率'] = makeGameCmd('血染钟楼', '血染钟楼');
