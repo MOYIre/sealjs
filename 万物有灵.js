@@ -6933,6 +6933,23 @@ cmd.solve = async (ctx, msg, argv) => {
       if (captureSuccess) {
         logs.push(getRandomTip());
       }
+      
+      if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
+        WebUIReporter.reportBattleLog({
+          zone: regionId ? REGIONS[regionId].name : '野外',
+          actor: myName || uid,
+          target: wildPet.name,
+          result: captureSuccess ? 'win' : (result.winner === fighter ? 'draw' : 'lose'),
+          turns: result.logs ? result.logs.filter(l => l.includes('回合')).length : 0,
+          rewards: { exp: expGain || 0, gold: goldGain || 0 },
+          exp: expGain || 0,
+          gold: goldGain || 0,
+          logs: logs.slice(0, 15),
+          logText: logs.slice(0, 15).join('\n'),
+          tags: ['捕捉', wildPet.rarity],
+        });
+      }
+      
       reply(logs.join('\n'));
     } catch (e) {
       console.log('[万物有灵] 捉宠错误:', e);
