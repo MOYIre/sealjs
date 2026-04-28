@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.35
+// @version     4.3.36
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -320,7 +320,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.35' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.36' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -6944,8 +6944,8 @@ cmd.solve = async (ctx, msg, argv) => {
           rewards: { exp: expGain || 0, gold: goldGain || 0 },
           exp: expGain || 0,
           gold: goldGain || 0,
-          logs: logs.slice(0, 15),
-          logText: logs.slice(0, 15).join('\n'),
+          logs: logs,
+          logText: logs.join('\n'),
           tags: ['捕捉', wildPet.rarity],
         });
       }
@@ -8366,9 +8366,7 @@ cmd.solve = async (ctx, msg, argv) => {
       save();
 
       const resultLog = `【胜利】击败${bossName}！获得: ${money}金币, ${item}`;
-      let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
-      if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
-      finalLogs.push(resultLog);
+      logs.push(resultLog);
 
       if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
         WebUIReporter.reportBattleLog({
@@ -8380,19 +8378,22 @@ cmd.solve = async (ctx, msg, argv) => {
           rewards: { exp: 0, gold: money },
           exp: 0,
           gold: money,
-          logs: finalLogs,
-          logText: finalLogs.join('\n'),
+          logs: logs,
+          logText: logs.join('\n'),
           tags: ['副本'],
         });
       }
 
-      return reply(finalLogs.join('\n'));
+      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+      if (logs.length > 15) {
+          replyLogs.push('...（省略部分回合）...');
+          replyLogs.push(resultLog);
+      }
+      return reply(replyLogs.join('\n'));
     } else {
       save();
       const resultLog = `【失败】被${bossName}击败...`;
-      let finalLogs = logs.length > 15 ? logs.slice(0, 14) : logs;
-      if (logs.length > 15) finalLogs.push('...（省略部分回合）...');
-      finalLogs.push(resultLog);
+      logs.push(resultLog);
 
       if (typeof WebUIReporter !== 'undefined' && WebUIReporter.config.enabled) {
         WebUIReporter.reportBattleLog({
@@ -8404,13 +8405,18 @@ cmd.solve = async (ctx, msg, argv) => {
           rewards: { exp: 0, gold: 0 },
           exp: 0,
           gold: 0,
-          logs: finalLogs,
-          logText: finalLogs.join('\n'),
+          logs: logs,
+          logText: logs.join('\n'),
           tags: ['副本'],
         });
       }
 
-      return reply(finalLogs.join('\n'));
+      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
+      if (logs.length > 15) {
+          replyLogs.push('...（省略部分回合）...');
+          replyLogs.push(resultLog);
+      }
+      return reply(replyLogs.join('\n'));
     }
   }
   //   公会系统
@@ -8753,8 +8759,8 @@ cmd.solve = async (ctx, msg, argv) => {
               rewards: { exp: 0, gold: 0 },
               exp: 0,
               gold: 0,
-              logs: logs.slice(0, 15),
-              logText: logs.slice(0, 15).join('\n'),
+              logs: logs,
+              logText: logs.join('\n'),
               tags: ['世界Boss', '多人'],
             });
           }
@@ -8779,8 +8785,8 @@ cmd.solve = async (ctx, msg, argv) => {
               rewards: { exp: 0, gold: moneyEach },
               exp: 0,
               gold: moneyEach,
-              logs: logs.slice(0, 15),
-              logText: logs.slice(0, 15).join('\n'),
+              logs: logs,
+              logText: logs.join('\n'),
               tags: ['副本', '多人'],
             });
           }
@@ -8805,8 +8811,8 @@ cmd.solve = async (ctx, msg, argv) => {
               rewards: { exp: 0, gold: 0 },
               exp: 0,
               gold: 0,
-              logs: logs.slice(0, 15),
-              logText: logs.slice(0, 15).join('\n'),
+              logs: logs,
+              logText: logs.join('\n'),
               tags: ['世界Boss', '多人'],
             });
           }
@@ -8823,8 +8829,8 @@ cmd.solve = async (ctx, msg, argv) => {
               rewards: { exp: 0, gold: 0 },
               exp: 0,
               gold: 0,
-              logs: logs.slice(0, 15),
-              logText: logs.slice(0, 15).join('\n'),
+              logs: logs,
+              logText: logs.join('\n'),
               tags: ['副本', '多人'],
             });
           }
@@ -9409,7 +9415,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.27',
+  version: '4.3.36',
   ext,
 
   DB: {
