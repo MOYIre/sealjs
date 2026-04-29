@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.47
+// @version     4.3.48
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276346
+// @timestamp   1777276347
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.47');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.48');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.47' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.48' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -490,46 +490,16 @@ const WebUIReporter = {
       });
       if (!res.ok) return { ok: false, error: '获取失败' };
       const mod = await res.json();
-      if (!mod || !mod.content) return { ok: false, error: '内容为空' };
-
-      // 安全检查：禁止危险操作
-      const dangerousPatterns = [
-        /eval\s*\(/,
-        /Function\s*[\.\(]/,
-        /require\s*\(/,
-        /import\s+/,
-        /process\s*[\.\/]/,
-        /__proto__/,
-        /constructor\s*\[/,
-        /window\s*[\.\[]/,
-        /global\s*[\.\[]/,
-        /globalThis\s*[\.\[]/,
-        /\.call\s*\(/,
-        /\.apply\s*\(/,
-        /child_process/,
-        /\bfs\s*\./,
-        /\bpath\s*\./,
-        /\bos\s*\./,
-        /\bcrypto\s*\(/,
-        /Buffer\s*\(/,
-      ];
-      for (const pattern of dangerousPatterns) {
-        if (pattern.test(mod.content)) {
-          return { ok: false, error: '脚本包含不允许的代码模式' };
-        }
-      }
-
-      // 检查文件大小限制
-      if (mod.content.length > 65536) {
-        return { ok: false, error: '脚本文件过大' };
-      }
-
       if (mod.type === 'script') {
         return { ok: false, error: '远程脚本 Mod 已禁用，请改用声明式配置/补丁' };
       }
 
       if (mod.type !== 'config') {
         return { ok: false, error: '不支持的 Mod 类型' };
+      }
+
+      if (!mod.configType && !mod.data) {
+        return { ok: false, error: '配置 Mod 缺少声明式配置内容' };
       }
 
       if (!this._installedMods) this._loadInstalledMods();
@@ -549,13 +519,34 @@ const WebUIReporter = {
     if (idx > -1) {
       this._installedMods.splice(idx, 1);
       this._saveInstalledMods();
+      return { ok: true, removed: true };
     }
-    return { ok: true };
+    return { ok: true, removed: false };
   },
 
   getInstalledMods() {
     if (!this._installedMods) this._loadInstalledMods();
     return this._installedMods || [];
+  },
+
+  async reportModStatus(modId, action, success) {
+    if (!this.config.enabled || !this.config.endpoint) return { ok: false, error: '未启用' };
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/mods/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.token}`,
+        },
+        body: JSON.stringify({ modId, action, success, timestamp: Date.now() }),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      const data = await res.json();
+      return { ok: !!data.success, error: data.error || '' };
+    } catch (e) {
+      console.error('[WebUI Reporter] 上报 Mod 状态失败:', e);
+      return { ok: false, error: e.message };
+    }
   },
 
   async fetchPatchMeta() {
@@ -9343,6 +9334,7 @@ cmd.solve = async (ctx, msg, argv) => {
       }
       reply(`正在安装Mod: ${p2}...`);
       const result = await WebUIReporter.installMod(p2);
+      await WebUIReporter.reportModStatus(p2, 'installed', result.ok);
       if (result.ok) {
         return reply(`【Mod安装成功】\n${result.name || p2} 已安装并激活`);
       }
@@ -9352,8 +9344,9 @@ cmd.solve = async (ctx, msg, argv) => {
     // .宠物 mod 卸载 <名称> - 卸载Mod
     if (p1 === '卸载' || p1 === 'uninstall') {
       if (!p2) return reply('用法: .宠物 mod 卸载 <Mod名称或ID>');
-      WebUIReporter.uninstallMod(p2);
-      return reply(`【Mod已卸载】\n${p2}\n注意: 脚本类Mod需要重启才能完全移除`);
+      const result = WebUIReporter.uninstallMod(p2);
+      await WebUIReporter.reportModStatus(p2, 'uninstalled', result.removed);
+      return reply(`【Mod已卸载】\n${p2}${result.removed ? '' : '\n提示: 本地未记录该 Mod，已保持未安装状态。'}`);
     }
 
     // .宠物 mod - 显示已注册Mod
@@ -9585,7 +9578,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.47',
+  version: '4.3.48',
   ext,
 
   DB: {
