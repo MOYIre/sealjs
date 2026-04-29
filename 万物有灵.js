@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.54
+// @version     4.3.57
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.54');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.57');
   seal.ext.register(ext);
 }
 
@@ -24,7 +24,7 @@ const WebUIReporter = {
     token: '',
     enabled: false,
     reportInterval: 60000,
-    patchCheckInterval: 600000,
+    patchCheckInterval: 60000,
     remoteAdminEnabled: false,
     remoteAdminAllowedTypes: ['UPDATE_MAP_TOPOLOGY'],
     allowedScriptUrls: [
@@ -48,6 +48,9 @@ const WebUIReporter = {
       this._startPeriodicReport();
       this._loadInstalledMods();
       this._loadCompAcked();
+      setTimeout(() => {
+        void this._autoSyncPatches({ force: true });
+      }, 3000);
       console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
     }
   },
@@ -171,6 +174,19 @@ const WebUIReporter = {
       timestamp: Date.now(),
       uid,
       data
+    });
+  },
+
+  reportPatchResult(patch, success) {
+    if (!patch) return;
+    this.reportGeneric('patch_result', {
+      patchId: patch.id || '',
+      patchName: patch.name || '',
+      version: patch.version || '',
+      scope: patch.scope || '',
+      success: !!success,
+      appliedAt: success ? Date.now() : null,
+      error: success ? null : (patch._lastError || patch.error || '应用失败'),
     });
   },
 
@@ -362,7 +378,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.53' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.57' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -432,37 +448,36 @@ const WebUIReporter = {
       .join('|');
   },
 
-  async _autoSyncPatches() {
+  async _autoSyncPatches(options = {}) {
     const now = Date.now();
     if (!this.config.enabled || !this.config.endpoint) return;
-    if (now - this._lastPatchCheckAt < this.config.patchCheckInterval) return;
+    if (!options.force && now - this._lastPatchCheckAt < this.config.patchCheckInterval) return;
     this._lastPatchCheckAt = now;
 
-    // 先走轻量 meta 比对，避免每次都拉取完整 payload
-    const patchMeta = await this.fetchPatchMeta();
-    const digest = this._buildPatchDigest(patchMeta);
+    const patches = await this.fetchPatches();
+    const digest = this._buildPatchDigest(patches);
 
-    // 没有变化就不拉取完整补丁
-    if (digest === this._lastPatchDigest) return;
+    if (!options.force && digest === this._lastPatchDigest) return;
     this._lastPatchDigest = digest;
 
-    // 有变化才拉取完整补丁并应用
-    const patches = await this.fetchPatches();
-
     if (!patches.length) {
-      console.log('[WebUI Reporter] 补丁状态有变化，当前无生效补丁');
+      console.log('[WebUI Reporter] 当前无生效补丁');
       return;
     }
 
     let applied = 0;
+    let failed = 0;
     for (const patch of patches) {
       const ok = this.applyPatch(patch);
-      if (ok) applied++;
+      if (ok) {
+        applied++;
+      } else {
+        failed++;
+      }
+      this.reportPatchResult(patch, ok);
     }
 
-    if (applied > 0) {
-      console.log(`[WebUI Reporter] 自动应用补丁 ${applied}/${patches.length} 个`);
-    }
+    console.log(`[WebUI Reporter] 自动应用补丁 ${applied}/${patches.length} 个${failed ? `，失败${failed}个` : ''}`);
   },
 
   stop() {
@@ -593,13 +608,17 @@ const WebUIReporter = {
   async fetchPatches() {
     if (!this.config.enabled || !this.config.endpoint) return [];
     try {
-      const res = await fetch(`${this.config.endpoint}/api/patch`, {
+      const res = await fetch(`${this.config.endpoint}/api/patches/active`, {
         headers: { 'Authorization': `Bearer ${this.config.token}` }
       });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.error('[WebUI Reporter] 拉取补丁失败:', res.status);
+        return [];
+      }
       const data = await res.json();
-      return (data.data || []).filter(p => p.status === '生效中');
+      return Array.isArray(data.patches) ? data.patches : [];
     } catch (e) {
+      console.error('[WebUI Reporter] 拉取补丁异常:', e);
       return [];
     }
   },
@@ -1051,10 +1070,10 @@ const WebUIReporter = {
 
   applyPatch(patch) {
     if (!patch || !patch.payload) return false;
+    patch._lastError = '';
     try {
       const payload = typeof patch.payload === 'string' ? JSON.parse(patch.payload) : patch.payload;
 
-      // 安全检查：防止原型链污染
       const hasUnsafeKey = (obj) => {
         if (!obj || typeof obj !== 'object') return false;
         for (const key of Object.keys(obj)) {
@@ -1069,18 +1088,31 @@ const WebUIReporter = {
         return false;
       }
 
+      let changed = false;
       switch (patch.scope) {
         case 'species':
-          if (payload.species && typeof SPECIES !== 'undefined') Object.assign(SPECIES, payload.species);
+          if (payload.species && typeof SPECIES !== 'undefined') {
+            Object.assign(SPECIES, payload.species);
+            changed = true;
+          }
           break;
         case 'skills':
-          if (payload.skills && typeof SKILLS !== 'undefined') Object.assign(SKILLS, payload.skills);
+          if (payload.skills && typeof SKILLS !== 'undefined') {
+            Object.assign(SKILLS, payload.skills);
+            changed = true;
+          }
           break;
         case 'items':
-          if (payload.items && typeof ITEMS !== 'undefined') Object.assign(ITEMS, payload.items);
+          if (payload.items && typeof ITEMS !== 'undefined') {
+            Object.assign(ITEMS, payload.items);
+            changed = true;
+          }
           break;
         case 'config':
-          if (payload.config && typeof CONFIG !== 'undefined') Object.assign(CONFIG, payload.config);
+          if (payload.config && typeof CONFIG !== 'undefined') {
+            Object.assign(CONFIG, payload.config);
+            changed = true;
+          }
           break;
         case 'shops': {
           const ok = typeof applyShopPatch === 'function' ? applyShopPatch(payload) : false;
@@ -1097,6 +1129,14 @@ const WebUIReporter = {
           if (!ok) patch._lastError = typeof applyDungeonPatch === 'function' ? '副本补丁内容无效' : '当前插件缺少副本热更新处理器';
           return ok;
         }
+        default:
+          patch._lastError = `不支持的补丁范围: ${patch.scope || '空'}`;
+          return false;
+      }
+
+      if (!changed) {
+        patch._lastError = '补丁内容与作用范围不匹配';
+        return false;
       }
       return true;
     } catch (e) {
@@ -3929,9 +3969,19 @@ function getNpcSellList(npcId) {
 
 function applyKeyedListPatch(target, entries = {}) {
   for (const [key, value] of Object.entries(entries || {})) {
-    if (value === null) delete target[key];
-    else if (Array.isArray(value)) target[key] = [...new Set(value.filter(v => typeof v === 'string' && v))];
+    if (value === null) {
+      delete target[key];
+    } else if (Array.isArray(value)) {
+      const current = Array.isArray(target[key]) ? target[key] : [];
+      target[key] = [...new Set([...current, ...value].filter(v => typeof v === 'string' && v))];
+    }
   }
+}
+
+function applyListPatch(current, patch) {
+  if (patch === null) return [];
+  if (!Array.isArray(patch)) return Array.isArray(current) ? current : [];
+  return [...new Set([...(Array.isArray(current) ? current : []), ...patch].filter(v => typeof v === 'string' && v))];
 }
 
 function toPatchNumber(value) {
@@ -4021,8 +4071,8 @@ function applyShopPatch(payload = {}) {
   const shopPayload = payload.shops || payload;
   if (!shopPayload || typeof shopPayload !== 'object') return false;
 
-  if (Array.isArray(shopPayload.basicFoods)) {
-    SHOP_RUNTIME.basicFoods = [...new Set(shopPayload.basicFoods.filter(v => typeof v === 'string' && v))];
+  if (Array.isArray(shopPayload.basicFoods) || shopPayload.basicFoods === null) {
+    SHOP_RUNTIME.basicFoods = applyListPatch(SHOP_RUNTIME.basicFoods, shopPayload.basicFoods);
   }
   if (shopPayload.cityFoods && typeof shopPayload.cityFoods === 'object') {
     applyKeyedListPatch(SHOP_RUNTIME.cityFoods, shopPayload.cityFoods);
@@ -9932,6 +9982,7 @@ cmd.solve = async (ctx, msg, argv) => {
       const lines = ['【补丁应用结果】', ''];
       for (const patch of patches) {
         const success = WebUIReporter.applyPatch(patch);
+        WebUIReporter.reportPatchResult(patch, success);
         const reason = success || !patch._lastError ? '' : ` - ${patch._lastError}`;
         lines.push(`${success ? '✓' : '✗'} ${patch.name} (${patch.scope})${reason}`);
       }
@@ -9967,7 +10018,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.53',
+  version: '4.3.57',
   ext,
 
   DB: {
