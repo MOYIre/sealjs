@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.46
+// @version     4.3.47
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276345
+// @timestamp   1777276346
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.46');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.47');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.46' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.47' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -6292,13 +6292,14 @@ const HELP_PAGES = {
   webui: `【WebUI命令】
 .宠物 webui - 查看WebUI状态
 .宠物 webui 验证 <验证码> - 完成WebUI注册验证
-.宠物 webui 配置 <端点> <Token> - 配置WebUI
-.宠物 webui 启用 - 启用WebUI上报
-.宠物 webui 禁用 - 禁用WebUI上报
-.宠物 webui 同步 - 立即同步数据
-.宠物 webui 补丁 - 拉取并应用补丁
-.宠物 webui 补偿 - 立即拉取并发放补偿
-.宠物 webui 远程管理 启用/禁用 - 控制 WebUI 管理指令自动执行`,
+.宠物 webui 公告 - 查看公告（普通用户可用）
+.宠物 webui 配置 <端点> <Token> - 配置WebUI（骰主）
+.宠物 webui 启用 - 启用WebUI上报（骰主）
+.宠物 webui 禁用 - 禁用WebUI上报（骰主）
+.宠物 webui 同步 - 立即同步数据（骰主）
+.宠物 webui 补丁 - 拉取并应用补丁（骰主）
+.宠物 webui 补偿 - 立即拉取并发放补偿（骰主）
+.宠物 webui 远程管理 启用/禁用 - 控制 WebUI 管理指令自动执行（骰主）`,
 };
 
 cmd.solve = async (ctx, msg, argv) => {
@@ -9386,10 +9387,11 @@ cmd.solve = async (ctx, msg, argv) => {
 
   //   WebUI管理
   if (action === 'webui') {
-    // 验证命令允许普通用户（骰主用于绑定自身QQ），其他命令仅限骰主
+    // 验证和公告允许普通用户，其他 WebUI 管理命令仅限骰主
     const isOwner = ctx.privilegeLevel >= 100;
-    if (!isOwner && p1 !== '验证' && p1 !== 'verify') {
-      return reply('【权限不足】\nWebUI 相关命令仅限骰主使用。');
+    const publicWebUIActions = ['验证', 'verify', '公告', 'announcement'];
+    if (!isOwner && !publicWebUIActions.includes(p1)) {
+      return reply('【权限不足】\nWebUI 管理命令仅限骰主使用；普通用户可使用 .宠物 webui 公告 查看公告。');
     }
 
     // .宠物 webui - 查看状态
@@ -9583,7 +9585,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.46',
+  version: '4.3.47',
   ext,
 
   DB: {
