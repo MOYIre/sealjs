@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.61
+// @version     4.3.62
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.61');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.62');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.61' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.62' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -8263,7 +8263,7 @@ cmd.solve = async (ctx, msg, argv) => {
       `${region.desc}`,
       `天气: ${weather}(${weatherData.effect})`,
       '',
-      `可能出现: ${region.species.slice(0, 5).join('、')}等`,
+      `可能出现: ${getRegionSpecies(regionId).slice(0, 5).join('、')}等`,
       '',
       '使用 .宠物 捉宠 [地区] 在此地区捕捉宠物',
     ];
@@ -10082,7 +10082,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.61',
+  version: '4.3.62',
   ext,
 
   DB: {
