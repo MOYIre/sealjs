@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.58
+// @version     4.3.59
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.58');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.59');
   seal.ext.register(ext);
 }
 
@@ -50,8 +50,8 @@ const WebUIReporter = {
       this._startPeriodicReport();
       this._loadInstalledMods();
       this._loadCompAcked();
+      void this.syncTips();
       setTimeout(() => {
-        void this.syncTips({ force: true });
         void this._autoSyncPatches({ force: true });
       }, 3000);
       console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
@@ -337,7 +337,8 @@ const WebUIReporter = {
   async syncTips(options = {}) {
     if (!this.config.enabled || !this.config.endpoint) return [];
     const now = Date.now();
-    if (!options.force && now - this._lastTipsSyncAt < 300000) return this._remoteTips;
+    const oneDay = 24 * 60 * 60 * 1000;
+    if (!options.force && now - this._lastTipsSyncAt < oneDay) return this._remoteTips;
     this._lastTipsSyncAt = now;
 
     const tips = await this.fetchTips();
@@ -349,7 +350,8 @@ const WebUIReporter = {
   },
 
   getTipPool() {
-    return Array.isArray(this._remoteTips) && this._remoteTips.length ? this._remoteTips : [];
+    const remoteTips = Array.isArray(this._remoteTips) ? this._remoteTips : [];
+    return [...GAME_TIPS, ...remoteTips.filter(tip => !GAME_TIPS.includes(tip))];
   },
 
   formatAnnouncementList(list, onlyUnread = false) {
@@ -421,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.58' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.59' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1256,14 +1258,13 @@ const GAME_TIPS = [
   'ℑ 进化通常需要等级、好感或材料条件，缺一项都不会触发。',
   'ℑ 商店可能受城镇、NPC 和热补丁影响，不同地点能买到不同物品。',
   'ℑ WebUI 发布的补丁会自动同步；手动检查可用 .宠物 webui 补丁。',
-  'ℑ WebUI Tips 可在线更新，插件会优先显示后台配置的小贴士。',
+  'ℑ WebUI Tips 每天检查一次更新；本地内置小贴士会优先保留。',
   'ℑ 使用 .宠物 help 查看完整命令列表。',
 ];
 
 // 随机获取一条tips
 function getRandomTip() {
-  const remoteTips = typeof WebUIReporter !== 'undefined' ? WebUIReporter.getTipPool() : [];
-  const pool = remoteTips.length ? remoteTips : GAME_TIPS;
+  const pool = typeof WebUIReporter !== 'undefined' ? WebUIReporter.getTipPool() : GAME_TIPS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -10070,7 +10071,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.58',
+  version: '4.3.59',
   ext,
 
   DB: {
