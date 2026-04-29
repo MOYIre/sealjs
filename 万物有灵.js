@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.52
+// @version     4.3.53
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.52');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.53');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.52' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.53' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -3930,7 +3930,7 @@ function sanitizeFoodDefinition(value) {
 function sanitizeItemEffect(value) {
   if (!value || typeof value !== 'object') return null;
   const action = typeof value.action === 'string' ? value.action : '';
-  const allowedActions = ['addExp', 'healPet', 'restoreEnergy', 'addMoney', 'addFood', 'addItem', 'teleport', 'expandStorage', 'resetSkills', 'revivePet', 'buff', 'chance', 'resource', 'custom'];
+  const allowedActions = ['addExp', 'healPet', 'restoreEnergy', 'addMoney', 'addFood', 'addItem', 'teleport', 'expandStorage', 'resetSkills', 'revivePet', 'buff', 'chance', 'resource', 'custom', 'summonWorldBoss'];
   if (!allowedActions.includes(action)) return null;
   const effect = { action };
   for (const key of ['amount', 'count', 'duration', 'rate']) {
@@ -6383,6 +6383,46 @@ function executeItemEffect(effect, context) {
       const params = effect.params || {};
       WanwuYouling.emit('customItemEffect', { uid, handler, params, effect, data, context });
       return { ok: true, msg: `自定义效果 [${handler}] 已触发，请检查是否有扩展模块处理` };
+    }
+    case 'summonWorldBoss': {
+      WorldBossManager.load();
+      if (WorldBossManager._boss && !effect.force) {
+        return { ok: false, msg: `当前已有世界Boss [${WorldBossManager._boss.name}]，如需替换请设置 force: true` };
+      }
+      const bossTemplates = [
+        { id: 'yggdrasil', name: '世界之树·尤格德拉', hp: 50000, atk: 500, def: 200 },
+        { id: 'leviathan', name: '混沌巨兽·利维坦', hp: 80000, atk: 600, def: 250 },
+        { id: 'nidhogg', name: '灭世魔龙·尼德霍格', hp: 100000, atk: 800, def: 300 },
+      ];
+      let boss;
+      const bossId = effect.bossId;
+      if (bossId) {
+        boss = bossTemplates.find(b => b.id === bossId) || bossTemplates[Math.floor(Math.random() * bossTemplates.length)];
+      } else {
+        boss = bossTemplates[Math.floor(Math.random() * bossTemplates.length)];
+      }
+      const hp = effect.hp ? Math.max(1000, Math.floor(Number(effect.hp))) : boss.hp;
+      const atk = effect.atk ? Math.max(10, Math.floor(Number(effect.atk))) : boss.atk;
+      const def = effect.def ? Math.max(0, Math.floor(Number(effect.def))) : boss.def;
+      const bossName = effect.bossName || boss.name;
+      WorldBossManager._boss = {
+        name: bossName,
+        maxHp: hp,
+        currentHp: hp,
+        atk,
+        def,
+        spawnTime: Date.now(),
+        spawnDate: new Date().toDateString(),
+        spawnHour: new Date().getHours(),
+        damageDealt: {},
+        attempts: {},
+        rewardedUsers: {},
+        killers: [],
+        summonedBy: uid,
+        summonedAt: Date.now(),
+      };
+      WorldBossManager.save();
+      return { ok: true, msg: `【世界Boss降临】${bossName}\nHP: ${hp} | ATK: ${atk} | DEF: ${def}\n.宠物 世界Boss 查看详情` };
     }
     default:
       return { ok: false, msg: '未知道具效果' };
@@ -9900,7 +9940,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.52',
+  version: '4.3.53',
   ext,
 
   DB: {
