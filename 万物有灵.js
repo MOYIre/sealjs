@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.63
+// @version     4.3.64
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.63');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.64');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.63' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.64' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1330,6 +1330,16 @@ const SPECIES = {
   '凤凰雏': { elements: ['火'], baseMod: { hp: 0.8, atk: 1.3, def: 0.7, energy: 1.4 } },
   '石像鬼': { elements: ['岩石'], baseMod: { hp: 1.2, atk: 1, def: 1.4, energy: 0.7 } },
   '树人': { elements: ['草'], baseMod: { hp: 1.4, atk: 0.8, def: 1.2, energy: 1 } },
+  '苹果族': { elements: ['草'], baseMod: { hp: 1.08, atk: 0.98, def: 1.02, energy: 1.05 } },
+  '柠檬族': { elements: ['草', '电'], baseMod: { hp: 0.92, atk: 1.08, def: 0.92, energy: 1.08 } },
+  '樱桃族': { elements: ['草', '火'], baseMod: { hp: 0.95, atk: 1.1, def: 0.9, energy: 1.05 } },
+  '竹灵族': { elements: ['草', '岩石'], baseMod: { hp: 1, atk: 0.96, def: 1.12, energy: 0.98 } },
+  '荷叶族': { elements: ['草', '水'], baseMod: { hp: 1.06, atk: 0.92, def: 1.06, energy: 1.08 } },
+  '向日葵族': { elements: ['草', '火'], baseMod: { hp: 1, atk: 1.02, def: 0.96, energy: 1.12 } },
+  '薄荷族': { elements: ['草', '超能'], baseMod: { hp: 0.94, atk: 0.98, def: 0.96, energy: 1.12 } },
+  '仙人掌族': { elements: ['草', '岩石'], baseMod: { hp: 1.04, atk: 1.04, def: 1.1, energy: 0.9 } },
+  '葡萄藤族': { elements: ['草', '水'], baseMod: { hp: 1.02, atk: 0.96, def: 1, energy: 1.06 } },
+  '蘑菇族': { elements: ['草', '超能'], baseMod: { hp: 1.06, atk: 0.94, def: 0.98, energy: 1.12 } },
   '美人鱼': { elements: ['水', '超能'], baseMod: { hp: 0.9, atk: 1, def: 0.9, energy: 1.4 } },
   '天使': { elements: ['超能'], baseMod: { hp: 1, atk: 1.1, def: 1, energy: 1.4 } },
 };
@@ -3666,7 +3676,7 @@ const REGIONS = {
   '森林': {
     name: '迷雾森林',
     desc: '古老的森林，充满神秘气息',
-    species: ['猫', '狐', '兔', '鹿', '狼', '熊', '螳螂', '蜘蛛', '精灵', '史莱姆'],
+    species: ['猫', '狐', '兔', '鹿', '狼', '熊', '螳螂', '蜘蛛', '精灵', '史莱姆', '树人', '苹果族', '柠檬族', '樱桃族', '竹灵族', '荷叶族', '向日葵族', '薄荷族', '葡萄藤族', '蘑菇族'],
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '雨天': 1.2, '晴天': 1 },
@@ -3686,7 +3696,7 @@ const REGIONS = {
   '海洋': {
     name: '蔚蓝海域',
     desc: '广阔的海洋世界',
-    species: ['鱼', '蟹', '龙', '蛇', '史莱姆', '精灵', '龟'],
+    species: ['鱼', '蟹', '龙', '蛇', '史莱姆', '精灵', '龟', '荷叶族'],
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '雨天': 1.3, '暴风': 1.1 },
@@ -3696,7 +3706,7 @@ const REGIONS = {
   '沙漠': {
     name: '死亡沙漠',
     desc: '荒芜的沙漠，生存艰难',
-    species: ['蝎', '蛇', '狼', '骷髅', '傀儡', '幽灵'],
+    species: ['蝎', '蛇', '狼', '骷髅', '傀儡', '幽灵', '仙人掌族'],
     dayOnly: false,
     nightOnly: true, // 夜晚更活跃
     weatherMod: { '晴天': 1.2, '沙暴': 1.5 },
@@ -3726,7 +3736,7 @@ const REGIONS = {
   '草原': {
     name: '风之草原',
     desc: '宁静的草原地带',
-    species: ['马', '羊', '牛', '猪', '兔', '鹿', '猫', '犬', '豹'],
+    species: ['马', '羊', '牛', '猪', '兔', '鹿', '猫', '犬', '豹', '苹果族', '柠檬族', '向日葵族', '薄荷族', '葡萄藤族'],
     dayOnly: false,
     nightOnly: false,
     weatherMod: { '晴天': 1.2, '雨天': 0.9 },
@@ -3736,7 +3746,7 @@ const REGIONS = {
   '遗迹': {
     name: '古代遗迹',
     desc: '神秘的古代文明遗址',
-    species: ['骷髅', '幽灵', '傀儡', '元素', '精灵', '魅魔', '恶魔'],
+    species: ['骷髅', '幽灵', '傀儡', '元素', '精灵', '魅魔', '恶魔', '蘑菇族'],
     dayOnly: false,
     nightOnly: true,
     weatherMod: { '晴天': 0.8, '雨天': 1.1 },
@@ -10084,7 +10094,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.63',
+  version: '4.3.64',
   ext,
 
   DB: {
