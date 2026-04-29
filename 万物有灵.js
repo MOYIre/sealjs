@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.48
+// @version     4.3.49
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.48');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.49');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.48' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.49' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -3907,6 +3907,48 @@ function applyKeyedListPatch(target, entries = {}) {
   }
 }
 
+function toPatchNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sanitizeFoodDefinition(value) {
+  if (!value || typeof value !== 'object') return null;
+  const food = {};
+  for (const key of ['hp', 'atk', 'def', 'energy', 'cost']) {
+    const n = toPatchNumber(value[key]);
+    if (n !== null) food[key] = n;
+  }
+  if (Array.isArray(value.affection)) {
+    const min = toPatchNumber(value.affection[0]);
+    const max = toPatchNumber(value.affection[1]);
+    if (min !== null && max !== null) food.affection = [min, max];
+  }
+  return Object.keys(food).length ? food : null;
+}
+
+function sanitizeItemDefinition(value) {
+  if (!value || typeof value !== 'object') return null;
+  const item = {};
+  const cost = toPatchNumber(value.cost);
+  if (cost !== null) item.cost = cost;
+  if (typeof value.desc === 'string') item.desc = value.desc;
+  if (typeof value.type === 'string') item.type = value.type;
+  return Object.keys(item).length ? item : null;
+}
+
+function applyDefinitionPatch(target, entries = {}, sanitizer) {
+  for (const [name, value] of Object.entries(entries || {})) {
+    if (!name || typeof name !== 'string') continue;
+    if (value === null) {
+      delete target[name];
+      continue;
+    }
+    const sanitized = sanitizer(value);
+    if (sanitized) target[name] = { ...(target[name] || {}), ...sanitized };
+  }
+}
+
 function applyShopPatch(payload = {}) {
   const shopPayload = payload.shops || payload;
   if (!shopPayload || typeof shopPayload !== 'object') return false;
@@ -3922,6 +3964,12 @@ function applyShopPatch(payload = {}) {
   }
   if (shopPayload.npcSells && typeof shopPayload.npcSells === 'object') {
     applyKeyedListPatch(SHOP_RUNTIME.npcSellOverrides, shopPayload.npcSells);
+  }
+  if (shopPayload.foods && typeof shopPayload.foods === 'object' && typeof FOODS !== 'undefined') {
+    applyDefinitionPatch(FOODS, shopPayload.foods, sanitizeFoodDefinition);
+  }
+  if (shopPayload.items && typeof shopPayload.items === 'object' && typeof ITEMS !== 'undefined') {
+    applyDefinitionPatch(ITEMS, shopPayload.items, sanitizeItemDefinition);
   }
   return true;
 }
@@ -9578,7 +9626,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.48',
+  version: '4.3.49',
   ext,
 
   DB: {
