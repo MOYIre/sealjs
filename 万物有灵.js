@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.53
+// @version     4.3.54
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.53');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.54');
   seal.ext.register(ext);
 }
 
@@ -27,6 +27,11 @@ const WebUIReporter = {
     patchCheckInterval: 600000,
     remoteAdminEnabled: false,
     remoteAdminAllowedTypes: ['UPDATE_MAP_TOPOLOGY'],
+    allowedScriptUrls: [
+      'https://fastly.jsdelivr.net/gh/MOYIre/',
+      'https://raw.githubusercontent.com/MOYIre/',
+      'https://github.com/MOYIre/',
+    ],
   },
   _queue: [],
   _timer: null,
@@ -490,8 +495,30 @@ const WebUIReporter = {
       });
       if (!res.ok) return { ok: false, error: '获取失败' };
       const mod = await res.json();
+
       if (mod.type === 'script') {
-        return { ok: false, error: '远程脚本 Mod 已禁用，请改用声明式配置/补丁' };
+        const scriptUrl = mod.scriptUrl || mod.url || '';
+        const allowedUrls = this.config.allowedScriptUrls || [];
+        const isAllowed = allowedUrls.some(prefix => scriptUrl.startsWith(prefix));
+        if (!isAllowed) {
+          return { ok: false, error: `脚本URL不在白名单中: ${scriptUrl}` };
+        }
+        try {
+          const scriptRes = await fetch(scriptUrl);
+          if (!scriptRes.ok) return { ok: false, error: `脚本获取失败: HTTP ${scriptRes.status}` };
+          const scriptCode = await scriptRes.text();
+          const scriptFunc = new Function('WanwuYouling', 'ext', 'seal', scriptCode);
+          scriptFunc(WanwuYouling, ext, seal);
+          if (!this._installedMods) this._loadInstalledMods();
+          if (!this._installedMods.includes(modId)) {
+            this._installedMods.push(modId);
+            this._saveInstalledMods();
+          }
+          return { ok: true, name: mod.name, executed: true };
+        } catch (scriptErr) {
+          console.error('[WebUI Reporter] 脚本执行失败:', scriptErr);
+          return { ok: false, error: `脚本执行失败: ${scriptErr.message}` };
+        }
       }
 
       if (mod.type !== 'config') {
