@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.1.2
+// @version     5.1.4
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.1.2');
+  ext = seal.ext.new('食灵', '铭茗', '5.1.4');
   seal.ext.register(ext);
 }
 
@@ -29,6 +29,7 @@ function getNames() {
 const CONFIG = {
   // 数据源：ghproxy优先，fastly.jsdelivr备选，GitHub原始源兜底
   cloudUrls: [
+    'https://shiling.xiaocui.icu/api/menu',
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
     'https://fastly.jsdelivr.net/gh/MOYIre/shiling-data@master/menu.json',
     'https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
@@ -99,7 +100,8 @@ const Data = {
       try {
         const res = await fetch(url);
         if (res.ok) {
-          this.cache = await res.json();
+          const payload = await res.json();
+          this.cache = payload && payload.data ? payload.data : payload;
           this.cacheTime = Date.now();
           this.fetching = false;
           return this.cache;
@@ -218,7 +220,7 @@ function parseArgs(text) {
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 菜单/.饮单 - 查看\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 今天吃什么 - 一次推荐早餐/午餐/晚餐/夜宵\n.食灵 菜单/.饮单 - 查看\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -275,7 +277,20 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     })();
     return seal.ext.newCmdExecuteResult(true);
   }
-  
+
+  if (text === '今天吃什么' || text === '今日吃什么') {
+    (async () => {
+      const menus = await Data.getMenus();
+      const lines = ['=== 今日推荐 ==='];
+      for (const p of CONFIG.periods.food.order) {
+        const choice = Picker.pick(menus, 'food', p);
+        lines.push(CONFIG.periods.food.names[p] + ': ' + (choice || '无数据'));
+      }
+      seal.replyToSender(ctx, msg, lines.join('\n'));
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
   if (text === '菜单') {
     (async () => {
       const m = await Data.getMenus();
@@ -439,5 +454,22 @@ cmdDrink.solve = (ctx, msg) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
+
+const cmdTodayEat = seal.ext.newCmdItemInfo();
+cmdTodayEat.name = '今天吃什么';
+cmdTodayEat.solve = (ctx, msg) => {
+  (async () => {
+    const menus = await Data.getMenus();
+    const lines = ['=== 今日推荐 ==='];
+    for (const p of CONFIG.periods.food.order) {
+      const choice = Picker.pick(menus, 'food', p);
+      lines.push(CONFIG.periods.food.names[p] + ': ' + (choice || '无数据'));
+    }
+    seal.replyToSender(ctx, msg, lines.join('\n'));
+  })();
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['今天吃什么'] = cmdTodayEat;
+ext.cmdMap['今日吃什么'] = cmdTodayEat;
 
 (async () => { await Data.fetchCloud(); })();
