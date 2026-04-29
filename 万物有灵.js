@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.43
+// @version     4.3.44
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276342
+// @timestamp   1777276343
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.43');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.44');
   seal.ext.register(ext);
 }
 
@@ -25,6 +25,7 @@ const WebUIReporter = {
     enabled: false,
     reportInterval: 60000,
     patchCheckInterval: 600000,
+    remoteAdminEnabled: false,
   },
   _queue: [],
   _timer: null,
@@ -355,7 +356,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.43' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.44' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -393,7 +394,9 @@ const WebUIReporter = {
       }
 
       try {
-        await this.syncAdminCommands();
+        if (this.config.remoteAdminEnabled) {
+          await this.syncAdminCommands();
+        }
       } catch (e) {
         console.error('[WebUI Reporter] 自动同步管理指令失败:', e);
       }
@@ -966,11 +969,14 @@ const WebUIReporter = {
   },
 
   async syncAdminCommands() {
-    if (this._isSyncingCommands) return;
+    if (!this.config.remoteAdminEnabled) {
+      return { total: 0, success: 0, failed: 0, skipped: true, reason: '远程管理指令未启用' };
+    }
+    if (this._isSyncingCommands) return { total: 0, success: 0, failed: 0, skipped: true, reason: '正在同步中' };
     this._isSyncingCommands = true;
     try {
       const list = await this.fetchPendingAdminCommands(10);
-      if (!list.length) return;
+      if (!list.length) return { total: 0, success: 0, failed: 0 };
 
       let success = 0;
       let failed = 0;
@@ -1007,6 +1013,7 @@ const WebUIReporter = {
       if (success > 0 || failed > 0) {
         console.log(`[WebUI Reporter] 管理指令执行完成: 成功${success}, 失败${failed}`);
       }
+      return { total: list.length, success, failed };
     } finally {
       this._isSyncingCommands = false;
     }
@@ -1076,6 +1083,7 @@ const WebUIReporter = {
       queueSize: this._queue.length,
       installedMods: this.getInstalledMods().length,
       knownAnnouncements: this._loadAnnouncementSeen().length,
+      remoteAdminEnabled: !!this.config.remoteAdminEnabled,
     };
   }
 };
@@ -6276,7 +6284,8 @@ const HELP_PAGES = {
 .宠物 webui 禁用 - 禁用WebUI上报
 .宠物 webui 同步 - 立即同步数据
 .宠物 webui 补丁 - 拉取并应用补丁
-.宠物 webui 补偿 - 立即拉取并发放补偿`,
+.宠物 webui 补偿 - 立即拉取并发放补偿
+.宠物 webui 远程管理 启用/禁用 - 控制 WebUI 管理指令自动执行`,
 };
 
 cmd.solve = async (ctx, msg, argv) => {
@@ -9386,6 +9395,7 @@ cmd.solve = async (ctx, msg, argv) => {
       lines.push('.宠物 webui 公告');
       lines.push('.宠物 webui 补丁');
       lines.push('.宠物 webui 补偿');
+      lines.push(`远程管理指令: ${status.remoteAdminEnabled ? '已启用' : '未启用'}`);
       return reply(lines.join('\n'));
     }
 
@@ -9453,6 +9463,22 @@ cmd.solve = async (ctx, msg, argv) => {
       ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
       return reply('【WebUI已禁用】');
     }
+
+    // .宠物 webui 远程管理 启用/禁用 - 控制 WebUI 管理指令自动执行
+    if (p1 === '远程管理' || p1 === 'admin') {
+      if (p2 === '启用' || p2 === 'enable') {
+        WebUIReporter.config.remoteAdminEnabled = true;
+        ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
+        return reply('【远程管理已启用】\nWebUI 下发的管理指令将由插件自动执行。请确保 WebUI 管理员和永久 Token 来源可信。');
+      }
+      if (p2 === '禁用' || p2 === 'disable') {
+        WebUIReporter.config.remoteAdminEnabled = false;
+        ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
+        return reply('【远程管理已禁用】\n插件将不再自动拉取和执行 WebUI 管理指令。');
+      }
+      return reply(`【远程管理状态】\n当前: ${WebUIReporter.config.remoteAdminEnabled ? '已启用' : '未启用'}\n启用: .宠物 webui 远程管理 启用\n禁用: .宠物 webui 远程管理 禁用`);
+    }
+
     // .宠物 webui 同步 - 立即同步
     if (p1 === '同步' || p1 === 'sync') {
       if (!WebUIReporter.config.enabled) {
@@ -9462,8 +9488,10 @@ cmd.solve = async (ctx, msg, argv) => {
       console.log(`[WebUI Reporter] 准备同步数据，当前队列长度: ${queueSize}`);
       await WebUIReporter._flush();
       const compensationRet = await WebUIReporter.syncCompensations();
+      const adminRet = await WebUIReporter.syncAdminCommands();
       const announcementRet = await WebUIReporter.syncAnnouncements();
-      return reply(`【数据已同步】\n处理了 ${queueSize} 条上报\n补偿: 总计${compensationRet.total} 成功${compensationRet.success} 失败${compensationRet.failed}\n公告: 总计${announcementRet.total} 未读${announcementRet.unread.length}`);
+      const adminText = adminRet.skipped ? adminRet.reason : `总计${adminRet.total} 成功${adminRet.success} 失败${adminRet.failed}`;
+      return reply(`【数据已同步】\n处理了 ${queueSize} 条上报\n补偿: 总计${compensationRet.total} 成功${compensationRet.success} 失败${compensationRet.failed}\n远程管理: ${adminText}\n公告: 总计${announcementRet.total} 未读${announcementRet.unread.length}`);
     }
 
     // .宠物 webui 补偿 - 立即拉取并发放补偿
@@ -9541,7 +9569,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.43',
+  version: '4.3.44',
   ext,
 
   DB: {
