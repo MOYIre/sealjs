@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.57
+// @version     4.3.58
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.57');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.58');
   seal.ext.register(ext);
 }
 
@@ -38,6 +38,8 @@ const WebUIReporter = {
   _installedMods: null,
   _lastPatchDigest: '',
   _lastPatchCheckAt: 0,
+  _remoteTips: [],
+  _lastTipsSyncAt: 0,
   _isSyncingCompensations: false,
   _compAcked: null,
   _adminCmdExecuted: null,
@@ -49,6 +51,7 @@ const WebUIReporter = {
       this._loadInstalledMods();
       this._loadCompAcked();
       setTimeout(() => {
+        void this.syncTips({ force: true });
         void this._autoSyncPatches({ force: true });
       }, 3000);
       console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
@@ -309,6 +312,46 @@ const WebUIReporter = {
     }
   },
 
+  async fetchTips() {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    try {
+      const res = await fetch(`${this.config.endpoint}/api/tips`, {
+        headers: { 'Authorization': `Bearer ${this.config.token}` }
+      });
+      if (!res.ok) {
+        console.error('[WebUI Reporter] 拉取 Tips 失败:', res.status);
+        return [];
+      }
+      const data = await res.json();
+      const rows = Array.isArray(data.data) ? data.data : [];
+      return rows
+        .map(item => String(item?.content || '').trim())
+        .filter(text => text.length >= 2 && text.length <= 500)
+        .slice(0, 100);
+    } catch (e) {
+      console.error('[WebUI Reporter] 拉取 Tips 异常:', e);
+      return [];
+    }
+  },
+
+  async syncTips(options = {}) {
+    if (!this.config.enabled || !this.config.endpoint) return [];
+    const now = Date.now();
+    if (!options.force && now - this._lastTipsSyncAt < 300000) return this._remoteTips;
+    this._lastTipsSyncAt = now;
+
+    const tips = await this.fetchTips();
+    if (tips.length) {
+      this._remoteTips = tips;
+      this.reportGeneric('tips_sync', { total: tips.length, latest: tips[0] || '' });
+    }
+    return this._remoteTips;
+  },
+
+  getTipPool() {
+    return Array.isArray(this._remoteTips) && this._remoteTips.length ? this._remoteTips : [];
+  },
+
   formatAnnouncementList(list, onlyUnread = false) {
     const seen = new Set(this._loadAnnouncementSeen());
     const rows = (Array.isArray(list) ? list : [])
@@ -378,7 +421,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.57' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.58' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -401,6 +444,12 @@ const WebUIReporter = {
         } catch (e) {
           console.error('[WebUI Reporter] 定时上报失败:', e);
         }
+      }
+
+      try {
+        await this.syncTips();
+      } catch (e) {
+        console.error('[WebUI Reporter] 自动同步 Tips 失败:', e);
       }
 
       try {
@@ -1193,26 +1242,29 @@ const MAIN_SCHEMA_VERSION = 1;
 
 // 游戏小贴士
 const GAME_TIPS = [
-  'ℑ 每日首次喂食可获得双倍好感度',
-  'ℑ 宠物好感度达到100时可触发进化',
-  'ℑ 不同性格会影响宠物的属性成长',
-  'ℑ 天赋可以大幅提升宠物的战斗能力',
-  'ℑ 稀有宠物有更高的基础属性',
-  'ℑ 战斗时注意属性克制，可造成额外伤害',
-  'ℑ 宠物血量越低，捕捉成功率越高',
-  'ℑ 探险和打工可以获得技能书',
-  'ℑ 训练师装备可以提升宠物属性',
-  'ℑ 组队副本需要多人配合才能通关',
-  'ℑ 世界Boss每天12:00、18:00、22:00刷新',
-  'ℑ 神话宠物拥有专属技能',
-  'ℑ 育种可以继承父母的优秀基因',
-  'ℑ 宠物达到50级可挑战守护者',
-  'ℑ 使用.宠物 help 查看完整命令列表',
+  'ℑ 每日第一次喂食有额外好感收益，先喂主力宠物最划算。',
+  'ℑ 喂食时可以带数量，例如 .宠物 喂食 1 苹果 3。',
+  'ℑ 宠物血量越低，捕捉成功率越高；先削血再捕捉更稳。',
+  'ℑ 不同性格会影响属性成长，培养前可以先看宠物信息。',
+  'ℑ 天赋和稀有度会显著影响后期强度，稀有宠值得优先培养。',
+  'ℑ 战斗有属性克制，换上克制目标的宠物能打出更高伤害。',
+  'ℑ 仓库宠物也能保留成长，队伍满了可以先存入仓库。',
+  'ℑ 金币不够时，可以通过探险、打工、任务或活动逐步积累。',
+  'ℑ 技能书可用于补强宠物技能，学习前记得确认目标宠物。',
+  'ℑ 训练师装备会提供额外属性，长期对战前别忘了检查装备。',
+  'ℑ 育种有机会继承优秀基因，适合培养高潜力后代。',
+  'ℑ 进化通常需要等级、好感或材料条件，缺一项都不会触发。',
+  'ℑ 商店可能受城镇、NPC 和热补丁影响，不同地点能买到不同物品。',
+  'ℑ WebUI 发布的补丁会自动同步；手动检查可用 .宠物 webui 补丁。',
+  'ℑ WebUI Tips 可在线更新，插件会优先显示后台配置的小贴士。',
+  'ℑ 使用 .宠物 help 查看完整命令列表。',
 ];
 
 // 随机获取一条tips
 function getRandomTip() {
-  return GAME_TIPS[Math.floor(Math.random() * GAME_TIPS.length)];
+  const remoteTips = typeof WebUIReporter !== 'undefined' ? WebUIReporter.getTipPool() : [];
+  const pool = remoteTips.length ? remoteTips : GAME_TIPS;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 //   种族定义  
@@ -10018,7 +10070,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.57',
+  version: '4.3.58',
   ext,
 
   DB: {
