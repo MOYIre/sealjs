@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.65
+// @version     4.3.66
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.65');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.66');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.65' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.66' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -4709,7 +4709,7 @@ const DB = {
         equipment: { weapon: null, armor: null, accessory: null },
         skills: [],
         dailyTrain: 0, lastTrainDate: '',
-        race: '', raceSelected: false,
+        race: '精灵族', raceSelected: false,
       },
       playerItems: {},  // 玩家装备和技能书
       currentTown: '',
@@ -4772,7 +4772,7 @@ const DB = {
           equipment: { weapon: null, armor: null, accessory: null },
           skills: [],
           dailyTrain: 0, lastTrainDate: '',
-          race: '', raceSelected: false,
+          race: '精灵族', raceSelected: false,
         };
       }
       // 确保所有字段存在 (v3.6.11 使用??避免0值问题)
@@ -4788,8 +4788,10 @@ const DB = {
       data.player.skills = data.player.skills ?? [];
       data.player.dailyTrain = data.player.dailyTrain ?? 0;
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
-      data.player.race = data.player.race ?? '';
-      data.player.raceSelected = data.player.raceSelected ?? !!data.player.race;
+      data.player.race = data.player.race ?? '精灵族';
+      data.player.raceSelected = data.player.raceSelected ?? false;
+      if (!data.player.race) data.player.race = '精灵族';
+      if (data.player.race === '人族') data.player.race = '精灵族';
       data.playerItems = data.playerItems ?? {};
 
       let energyRecovered = false;
@@ -5184,7 +5186,6 @@ const PetFactory = {
 const PLAYER_BASE = { hp: 35, atk: 18, def: 12, energy: 80, spd: 80 };
 
 const PLAYER_RACES = {
-  '人族': { desc: '适应力强的均衡种族，所有路线都能稳定成长', initial: { str: 1, agi: 1, int: 1, vit: 1 }, growth: { str: 1, agi: 1, int: 1, vit: 1 }, combatMod: { energy: 1.02 } },
   '苹果族': { desc: '生命力充沛的果灵族裔，擅长续航与稳定培养', initial: { str: 0, agi: 1, int: 1, vit: 2 }, growth: { str: 0, agi: 1, int: 1, vit: 2 }, combatMod: { hp: 1.04, energy: 1.02, atk: 0.98 } },
   '精灵族': { desc: '亲近自然与灵性的长生族裔，智力和敏捷成长优秀', initial: { str: 0, agi: 2, int: 2, vit: 0 }, growth: { str: 0, agi: 1, int: 2, vit: 1 }, combatMod: { spd: 1.02, energy: 1.03, def: 0.99 } },
   '兽裔': { desc: '保留野性本能的族裔，擅长力量与先手压制', initial: { str: 2, agi: 1, int: 0, vit: 1 }, growth: { str: 2, agi: 1, int: 0, vit: 1 }, combatMod: { atk: 1.02, spd: 1.01, energy: 0.98 } },
@@ -5213,7 +5214,7 @@ function applyPlayerRaceStats(stats, player) {
 
 function applyPlayerRaceGrowth(player) {
   const race = getPlayerRace(player);
-  const growth = race?.growth || PLAYER_RACES['人族'].growth;
+  const growth = race?.growth || PLAYER_RACES['精灵族'].growth;
   player.str = (player.str || 10) + (growth.str || 0);
   player.agi = (player.agi || 10) + (growth.agi || 0);
   player.int = (player.int || 10) + (growth.int || 0);
@@ -7427,7 +7428,7 @@ cmd.solve = async (ctx, msg, argv) => {
           data.player.exp -= playerExpNeed;
           data.player.level++;
           const growth = applyPlayerRaceGrowth(data.player);
-          logs.push(`训练师升级到 Lv.${data.player.level}！${data.player.race || '人族'}成长：${formatAttrDelta(growth) || '全属性提升'}`);
+          logs.push(`训练师升级到 Lv.${data.player.level}！${data.player.race || '精灵族'}成长：${formatAttrDelta(growth) || '全属性提升'}`);
         }
 
         if (hasCharm) {
@@ -9700,7 +9701,7 @@ cmd.solve = async (ctx, msg, argv) => {
       const raceName = p2.trim();
       const race = PLAYER_RACES[raceName];
       if (!race) return reply(`未知种族：${raceName || '未填写'}\n可用种族：${Object.keys(PLAYER_RACES).join('、')}`);
-      if (player.raceSelected || player.race) return reply(`你已经选择了${player.race}，初始种族不可重复选择`);
+      if (player.raceSelected) return reply(`你已经选择了${player.race}，初始种族不可重复选择`);
       player.race = raceName;
       player.raceSelected = true;
       for (const [attr, value] of Object.entries(race.initial || {})) {
@@ -9710,7 +9711,7 @@ cmd.solve = async (ctx, msg, argv) => {
       return reply(`【种族选择完成】\n你选择了${raceName}\n${race.desc}\n初始加成：${formatAttrDelta(race.initial)}\n升级成长：${formatAttrDelta(race.growth)}\n${getRandomTip()}`);
     }
 
-    const lines = ['【玩家初始种族】', '首次选择后不可更改。', '用法：.宠物 种族 选择 <种族名>', ''];
+    const lines = ['【玩家初始种族】', '默认种族：精灵族。首次选择后不可更改。', '用法：.宠物 种族 选择 <种族名>', ''];
     for (const [name, race] of Object.entries(PLAYER_RACES)) {
       lines.push(`${name}: ${race.desc}`);
       lines.push(`  初始: ${formatAttrDelta(race.initial)}｜成长: ${formatAttrDelta(race.growth)}`);
@@ -9735,12 +9736,12 @@ cmd.solve = async (ctx, msg, argv) => {
 
     const lines = [
       `【训练师信息】`,
-      `种族: ${player.race || '未选择'}${player.race ? ` - ${PLAYER_RACES[player.race]?.desc || ''}` : '（使用 .宠物 种族 选择 <种族名>）'}`,
+      `种族: ${player.race || '精灵族'}${player.race ? ` - ${PLAYER_RACES[player.race]?.desc || ''}` : '（默认精灵族，可用 .宠物 种族 选择 <种族名> 首次改选）'}`,
       `等级: Lv.${player.level}`,
       `经验: ${player.exp}/${PLAYER_EXP_TABLE[player.level] || player.level * 500}`,
       '',
       `【属性】(装备加成)`,
-      `成长: ${player.race ? formatAttrDelta(PLAYER_RACES[player.race]?.growth) : '未选择种族'}`,
+      `成长: ${formatAttrDelta(PLAYER_RACES[player.race || '精灵族']?.growth)}`,
       `力量: ${player.str} (+${equipBonus.str}) - 宠物攻击+${Math.floor((player.str + equipBonus.str - 10) * 0.5)}%`,
       `敏捷: ${player.agi} (+${equipBonus.agi}) - 宠物速度+${Math.floor((player.agi + equipBonus.agi - 10) * 0.5)}%`,
       `智力: ${player.int} (+${equipBonus.int}) - 宠物精力+${Math.floor((player.int + equipBonus.int - 10) * 0.5)}%`,
@@ -10171,7 +10172,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.65',
+  version: '4.3.66',
   ext,
 
   DB: {
