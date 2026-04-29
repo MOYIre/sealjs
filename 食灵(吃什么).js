@@ -484,6 +484,15 @@ cmd.solve = (ctx, msg, cmdArgs) => {
         if (!(data.admins || []).includes(uid)) { seal.replyToSender(ctx, msg, '非管理员'); return; }
         const exp = Date.now() + CONFIG.tokenTTL;
         const sig = btoa(uid + exp + 'shiling').slice(0, 16);
+        const loginMsgs = [
+          '验证通过啦~ 管理员大大，你的密钥已经悄悄发到私聊咯 \(￣︶￣*\))',
+          '叮! 验证成功~ 管理员大人的密钥我已经私聊送达啦，请查收喵~',
+          '认证完成 [OK] 管理员大大，密钥已塞进你的私聊小信箱啦~',
+          '验证OK! 给管理员大大的密钥已经私发啦，记得偷偷收好哦~',
+          '通过啦通过啦~ 管理员大人的密钥已私聊投递，请注意查收 <3'
+        ];
+        const tip = loginMsgs[Math.floor(Math.random() * loginMsgs.length)];
+        seal.replyToSender(ctx, msg, tip);
         seal.replyPerson(ctx, msg, 'Token: ' + btoa(JSON.stringify({qq:uid,exp,sig})) + '\n管理面板: shiling.xiaocui.icu');
       } catch (e) { seal.replyToSender(ctx, msg, '错误: ' + e.message); }
     })();
