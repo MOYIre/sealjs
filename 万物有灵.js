@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.59
+// @version     4.3.60
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.59');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.60');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.59' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.60' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1257,6 +1257,17 @@ const GAME_TIPS = [
   'ℑ 育种有机会继承优秀基因，适合培养高潜力后代。',
   'ℑ 进化通常需要等级、好感或材料条件，缺一项都不会触发。',
   'ℑ 商店可能受城镇、NPC 和热补丁影响，不同地点能买到不同物品。',
+  'ℑ 在商店新增食物或物品时，热补丁会默认合并原列表，不会清空旧商品。',
+  'ℑ 若确实要删除某个热补丁列表，可在补丁里把对应字段设为 null。',
+  'ℑ 物品描述支持 desc 字段；食物主要展示属性效果和价格。',
+  'ℑ 使用消耗品前先确认背包数量，避免把稀有材料用错目标。',
+  'ℑ 复活、扩容、重置技能这类道具通常适合留给核心宠物。',
+  'ℑ 宠物等级提升会增加属性，长期培养比临时更换更稳定。',
+  'ℑ 高好感宠物更适合参与进化、育种和关键战斗。',
+  'ℑ 如果提示条件不足，可以检查等级、金币、背包、位置或公会身份。',
+  'ℑ 公会玩法会逐步扩展，资金、职位和任务都可能影响后续内容。',
+  'ℑ 活动补丁可能改变奖励、商店和 Boss 参数，遇到异常可先检查 WebUI 补丁状态。',
+  'ℑ 管理员在 WebUI 发布补丁后，插件会自动记录应用结果。',
   'ℑ WebUI 发布的补丁会自动同步；手动检查可用 .宠物 webui 补丁。',
   'ℑ WebUI Tips 每天检查一次更新；本地内置小贴士会优先保留。',
   'ℑ 使用 .宠物 help 查看完整命令列表。',
@@ -10071,7 +10082,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.59',
+  version: '4.3.60',
   ext,
 
   DB: {
