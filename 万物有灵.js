@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.49
+// @version     4.3.50
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.49');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.50');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.49' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.50' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -3927,6 +3927,22 @@ function sanitizeFoodDefinition(value) {
   return Object.keys(food).length ? food : null;
 }
 
+function sanitizeItemEffect(value) {
+  if (!value || typeof value !== 'object') return null;
+  const action = typeof value.action === 'string' ? value.action : '';
+  const allowedActions = ['addExp', 'healPet', 'restoreEnergy', 'addMoney', 'addFood', 'addItem', 'teleport', 'expandStorage', 'resetSkills', 'revivePet'];
+  if (!allowedActions.includes(action)) return null;
+  const effect = { action };
+  for (const key of ['amount', 'count']) {
+    const n = toPatchNumber(value[key]);
+    if (n !== null) effect[key] = n;
+  }
+  for (const key of ['food', 'item', 'town']) {
+    if (typeof value[key] === 'string') effect[key] = value[key];
+  }
+  return effect;
+}
+
 function sanitizeItemDefinition(value) {
   if (!value || typeof value !== 'object') return null;
   const item = {};
@@ -3934,6 +3950,8 @@ function sanitizeItemDefinition(value) {
   if (cost !== null) item.cost = cost;
   if (typeof value.desc === 'string') item.desc = value.desc;
   if (typeof value.type === 'string') item.type = value.type;
+  const effect = sanitizeItemEffect(value.effect);
+  if (effect) item.effect = effect;
   return Object.keys(item).length ? item : null;
 }
 
@@ -6135,6 +6153,99 @@ function pushCompactBattleLogs(logs, fightLogs, maxFightLogs = CONFIG.fightLogLi
 }
 
 //   命令处理
+function grantPetExp(pet, exp) {
+  pet.exp = (pet.exp || 0) + exp;
+  let leveledUp = false;
+  while (pet.exp >= pet.level * 100) {
+    pet.exp -= pet.level * 100;
+    pet.level++;
+    pet.maxHp += 5;
+    pet.hp = Math.min((pet.hp || 0) + 5, pet.maxHp);
+    pet.atk += 2;
+    pet.def += 2;
+    leveledUp = true;
+  }
+  return leveledUp;
+}
+
+function executeItemEffect(effect, context) {
+  if (!effect || typeof effect !== 'object') return { ok: false, msg: '该道具没有可执行效果' };
+  const { data, petIdx, getPet } = context;
+  const amount = Math.max(0, Math.floor(Number(effect.amount || 0)));
+  const count = Math.max(1, Math.floor(Number(effect.count || 1)));
+  switch (effect.action) {
+    case 'addExp': {
+      const pet = getPet(petIdx);
+      if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+      const exp = amount || 100;
+      const leveledUp = grantPetExp(pet, exp);
+      return { ok: true, pet, msg: leveledUp ? `${pet.name} 获得 ${exp} 经验并升级到 Lv.${pet.level}！` : `${pet.name} 获得 ${exp} 经验 (${pet.exp}/${pet.level * 100})` };
+    }
+    case 'healPet': {
+      const pet = getPet(petIdx);
+      if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+      const heal = amount || pet.maxHp;
+      pet.hp = Math.min(pet.maxHp, Math.max(0, pet.hp || 0) + heal);
+      return { ok: true, pet, msg: `${pet.name} 恢复 ${heal} 生命，当前 ${pet.hp}/${pet.maxHp}` };
+    }
+    case 'restoreEnergy': {
+      const pet = getPet(petIdx);
+      if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+      const energy = amount || pet.maxEnergy;
+      pet.energy = Math.min(pet.maxEnergy, Math.max(0, pet.energy || 0) + energy);
+      return { ok: true, pet, msg: `${pet.name} 恢复 ${energy} 精力，当前 ${pet.energy}/${pet.maxEnergy}` };
+    }
+    case 'revivePet': {
+      const pet = getPet(petIdx);
+      if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+      if (pet.hp > 0) return { ok: false, msg: `${pet.name} 还活着，不需要复活` };
+      pet.hp = pet.maxHp;
+      pet.energy = pet.maxEnergy;
+      return { ok: true, pet, msg: `${pet.name} 已复活！生命和精力已恢复` };
+    }
+    case 'resetSkills': {
+      const pet = getPet(petIdx);
+      if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+      const oldSp = pet.sp || 0;
+      pet.sp = oldSp + (pet.skills ? pet.skills.length : 1);
+      pet.skills = ['冲撞'];
+      return { ok: true, pet, msg: `${pet.name} 的技能已重置，恢复了 ${pet.sp - oldSp} 技能点` };
+    }
+    case 'addMoney':
+      data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + amount);
+      return { ok: true, msg: `获得 ${amount} 金币，当前金币 ${data.money}` };
+    case 'addFood':
+      if (!effect.food || !FOODS[effect.food]) return { ok: false, msg: '食物效果配置无效' };
+      data.food[effect.food] = (data.food[effect.food] || 0) + count;
+      return { ok: true, msg: `获得 ${effect.food} x${count}` };
+    case 'addItem':
+      if (!effect.item || !ITEMS[effect.item]) return { ok: false, msg: '道具效果配置无效' };
+      data.items[effect.item] = (data.items[effect.item] || 0) + count;
+      return { ok: true, msg: `获得 ${effect.item} x${count}` };
+    case 'teleport': {
+      const townId = effect.town;
+      if (!townId || !TOWNS[townId]) return { ok: false, msg: '城镇效果配置无效' };
+      data.currentTown = townId;
+      data.currentShopNpc = '';
+      return { ok: true, msg: `已抵达 ${TOWNS[townId].name}` };
+    }
+    case 'expandStorage':
+      data.maxStorage = (data.maxStorage || 15) + (amount || 5);
+      return { ok: true, msg: `仓库容量已扩展！当前容量: ${data.maxStorage}` };
+    default:
+      return { ok: false, msg: '未知道具效果' };
+  }
+}
+
+function applyCustomItemEffect(item, context) {
+  const result = executeItemEffect(item.effect, context);
+  if (!result.ok) return result;
+  context.useItem();
+  context.save();
+  WanwuYouling.emit('useItem', { uid: context.uid, item: context.itemName, pet: result.pet, effect: item.effect });
+  return result;
+}
+
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '宠物';
 cmd.help = `【万物有灵】宠物养成对战系统
@@ -7908,19 +8019,8 @@ cmd.solve = async (ctx, msg, argv) => {
       case 'exp': {
         const pet = getPet(petIdx);
         if (!pet) return reply('请指定正确的宠物编号');
-        const exp = itemName === '大经验药水' ? 300 : 100;
-        pet.exp += exp;
-        const expNeed = pet.level * 100;
-        let leveledUp = false;
-        while (pet.exp >= expNeed) {
-          pet.exp -= expNeed;
-          pet.level++;
-          pet.maxHp += 5;
-          pet.hp = Math.min(pet.hp + 5, pet.maxHp);
-          pet.atk += 2;
-          pet.def += 2;
-          leveledUp = true;
-        }
+        const exp = item.effect?.action === 'addExp' ? Math.max(1, Math.floor(Number(item.effect.amount || 100))) : (itemName === '大经验药水' ? 300 : 100);
+        const leveledUp = grantPetExp(pet, exp);
         useItem();
         save();
         WanwuYouling.emit('useItem', { uid, item: itemName, pet });
@@ -7955,6 +8055,11 @@ cmd.solve = async (ctx, msg, argv) => {
       }
 
       case 'misc': {
+        if (item.effect) {
+          const result = applyCustomItemEffect(item, { uid, data, itemName, petIdx, getPet, useItem, save });
+          if (!result.ok) return reply(result.msg);
+          return reply(`${result.msg}\n${getRandomTip()}`);
+        }
         if (itemName === '扩容卡') {
           data.maxStorage = (data.maxStorage || 15) + 5;
           useItem();
@@ -7971,6 +8076,11 @@ cmd.solve = async (ctx, msg, argv) => {
         return reply(`${itemName} 在对应操作时自动使用`);
 
       default:
+        if (item.effect) {
+          const result = applyCustomItemEffect(item, { uid, data, itemName, petIdx, getPet, useItem, save });
+          if (!result.ok) return reply(result.msg);
+          return reply(`${result.msg}\n${getRandomTip()}`);
+        }
         return reply(`${itemName} 无法直接使用`);
     }
   }
@@ -9626,7 +9736,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.49',
+  version: '4.3.50',
   ext,
 
   DB: {
