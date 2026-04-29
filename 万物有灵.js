@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.66
+// @version     4.3.67
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.66');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.67');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.66' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.67' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -4709,7 +4709,7 @@ const DB = {
         equipment: { weapon: null, armor: null, accessory: null },
         skills: [],
         dailyTrain: 0, lastTrainDate: '',
-        race: '精灵族', raceSelected: false,
+        race: '', raceSelected: false,
       },
       playerItems: {},  // 玩家装备和技能书
       currentTown: '',
@@ -4772,7 +4772,7 @@ const DB = {
           equipment: { weapon: null, armor: null, accessory: null },
           skills: [],
           dailyTrain: 0, lastTrainDate: '',
-          race: '精灵族', raceSelected: false,
+          race: '', raceSelected: false,
         };
       }
       // 确保所有字段存在 (v3.6.11 使用??避免0值问题)
@@ -4788,9 +4788,8 @@ const DB = {
       data.player.skills = data.player.skills ?? [];
       data.player.dailyTrain = data.player.dailyTrain ?? 0;
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
-      data.player.race = data.player.race ?? '精灵族';
+      data.player.race = data.player.race ?? '';
       data.player.raceSelected = data.player.raceSelected ?? false;
-      if (!data.player.race) data.player.race = '精灵族';
       if (data.player.race === '人族') data.player.race = '精灵族';
       data.playerItems = data.playerItems ?? {};
 
@@ -5196,7 +5195,7 @@ const PLAYER_RACES = {
 };
 
 function getPlayerRace(player) {
-  return PLAYER_RACES[player?.race] || null;
+  return PLAYER_RACES[player?.race || '精灵族'] || null;
 }
 
 function applyPlayerRaceStats(stats, player) {
@@ -9701,7 +9700,13 @@ cmd.solve = async (ctx, msg, argv) => {
       const raceName = p2.trim();
       const race = PLAYER_RACES[raceName];
       if (!race) return reply(`未知种族：${raceName || '未填写'}\n可用种族：${Object.keys(PLAYER_RACES).join('、')}`);
-      if (player.raceSelected) return reply(`你已经选择了${player.race}，初始种族不可重复选择`);
+      if (player.raceSelected) return reply(`你已经选择了${player.race || '精灵族'}，初始种族不可重复选择`);
+      if (!player.race && ((player.level || 1) > 1 || (player.exp || 0) > 0)) {
+        player.race = '精灵族';
+        player.raceSelected = true;
+        save();
+        return reply('你已开始训练师成长，默认种族精灵族已锁定，无法再改选初始种族');
+      }
       player.race = raceName;
       player.raceSelected = true;
       for (const [attr, value] of Object.entries(race.initial || {})) {
@@ -10172,7 +10177,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.66',
+  version: '4.3.67',
   ext,
 
   DB: {
