@@ -1,5 +1,6 @@
-// 用户列表 API
-// 路由: /api/users
+// 玩家列表 API (与 /api/users 相同)
+// 路由: /api/players
+// 注意: 此端点作为 /api/users 的别名，方便 WebUI 调用
 
 const PLAYER_DATA_PREFIX = 'wwyl:player:'
 const AUTH_SESSION_PREFIX = 'wwyl:auth:session:'
@@ -79,7 +80,7 @@ export async function onRequest(context) {
   const kv = getKV(env)
   const url = new URL(request.url)
 
-  // GET /api/users - 获取用户列表
+  // GET /api/players - 获取玩家列表
   if (request.method === 'GET') {
     const auth = await requireAuth(request, env)
     if (!auth.valid) return jsonResp(request, { error: auth.error }, auth.status || 403)
