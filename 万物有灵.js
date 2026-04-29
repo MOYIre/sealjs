@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.41
+// @version     4.3.42
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276340
+// @timestamp   1777276341
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.39');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.42');
   seal.ext.register(ext);
 }
 
@@ -975,15 +975,16 @@ const WebUIReporter = {
       const payload = typeof patch.payload === 'string' ? JSON.parse(patch.payload) : patch.payload;
 
       // 安全检查：防止原型链污染
-      const hasProto = (obj) => {
+      const hasUnsafeKey = (obj) => {
         if (!obj || typeof obj !== 'object') return false;
-        if ('__proto__' in obj || 'constructor' in obj || 'prototype' in obj) return true;
-        for (const key in obj) {
-          if (Object.prototype.hasOwnProperty.call(obj, key) && hasProto(obj[key])) return true;
+        for (const key of Object.keys(obj)) {
+          if (key === '__proto__' || key === 'constructor' || key === 'prototype') return true;
+          if (hasUnsafeKey(obj[key])) return true;
         }
         return false;
       };
-      if (hasProto(payload)) {
+      if (hasUnsafeKey(payload)) {
+        patch._lastError = '补丁包含非法字段';
         console.error('[WebUI Reporter] 补丁包含非法字段');
         return false;
       }
@@ -1001,15 +1002,25 @@ const WebUIReporter = {
         case 'config':
           if (payload.config && typeof CONFIG !== 'undefined') Object.assign(CONFIG, payload.config);
           break;
-        case 'shops':
-          return typeof applyShopPatch === 'function' ? applyShopPatch(payload) : false;
-        case 'encounters':
-          return typeof applyEncounterPatch === 'function' ? applyEncounterPatch(payload) : false;
-        case 'dungeons':
-          return typeof applyDungeonPatch === 'function' ? applyDungeonPatch(payload) : false;
+        case 'shops': {
+          const ok = typeof applyShopPatch === 'function' ? applyShopPatch(payload) : false;
+          if (!ok) patch._lastError = typeof applyShopPatch === 'function' ? '商店补丁内容无效' : '当前插件缺少商店热更新处理器';
+          return ok;
+        }
+        case 'encounters': {
+          const ok = typeof applyEncounterPatch === 'function' ? applyEncounterPatch(payload) : false;
+          if (!ok) patch._lastError = typeof applyEncounterPatch === 'function' ? '遭遇池补丁内容无效' : '当前插件缺少遭遇池热更新处理器';
+          return ok;
+        }
+        case 'dungeons': {
+          const ok = typeof applyDungeonPatch === 'function' ? applyDungeonPatch(payload) : false;
+          if (!ok) patch._lastError = typeof applyDungeonPatch === 'function' ? '副本补丁内容无效' : '当前插件缺少副本热更新处理器';
+          return ok;
+        }
       }
       return true;
     } catch (e) {
+      patch._lastError = e && e.message ? e.message : String(e);
       console.error('[WebUI Reporter] 应用补丁失败:', e);
       return false;
     }
@@ -9448,7 +9459,8 @@ cmd.solve = async (ctx, msg, argv) => {
       const lines = ['【补丁应用结果】', ''];
       for (const patch of patches) {
         const success = WebUIReporter.applyPatch(patch);
-        lines.push(`${success ? '✓' : '✗'} ${patch.name} (${patch.scope})`);
+        const reason = success || !patch._lastError ? '' : ` - ${patch._lastError}`;
+        lines.push(`${success ? '✓' : '✗'} ${patch.name} (${patch.scope})${reason}`);
       }
       return reply(lines.join('\n'));
     }
