@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        轮盘对决
 // @author      铭茗
-// @version     1.1.0
+// @version     1.1.1
 // @description 2人轮盘对决游戏，出击或自用，看运气决定胜负，含道具牌系统
 // @timestamp   1745136000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('轮盘对决');
 if (!ext) {
-  ext = seal.ext.new('轮盘对决', '铭茗', '1.1.0');
+  ext = seal.ext.new('轮盘对决', '铭茗', '1.1.1');
   seal.ext.register(ext);
 }
 
@@ -283,6 +283,12 @@ ${session.players[0].name} VS ${session.players[1].name}
       }
       if (!session.isPlayerInGame(playerId)) {
         seal.replyToSender(ctx, msg, '[!] 只有游戏参与者才能结束游戏');
+        return seal.ext.newCmdExecuteResult(true);
+      }
+      // 等待中（只有一人）时直接取消
+      if (session.phase === 'waiting') {
+        gameSessions[groupId] = new GameSession(groupId);
+        seal.replyToSender(ctx, msg, `✦ 游戏已取消 ✧\n${playerName} 取消了对决`);
         return seal.ext.newCmdExecuteResult(true);
       }
       const opponent = session.getOtherPlayer(playerId);
