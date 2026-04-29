@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.50
+// @version     4.3.51
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.50');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.51');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.50' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.51' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -3930,17 +3930,38 @@ function sanitizeFoodDefinition(value) {
 function sanitizeItemEffect(value) {
   if (!value || typeof value !== 'object') return null;
   const action = typeof value.action === 'string' ? value.action : '';
-  const allowedActions = ['addExp', 'healPet', 'restoreEnergy', 'addMoney', 'addFood', 'addItem', 'teleport', 'expandStorage', 'resetSkills', 'revivePet'];
+  const allowedActions = ['addExp', 'healPet', 'restoreEnergy', 'addMoney', 'addFood', 'addItem', 'teleport', 'expandStorage', 'resetSkills', 'revivePet', 'buff', 'chance', 'resource', 'custom'];
   if (!allowedActions.includes(action)) return null;
   const effect = { action };
-  for (const key of ['amount', 'count']) {
+  for (const key of ['amount', 'count', 'duration', 'rate']) {
     const n = toPatchNumber(value[key]);
     if (n !== null) effect[key] = n;
   }
-  for (const key of ['food', 'item', 'town']) {
+  for (const key of ['food', 'item', 'town', 'key', 'target', 'resource', 'operation', 'handler']) {
     if (typeof value[key] === 'string') effect[key] = value[key];
   }
+  if (value.value && typeof value.value === 'object' && !Array.isArray(value.value)) effect.value = value.value;
+  if (value.params && typeof value.params === 'object' && !Array.isArray(value.params)) effect.params = value.params;
+  if (Array.isArray(value.success)) effect.success = value.success.map(sanitizeItemEffect).filter(Boolean);
+  if (Array.isArray(value.failure)) effect.failure = value.failure.map(sanitizeItemEffect).filter(Boolean);
   return effect;
+}
+
+function sanitizeItemCondition(value) {
+  if (!value || typeof value !== 'object') return null;
+  const type = typeof value.type === 'string' ? value.type : '';
+  const allowedTypes = ['minPlayerLevel', 'minPetLevel', 'hasItem', 'hasFood', 'minMoney', 'guildRole', 'cooldown', 'custom'];
+  if (!allowedTypes.includes(type)) return null;
+  const condition = { type };
+  for (const key of ['value', 'count', 'duration']) {
+    const n = toPatchNumber(value[key]);
+    if (n !== null) condition[key] = n;
+  }
+  for (const key of ['item', 'food', 'role', 'key', 'handler']) {
+    if (typeof value[key] === 'string') condition[key] = value[key];
+  }
+  if (value.params && typeof value.params === 'object' && !Array.isArray(value.params)) condition.params = value.params;
+  return condition;
 }
 
 function sanitizeItemDefinition(value) {
@@ -3952,6 +3973,8 @@ function sanitizeItemDefinition(value) {
   if (typeof value.type === 'string') item.type = value.type;
   const effect = sanitizeItemEffect(value.effect);
   if (effect) item.effect = effect;
+  if (Array.isArray(value.effects)) item.effects = value.effects.map(sanitizeItemEffect).filter(Boolean);
+  if (Array.isArray(value.conditions)) item.conditions = value.conditions.map(sanitizeItemCondition).filter(Boolean);
   return Object.keys(item).length ? item : null;
 }
 
@@ -6168,6 +6191,39 @@ function grantPetExp(pet, exp) {
   return leveledUp;
 }
 
+function checkItemConditions(conditions, context) {
+  if (!Array.isArray(conditions) || !conditions.length) return { ok: true };
+  const { data, petIdx, getPet } = context;
+  for (const condition of conditions) {
+    if (!condition || typeof condition !== 'object') continue;
+    const value = Math.max(0, Math.floor(Number(condition.value || 0)));
+    const count = Math.max(1, Math.floor(Number(condition.count || 1)));
+    switch (condition.type) {
+      case 'minPlayerLevel':
+        if ((data.player?.level || 1) < value) return { ok: false, msg: `玩家等级不足，需要 Lv.${value}` };
+        break;
+      case 'minPetLevel': {
+        const pet = getPet(petIdx);
+        if (!pet) return { ok: false, msg: '请指定正确的宠物编号' };
+        if ((pet.level || 1) < value) return { ok: false, msg: `宠物等级不足，需要 Lv.${value}` };
+        break;
+      }
+      case 'hasItem':
+        if (!condition.item || (data.items[condition.item] || 0) < count) return { ok: false, msg: `缺少道具 ${condition.item || ''} x${count}` };
+        break;
+      case 'hasFood':
+        if (!condition.food || (data.food[condition.food] || 0) < count) return { ok: false, msg: `缺少食物 ${condition.food || ''} x${count}` };
+        break;
+      case 'minMoney':
+        if ((data.money || 0) < value) return { ok: false, msg: `金币不足，需要 ${value}` };
+        break;
+      default:
+        return { ok: false, msg: `${condition.type || '未知'} 条件暂未支持` };
+    }
+  }
+  return { ok: true };
+}
+
 function executeItemEffect(effect, context) {
   if (!effect || typeof effect !== 'object') return { ok: false, msg: '该道具没有可执行效果' };
   const { data, petIdx, getPet } = context;
@@ -6232,18 +6288,35 @@ function executeItemEffect(effect, context) {
     case 'expandStorage':
       data.maxStorage = (data.maxStorage || 15) + (amount || 5);
       return { ok: true, msg: `仓库容量已扩展！当前容量: ${data.maxStorage}` };
+    case 'buff':
+    case 'chance':
+    case 'resource':
+    case 'custom':
+      return { ok: false, msg: `${effect.action} 效果已预留，当前插件暂未执行` };
     default:
       return { ok: false, msg: '未知道具效果' };
   }
 }
 
 function applyCustomItemEffect(item, context) {
-  const result = executeItemEffect(item.effect, context);
-  if (!result.ok) return result;
+  const conditionResult = checkItemConditions(item.conditions, context);
+  if (!conditionResult.ok) return conditionResult;
+
+  const effects = Array.isArray(item.effects) && item.effects.length ? item.effects : (item.effect ? [item.effect] : []);
+  if (!effects.length) return { ok: false, msg: '该道具没有可执行效果' };
+
+  const messages = [];
+  let lastPet = null;
+  for (const effect of effects) {
+    const result = executeItemEffect(effect, context);
+    if (!result.ok) return result;
+    if (result.msg) messages.push(result.msg);
+    if (result.pet) lastPet = result.pet;
+  }
   context.useItem();
   context.save();
-  WanwuYouling.emit('useItem', { uid: context.uid, item: context.itemName, pet: result.pet, effect: item.effect });
-  return result;
+  WanwuYouling.emit('useItem', { uid: context.uid, item: context.itemName, pet: lastPet, effects });
+  return { ok: true, pet: lastPet, msg: messages.join('\n') || '道具已使用' };
 }
 
 const cmd = seal.ext.newCmdItemInfo();
@@ -9736,7 +9809,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.50',
+  version: '4.3.51',
   ext,
 
   DB: {
