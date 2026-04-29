@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.42
+// @version     4.3.43
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276341
+// @timestamp   1777276342
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.42');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.43');
   seal.ext.register(ext);
 }
 
@@ -33,6 +33,7 @@ const WebUIReporter = {
   _lastPatchCheckAt: 0,
   _isSyncingCompensations: false,
   _compAcked: null,
+  _adminCmdExecuted: null,
 
   init(options = {}) {
     this.config = { ...this.config, ...options };
@@ -82,6 +83,40 @@ const WebUIReporter = {
       console.error('[WebUI Reporter] 保存补偿幂等缓存失败:', e);
       return false;
     }
+  },
+
+  _loadAdminCmdExecuted() {
+    if (this._adminCmdExecuted) return this._adminCmdExecuted;
+    try {
+      const saved = ext.storageGet('webui_admin_cmd_executed');
+      const parsed = saved ? JSON.parse(saved) : {};
+      this._adminCmdExecuted = parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      this._adminCmdExecuted = {};
+    }
+    return this._adminCmdExecuted;
+  },
+
+  _saveAdminCmdExecuted() {
+    try {
+      const entries = Object.entries(this._adminCmdExecuted || {}).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 200);
+      ext.storageSet('webui_admin_cmd_executed', JSON.stringify(Object.fromEntries(entries)));
+      return true;
+    } catch (e) {
+      console.error('[WebUI Reporter] 保存管理指令防重放缓存失败:', e);
+      return false;
+    }
+  },
+
+  _markAdminCmdExecuted(cmdId) {
+    const cache = this._loadAdminCmdExecuted();
+    cache[cmdId] = Date.now();
+    this._saveAdminCmdExecuted();
+  },
+
+  _isAdminCmdExecuted(cmdId) {
+    const cache = this._loadAdminCmdExecuted();
+    return Boolean(cache[cmdId]);
   },
 
   reportBattleLog(log) {
@@ -320,7 +355,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.41' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.43' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -944,9 +979,17 @@ const WebUIReporter = {
         try {
           const cmdId = String(cmd.id || '').trim();
           if (!cmdId) continue;
+          if (this._isAdminCmdExecuted(cmdId)) {
+            await this.ackAdminCommand(cmdId, {
+              status: 'completed',
+              result: { skipped: true, reason: '本地已执行，跳过重复指令' },
+            });
+            continue;
+          }
 
           const ret = this.executeAdminCommand(cmd);
-          
+          if (ret.ok) this._markAdminCmdExecuted(cmdId);
+
           await this.ackAdminCommand(cmdId, {
             status: ret.ok ? 'completed' : 'failed',
             result: ret.ok ? ret.result : undefined,
@@ -9239,6 +9282,10 @@ cmd.solve = async (ctx, msg, argv) => {
 
   //   Mod管理
   if (action === 'mod') {
+    const isOwner = ctx.privilegeLevel >= 100;
+    if (!isOwner) {
+      return reply('【权限不足】\nWebUI Mod 命令仅限骰主使用。');
+    }
     const mods = WanwuYouling.getMods();
 
     // .宠物 mod 列表 - 查看WebUI可用Mod
@@ -9363,7 +9410,7 @@ cmd.solve = async (ctx, msg, argv) => {
         const result = await response.json();
         
         if (result.success) {
-          return reply(`【验证成功】\nQQ: ${qq}\nToken 已绑定，请返回 WebUI 登录。\n\n你的 Token: ${result.token || '请在 WebUI 查看或重新获取'}`);
+          return reply(`【验证成功】\nQQ: ${qq}\n账号已完成绑定，请返回 WebUI 登录。\n为避免泄露，Token 不会在聊天中显示。`);
         } else {
           return reply(`【验证失败】\n${result.error || '验证码无效或已过期'}`);
         }
@@ -9494,7 +9541,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.41',
+  version: '4.3.43',
   ext,
 
   DB: {
