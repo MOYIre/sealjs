@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.44
+// @version     4.3.45
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276343
+// @timestamp   1777276344
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.44');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.45');
   seal.ext.register(ext);
 }
 
@@ -356,7 +356,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.44' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.45' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -524,17 +524,13 @@ const WebUIReporter = {
       }
 
       if (mod.type === 'script') {
-        // 安全警告：远程代码执行有风险
-        console.log(`[WebUI Reporter] 警告: 正在执行远程脚本 "${mod.name}"，请确保来源可信`);
-        const fn = new Function('WanwuYouling', 'SPECIES', 'SKILLS', 'ITEMS', 'CONFIG', mod.content);
-        fn(
-          typeof WanwuYouling !== 'undefined' ? WanwuYouling : null,
-          typeof SPECIES !== 'undefined' ? SPECIES : {},
-          typeof SKILLS !== 'undefined' ? SKILLS : {},
-          typeof ITEMS !== 'undefined' ? ITEMS : {},
-          typeof CONFIG !== 'undefined' ? CONFIG : {}
-        );
+        return { ok: false, error: '远程脚本 Mod 已禁用，请改用声明式配置/补丁' };
       }
+
+      if (mod.type !== 'config') {
+        return { ok: false, error: '不支持的 Mod 类型' };
+      }
+
       if (!this._installedMods) this._loadInstalledMods();
       if (!this._installedMods.includes(modId)) {
         this._installedMods.push(modId);
@@ -9569,7 +9565,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.44',
+  version: '4.3.45',
   ext,
 
   DB: {
