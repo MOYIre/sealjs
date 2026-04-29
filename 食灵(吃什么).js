@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.1.6
+// @version     5.1.7
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.1.6');
+  ext = seal.ext.new('食灵', '铭茗', '5.1.7');
   seal.ext.register(ext);
 }
 
@@ -261,6 +261,36 @@ function clearUserAvoidKeywords(ctx) {
   return true;
 }
 
+function getUserAvoidDrinkKeywords(ctx) {
+  const qq = getQQ(ctx);
+  if (!qq) return [];
+  const prefs = getUserPrefs();
+  const list = prefs?.[qq]?.avoidDrinkKeywords;
+  return Array.isArray(list) ? list.filter(Boolean) : [];
+}
+
+function setUserAvoidDrinkKeywords(ctx, keywords) {
+  const qq = getQQ(ctx);
+  if (!qq) return false;
+  const prefs = getUserPrefs();
+  if (!prefs[qq]) prefs[qq] = {};
+  prefs[qq].avoidDrinkKeywords = Array.from(new Set((keywords || []).map(v => String(v).trim()).filter(Boolean)));
+  saveUserPrefs(prefs);
+  return true;
+}
+
+function clearUserAvoidDrinkKeywords(ctx) {
+  const qq = getQQ(ctx);
+  if (!qq) return false;
+  const prefs = getUserPrefs();
+  if (prefs[qq]) {
+    delete prefs[qq].avoidDrinkKeywords;
+    if (!Object.keys(prefs[qq]).length) delete prefs[qq];
+    saveUserPrefs(prefs);
+  }
+  return true;
+}
+
 function filterByAvoidKeywords(list, keywords) {
   if (!Array.isArray(list) || !list.length) return [];
   if (!Array.isArray(keywords) || !keywords.length) return list;
@@ -291,9 +321,23 @@ function pickFoodForUser(ctx, menus, period) {
   return Picker.pick(menus, 'food', period);
 }
 
+function pickDrinkForUser(ctx, menus) {
+  const all = [
+    ...(menus.drink?.morning || []),
+    ...(menus.drink?.afternoon || []),
+    ...(menus.drink?.evening || []),
+    ...(menus.drink?.night || [])
+  ];
+  const avoid = getUserAvoidDrinkKeywords(ctx);
+  const filtered = filterByAvoidKeywords(all, avoid);
+  const pool = filtered.length ? filtered : all;
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 今天吃什么 - 一次推荐早餐/午餐/晚餐/夜宵\n.食灵 忌口 [关键词...] - 设置个人忌口(如: 牛肉 香菜)\n.食灵 忌口查看 - 查看个人忌口\n.食灵 忌口清空 - 清空个人忌口\n.食灵 菜单/.饮单 - 查看\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 今天吃什么 - 一次推荐早餐/午餐/晚餐/夜宵\n.食灵 忌口 [关键词...] - 设置个人忌口(如: 牛肉 香菜)\n.食灵 忌口查看 - 查看个人忌口\n.食灵 忌口清空 - 清空个人忌口\n.食灵 忌饮 [关键词...] - 设置个人不喝(如: 奶茶 可乐)\n.食灵 忌饮查看 - 查看个人不喝\n.食灵 忌饮清空 - 清空个人不喝\n.食灵 菜单/.饮单 - 查看\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 提交新菜(无时段进通用池)\n.食灵 删菜 <时段> <菜名> - 申请删除\n.食灵 加饮 <饮名> - 提交新饮品\n.食灵 删饮 <饮名> - 申请删除\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -339,15 +383,33 @@ cmd.solve = (ctx, msg, cmdArgs) => {
   if (text === '喝什么') {
     (async () => {
       const menus = await Data.getMenus();
-      const all = [
-        ...(menus.drink.morning || []),
-        ...(menus.drink.afternoon || []),
-        ...(menus.drink.evening || []),
-        ...(menus.drink.night || [])
-      ];
-      const choice = all[Math.floor(Math.random() * all.length)];
+      const choice = pickDrinkForUser(ctx, menus);
       seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (choice || '无'));
     })();
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  if (text === '忌饮查看') {
+    const list = getUserAvoidDrinkKeywords(ctx);
+    seal.replyToSender(ctx, msg, list.length ? ('你不喝关键词: ' + list.join('、')) : '你当前没有设置不喝关键词');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  if (text === '忌饮清空') {
+    const ok = clearUserAvoidDrinkKeywords(ctx);
+    seal.replyToSender(ctx, msg, ok ? '已清空你的不喝关键词' : '无法识别你的用户信息，清空失败');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  if (text.startsWith('忌饮 ')) {
+    const raw = text.slice(3).trim();
+    const keywords = raw.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean);
+    if (!keywords.length) {
+      seal.replyToSender(ctx, msg, '请提供不喝关键词\n示例: .食灵 忌饮 奶茶 可乐');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    const ok = setUserAvoidDrinkKeywords(ctx, keywords);
+    seal.replyToSender(ctx, msg, ok ? ('已设置不喝关键词: ' + keywords.join('、')) : '无法识别你的用户信息，设置失败');
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -545,8 +607,7 @@ cmdDrink.name = '喝什么';
 cmdDrink.solve = (ctx, msg) => {
   (async () => {
     const menus = await Data.getMenus();
-    const all = [...(menus.drink.morning||[]), ...(menus.drink.afternoon||[]), ...(menus.drink.evening||[]), ...(menus.drink.night||[])];
-    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (all[Math.floor(Math.random()*all.length)] || '无'));
+    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (pickDrinkForUser(ctx, menus) || '无'));
   })();
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -588,5 +649,28 @@ cmdNoEat.solve = (ctx, msg, cmdArgs) => {
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['我不吃'] = cmdNoEat;
+
+const cmdNoDrink = seal.ext.newCmdItemInfo();
+cmdNoDrink.name = '我不喝';
+cmdNoDrink.solve = (ctx, msg, cmdArgs) => {
+  const text = (cmdArgs.rawArgs || '').trim();
+  if (!text) {
+    seal.replyToSender(ctx, msg, '请告诉我你不喝什么\n示例: .我不喝奶茶');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const keywords = text.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean);
+  if (!keywords.length) {
+    seal.replyToSender(ctx, msg, '请告诉我你不喝什么\n示例: .我不喝奶茶');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const current = getUserAvoidDrinkKeywords(ctx);
+  const merged = Array.from(new Set([...current, ...keywords]));
+  const ok = setUserAvoidDrinkKeywords(ctx, merged);
+  seal.replyToSender(ctx, msg, ok ? ('记下了，以后不推荐饮品: ' + keywords.join('、')) : '无法识别你的用户信息，设置失败');
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['我不喝'] = cmdNoDrink;
 
 (async () => { await Data.fetchCloud(); })();
