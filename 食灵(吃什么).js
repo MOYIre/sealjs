@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.1.5
+// @version     5.1.6
 // @description 不知道吃什么/喝什么？问问饭笥大人吧
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.1.5');
+  ext = seal.ext.new('食灵', '铭茗', '5.1.6');
   seal.ext.register(ext);
 }
 
@@ -566,7 +566,27 @@ cmdTodayEat.solve = (ctx, msg) => {
   })();
   return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap['今天吃什么'] = cmdTodayEat;
-ext.cmdMap['今日吃什么'] = cmdTodayEat;
+const cmdNoEat = seal.ext.newCmdItemInfo();
+cmdNoEat.name = '我不吃';
+cmdNoEat.solve = (ctx, msg, cmdArgs) => {
+  const text = (cmdArgs.rawArgs || '').trim();
+  if (!text) {
+    seal.replyToSender(ctx, msg, '请告诉我你不吃什么\n示例: .我不吃牛肉');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const keywords = text.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean);
+  if (!keywords.length) {
+    seal.replyToSender(ctx, msg, '请告诉我你不吃什么\n示例: .我不吃牛肉');
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const current = getUserAvoidKeywords(ctx);
+  const merged = Array.from(new Set([...current, ...keywords]));
+  const ok = setUserAvoidKeywords(ctx, merged);
+  seal.replyToSender(ctx, msg, ok ? ('记下了，以后不推荐: ' + keywords.join('、')) : '无法识别你的用户信息，设置失败');
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['我不吃'] = cmdNoEat;
 
 (async () => { await Data.fetchCloud(); })();
