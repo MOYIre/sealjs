@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.64
+// @version     4.3.65
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.64');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.65');
   seal.ext.register(ext);
 }
 
@@ -423,7 +423,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.64' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.65' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -4709,6 +4709,7 @@ const DB = {
         equipment: { weapon: null, armor: null, accessory: null },
         skills: [],
         dailyTrain: 0, lastTrainDate: '',
+        race: '', raceSelected: false,
       },
       playerItems: {},  // 玩家装备和技能书
       currentTown: '',
@@ -4771,6 +4772,7 @@ const DB = {
           equipment: { weapon: null, armor: null, accessory: null },
           skills: [],
           dailyTrain: 0, lastTrainDate: '',
+          race: '', raceSelected: false,
         };
       }
       // 确保所有字段存在 (v3.6.11 使用??避免0值问题)
@@ -4786,6 +4788,8 @@ const DB = {
       data.player.skills = data.player.skills ?? [];
       data.player.dailyTrain = data.player.dailyTrain ?? 0;
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
+      data.player.race = data.player.race ?? '';
+      data.player.raceSelected = data.player.raceSelected ?? !!data.player.race;
       data.playerItems = data.playerItems ?? {};
 
       let energyRecovered = false;
@@ -5178,6 +5182,52 @@ const PetFactory = {
 
 //   玩家肉身属性 (v3.6.9 削弱)
 const PLAYER_BASE = { hp: 35, atk: 18, def: 12, energy: 80, spd: 80 };
+
+const PLAYER_RACES = {
+  '人族': { desc: '适应力强的均衡种族，所有路线都能稳定成长', initial: { str: 1, agi: 1, int: 1, vit: 1 }, growth: { str: 1, agi: 1, int: 1, vit: 1 }, combatMod: { energy: 1.02 } },
+  '苹果族': { desc: '生命力充沛的果灵族裔，擅长续航与稳定培养', initial: { str: 0, agi: 1, int: 1, vit: 2 }, growth: { str: 0, agi: 1, int: 1, vit: 2 }, combatMod: { hp: 1.04, energy: 1.02, atk: 0.98 } },
+  '精灵族': { desc: '亲近自然与灵性的长生族裔，智力和敏捷成长优秀', initial: { str: 0, agi: 2, int: 2, vit: 0 }, growth: { str: 0, agi: 1, int: 2, vit: 1 }, combatMod: { spd: 1.02, energy: 1.03, def: 0.99 } },
+  '兽裔': { desc: '保留野性本能的族裔，擅长力量与先手压制', initial: { str: 2, agi: 1, int: 0, vit: 1 }, growth: { str: 2, agi: 1, int: 0, vit: 1 }, combatMod: { atk: 1.02, spd: 1.01, energy: 0.98 } },
+  '矮人族': { desc: '坚韧务实的工匠血脉，抗压能力优秀', initial: { str: 1, agi: 0, int: 1, vit: 2 }, growth: { str: 1, agi: 0, int: 1, vit: 2 }, combatMod: { def: 1.03, hp: 1.01, spd: 0.98 } },
+  '风裔': { desc: '身形轻盈的风之族裔，速度成长最突出', initial: { str: 0, agi: 3, int: 1, vit: 0 }, growth: { str: 0, agi: 2, int: 1, vit: 1 }, combatMod: { spd: 1.04, def: 0.98 } },
+  '巨裔': { desc: '继承巨人血统的强攻族裔，力量与体魄厚重', initial: { str: 2, agi: 0, int: 0, vit: 2 }, growth: { str: 2, agi: 0, int: 0, vit: 2 }, combatMod: { atk: 1.04, spd: 0.97 } },
+  '海裔': { desc: '适应潮汐与深海的族裔，智性与耐力兼备', initial: { str: 0, agi: 1, int: 2, vit: 1 }, growth: { str: 0, agi: 1, int: 2, vit: 1 }, combatMod: { energy: 1.02, def: 1.01 } },
+};
+
+function getPlayerRace(player) {
+  return PLAYER_RACES[player?.race] || null;
+}
+
+function applyPlayerRaceStats(stats, player) {
+  const race = getPlayerRace(player);
+  if (!race) return stats;
+  const mod = race.combatMod || {};
+  return {
+    hp: Math.floor(stats.hp * (mod.hp || 1)),
+    atk: Math.floor(stats.atk * (mod.atk || 1)),
+    def: Math.floor(stats.def * (mod.def || 1)),
+    spd: Math.floor(stats.spd * (mod.spd || 1)),
+    energy: Math.floor(stats.energy * (mod.energy || 1)),
+  };
+}
+
+function applyPlayerRaceGrowth(player) {
+  const race = getPlayerRace(player);
+  const growth = race?.growth || PLAYER_RACES['人族'].growth;
+  player.str = (player.str || 10) + (growth.str || 0);
+  player.agi = (player.agi || 10) + (growth.agi || 0);
+  player.int = (player.int || 10) + (growth.int || 0);
+  player.vit = (player.vit || 10) + (growth.vit || 0);
+  return growth;
+}
+
+function formatAttrDelta(attrs = {}) {
+  const labels = { str: '力', agi: '敏', int: '智', vit: '体' };
+  return ['str', 'agi', 'int', 'vit']
+    .filter(key => attrs[key])
+    .map(key => `${labels[key]}+${attrs[key]}`)
+    .join(' ');
+}
 
 // 玩家战斗技能 (v3.6.9 仙侠风)
 const PLAYER_SKILLS = ['灵击', '灵刃', '护盾'];
@@ -6660,6 +6710,8 @@ const HELP_PAGES = {
 
   训练师: `【训练师系统】
 .宠物 训练师 - 查看训练师信息
+.宠物 种族 - 查看可选玩家初始种族
+.宠物 种族 选择 <种族名> - 选择玩家初始种族(仅一次)
 .宠物 装备玩家 [装备名] - 装备训练师装备
 .宠物 学习技能 [技能名] - 学习训练师技能书
 
@@ -6669,6 +6721,7 @@ const HELP_PAGES = {
 智力: 宠物精力加成
 体质: 宠物生命加成
 
+【玩家种族】不同种族有不同初始属性和升级成长
 【训练师装备/技能书】战斗胜利有几率掉落`,
 
   进阶: `【进阶命令】
@@ -7150,13 +7203,13 @@ cmd.solve = async (ctx, msg, argv) => {
 
     // 玩家战斗属性（基于训练师属性 + 等级成长）(v3.6.10 削弱向)
     const pLevel = player.level || 1;
-    const playerCombatAttrs = {
+    const playerCombatAttrs = applyPlayerRaceStats({
       hp: PLAYER_BASE.hp + totalVit * 3 + (pLevel - 1) * 9,
       atk: PLAYER_BASE.atk + totalStr * 1 + (pLevel - 1) * 3.5,
       def: PLAYER_BASE.def + totalVit * 0.5 + (pLevel - 1) * 2,
       spd: PLAYER_BASE.spd + totalAgi * 0.5 + (pLevel - 1) * 1,
       energy: player.energy || 100,
-    };
+    }, player);
 
     // 应用玩家技能被动效果
     const playerSkills = player.skills || [];
@@ -7373,11 +7426,8 @@ cmd.solve = async (ctx, msg, argv) => {
         if (data.player.exp >= playerExpNeed) {
           data.player.exp -= playerExpNeed;
           data.player.level++;
-          data.player.str = (data.player.str || 10) + 1;
-          data.player.agi = (data.player.agi || 10) + 1;
-          data.player.int = (data.player.int || 10) + 1;
-          data.player.vit = (data.player.vit || 10) + 1;
-          logs.push(`训练师升级到 Lv.${data.player.level}！全属性+1`);
+          const growth = applyPlayerRaceGrowth(data.player);
+          logs.push(`训练师升级到 Lv.${data.player.level}！${data.player.race || '人族'}成长：${formatAttrDelta(growth) || '全属性提升'}`);
         }
 
         if (hasCharm) {
@@ -7918,13 +7968,13 @@ cmd.solve = async (ctx, msg, argv) => {
     let isNPC = true;
 
     const pLevel = player.level || 1;
-    const playerCombatAttrs = {
+    const playerCombatAttrs = applyPlayerRaceStats({
       hp: PLAYER_BASE.hp + (player.vit + equipBonus.vit) * 3 + (pLevel - 1) * 9,
       atk: PLAYER_BASE.atk + (player.str + equipBonus.str) * 1 + (pLevel - 1) * 3.5,
       def: PLAYER_BASE.def + (player.vit + equipBonus.vit) * 0.5 + (pLevel - 1) * 2,
       spd: PLAYER_BASE.spd + (player.agi + equipBonus.agi) * 0.5 + (pLevel - 1) * 1,
       energy: player.energy || 100,
-    };
+    }, player);
     const playerSkills = player.skills || [];
     const playerBuffs = {};
     if (playerSkills.includes('战斗直觉')) playerBuffs.critBoost = 0.05;
@@ -7990,13 +8040,13 @@ cmd.solve = async (ctx, msg, argv) => {
         }
       }
       const targetLevel = targetPlayer.level || 1;
-      const targetPlayerAttrs = {
+      const targetPlayerAttrs = applyPlayerRaceStats({
         hp: PLAYER_BASE.hp + (targetPlayer.vit + targetEquipBonus.vit) * 3 + (targetLevel - 1) * 9,
         atk: PLAYER_BASE.atk + (targetPlayer.str + targetEquipBonus.str) * 1 + (targetLevel - 1) * 3.5,
         def: PLAYER_BASE.def + (targetPlayer.vit + targetEquipBonus.vit) * 0.5 + (targetLevel - 1) * 2,
         spd: PLAYER_BASE.spd + (targetPlayer.agi + targetEquipBonus.agi) * 0.5 + (targetLevel - 1) * 1,
         energy: targetPlayer.energy || 100,
-      };
+      }, targetPlayer);
       const targetSkills = targetPlayer.skills || [];
       const targetBuffs = {};
       if (targetSkills.includes('战斗直觉')) targetBuffs.critBoost = 0.05;
@@ -9643,7 +9693,32 @@ cmd.solve = async (ctx, msg, argv) => {
     return reply(result.msg);
   }
 
-  //   玩家系统  
+  //   玩家系统
+  if (action === '种族' || action === '玩家种族') {
+    const player = data.player;
+    if (p1 === '选择') {
+      const raceName = p2.trim();
+      const race = PLAYER_RACES[raceName];
+      if (!race) return reply(`未知种族：${raceName || '未填写'}\n可用种族：${Object.keys(PLAYER_RACES).join('、')}`);
+      if (player.raceSelected || player.race) return reply(`你已经选择了${player.race}，初始种族不可重复选择`);
+      player.race = raceName;
+      player.raceSelected = true;
+      for (const [attr, value] of Object.entries(race.initial || {})) {
+        player[attr] = (player[attr] || 10) + value;
+      }
+      save();
+      return reply(`【种族选择完成】\n你选择了${raceName}\n${race.desc}\n初始加成：${formatAttrDelta(race.initial)}\n升级成长：${formatAttrDelta(race.growth)}\n${getRandomTip()}`);
+    }
+
+    const lines = ['【玩家初始种族】', '首次选择后不可更改。', '用法：.宠物 种族 选择 <种族名>', ''];
+    for (const [name, race] of Object.entries(PLAYER_RACES)) {
+      lines.push(`${name}: ${race.desc}`);
+      lines.push(`  初始: ${formatAttrDelta(race.initial)}｜成长: ${formatAttrDelta(race.growth)}`);
+    }
+    if (player.race) lines.push(`\n当前种族：${player.race}`);
+    return reply(lines.join('\n'));
+  }
+
   if (action === '训练师' || action === 'player') {
     const player = data.player;
     const totalAttr = player.str + player.agi + player.int + player.vit;
@@ -9660,10 +9735,12 @@ cmd.solve = async (ctx, msg, argv) => {
 
     const lines = [
       `【训练师信息】`,
+      `种族: ${player.race || '未选择'}${player.race ? ` - ${PLAYER_RACES[player.race]?.desc || ''}` : '（使用 .宠物 种族 选择 <种族名>）'}`,
       `等级: Lv.${player.level}`,
       `经验: ${player.exp}/${PLAYER_EXP_TABLE[player.level] || player.level * 500}`,
       '',
       `【属性】(装备加成)`,
+      `成长: ${player.race ? formatAttrDelta(PLAYER_RACES[player.race]?.growth) : '未选择种族'}`,
       `力量: ${player.str} (+${equipBonus.str}) - 宠物攻击+${Math.floor((player.str + equipBonus.str - 10) * 0.5)}%`,
       `敏捷: ${player.agi} (+${equipBonus.agi}) - 宠物速度+${Math.floor((player.agi + equipBonus.agi - 10) * 0.5)}%`,
       `智力: ${player.int} (+${equipBonus.int}) - 宠物精力+${Math.floor((player.int + equipBonus.int - 10) * 0.5)}%`,
@@ -10094,7 +10171,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.64',
+  version: '4.3.65',
   ext,
 
   DB: {
