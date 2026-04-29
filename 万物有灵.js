@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.45
+// @version     4.3.46
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
-// @timestamp   1777276344
+// @timestamp   1777276345
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/万物有灵.js
 // ==/UserScript==
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.45');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.46');
   seal.ext.register(ext);
 }
 
@@ -26,6 +26,7 @@ const WebUIReporter = {
     reportInterval: 60000,
     patchCheckInterval: 600000,
     remoteAdminEnabled: false,
+    remoteAdminAllowedTypes: ['UPDATE_MAP_TOPOLOGY'],
   },
   _queue: [],
   _timer: null,
@@ -356,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.45' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.46' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -836,10 +837,25 @@ const WebUIReporter = {
     }
   },
 
+  _getRemoteAdminAllowedTypes() {
+    const configured = this.config.remoteAdminAllowedTypes;
+    const fallback = ['UPDATE_MAP_TOPOLOGY'];
+    const list = Array.isArray(configured) ? configured : fallback;
+    return new Set(list.filter((item) => typeof item === 'string' && item));
+  },
+
+  _isRemoteAdminTypeAllowed(type) {
+    return this._getRemoteAdminAllowedTypes().has(type);
+  },
+
   executeAdminCommand(cmd) {
     try {
       const type = cmd.cmdType;
       const payload = cmd.payload || {};
+
+      if (!this._isRemoteAdminTypeAllowed(type)) {
+        return { ok: false, error: `远程管理指令 ${type || 'UNKNOWN'} 未在本地白名单中启用` };
+      }
 
       switch (type) {
         case 'UPDATE_PLAYER': {
@@ -1080,6 +1096,7 @@ const WebUIReporter = {
       installedMods: this.getInstalledMods().length,
       knownAnnouncements: this._loadAnnouncementSeen().length,
       remoteAdminEnabled: !!this.config.remoteAdminEnabled,
+      remoteAdminAllowedTypes: Array.from(this._getRemoteAdminAllowedTypes()),
     };
   }
 };
@@ -6476,7 +6493,7 @@ cmd.solve = async (ctx, msg, argv) => {
       data.pets = [newPet];
       save();
       reply(`【新手礼物】\n你获得了一只${name}！\n[普通]${name} ${element}属性\n\n现在你可以开始冒险了！\n.宠物 查看你的宠物`);
-      return;
+      return seal.ext.newCmdExecuteResult(true);
     }
     
     // 解析参数：可能是 [宠物编号] [地区] 或 [地区]
@@ -7930,7 +7947,7 @@ cmd.solve = async (ctx, msg, argv) => {
       get data() { return data; },
     };
     const result = WanwuYouling._extCommands[action].handler(ctx, msg, p);
-    if (result) return result;
+    return result || seal.ext.newCmdExecuteResult(true);
   }
 
   // 扩展命令兜底：兼容“购买宠物”别名在部分运行态未注册的情况
@@ -7948,7 +7965,7 @@ cmd.solve = async (ctx, msg, argv) => {
         get data() { return data; },
       };
       const result = buyCmd.handler(ctx, msg, payload);
-      if (result) return result;
+      return result || seal.ext.newCmdExecuteResult(true);
     }
   }
 
@@ -9392,6 +9409,7 @@ cmd.solve = async (ctx, msg, argv) => {
       lines.push('.宠物 webui 补丁');
       lines.push('.宠物 webui 补偿');
       lines.push(`远程管理指令: ${status.remoteAdminEnabled ? '已启用' : '未启用'}`);
+      lines.push(`远程管理白名单: ${(status.remoteAdminAllowedTypes || []).join(', ') || '无'}`);
       return reply(lines.join('\n'));
     }
 
@@ -9472,7 +9490,7 @@ cmd.solve = async (ctx, msg, argv) => {
         ext.storageSet('webui_config', JSON.stringify(WebUIReporter.config));
         return reply('【远程管理已禁用】\n插件将不再自动拉取和执行 WebUI 管理指令。');
       }
-      return reply(`【远程管理状态】\n当前: ${WebUIReporter.config.remoteAdminEnabled ? '已启用' : '未启用'}\n启用: .宠物 webui 远程管理 启用\n禁用: .宠物 webui 远程管理 禁用`);
+      return reply(`【远程管理状态】\n当前: ${WebUIReporter.config.remoteAdminEnabled ? '已启用' : '未启用'}\n白名单: ${Array.from(WebUIReporter._getRemoteAdminAllowedTypes()).join(', ') || '无'}\n当前仅允许低风险地图拓扑同步；玩家/公会/Boss/市场/全局配置等远端写操作默认拒绝。\n启用: .宠物 webui 远程管理 启用\n禁用: .宠物 webui 远程管理 禁用`);
     }
 
     // .宠物 webui 同步 - 立即同步
@@ -9565,7 +9583,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.45',
+  version: '4.3.46',
   ext,
 
   DB: {
