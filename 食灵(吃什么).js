@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.1.7
-// @description 不知道吃什么/喝什么？问问饭笥大人吧
+// @version     5.2.0
+// @description 不知道吃什么/喝什么？问问饭笥大人吧。发送.食灵查看帮助。发送.吃什么/.喝什么直接获取！推荐在插件设置改一下食灵名字哦～
 // @timestamp   1743456000
 // @license     Apache-2
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/食灵(吃什么).js
 // ==/UserScript==
-
+//如果你打开了代码就会看到我！有任何问题联系铭茗QQ:3029590078
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.1.7');
+  ext = seal.ext.new('食灵', '铭茗', '5.2.0');
   seal.ext.register(ext);
 }
 
@@ -27,7 +27,6 @@ function getNames() {
 }
 
 const CONFIG = {
-  // 数据源：ghproxy优先，fastly.jsdelivr备选，GitHub原始源兜底
   cloudUrls: [
     'https://shiling.xiaocui.icu/api/menu',
     'https://ghproxy.net/https://gist.githubusercontent.com/MOYIre/a9f8a81d1ec3498c0d7b7afc24f43794/raw',
