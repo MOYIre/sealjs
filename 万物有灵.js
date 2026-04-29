@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.51
+// @version     4.3.52
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.51');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.52');
   seal.ext.register(ext);
 }
 
@@ -357,7 +357,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.51' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.52' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -6193,7 +6193,7 @@ function grantPetExp(pet, exp) {
 
 function checkItemConditions(conditions, context) {
   if (!Array.isArray(conditions) || !conditions.length) return { ok: true };
-  const { data, petIdx, getPet } = context;
+  const { data, petIdx, getPet, uid, itemName } = context;
   for (const condition of conditions) {
     if (!condition || typeof condition !== 'object') continue;
     const value = Math.max(0, Math.floor(Number(condition.value || 0)));
@@ -6217,6 +6217,34 @@ function checkItemConditions(conditions, context) {
       case 'minMoney':
         if ((data.money || 0) < value) return { ok: false, msg: `金币不足，需要 ${value}` };
         break;
+      case 'guildRole': {
+        if (!data.guild) return { ok: false, msg: '你未加入公会' };
+        GuildManager.load();
+        const guild = GuildManager._guilds[data.guild];
+        if (!guild) return { ok: false, msg: '公会不存在' };
+        const member = GuildManager.getMember(guild, uid);
+        if (!member) return { ok: false, msg: '你不是公会成员' };
+        const role = condition.role || 'member';
+        if (role === 'leader' && member.role !== 'leader') return { ok: false, msg: '需要会长身份' };
+        if (role === 'officer' && member.role !== 'leader' && member.role !== 'officer') return { ok: false, msg: '需要会长或副会长身份' };
+        break;
+      }
+      case 'cooldown': {
+        const key = condition.key || itemName || 'default';
+        const duration = Math.max(0, Math.floor(Number(condition.duration || 0)));
+        if (duration > 0) {
+          data.cooldowns = data.cooldowns || {};
+          const now = Date.now();
+          const lastUse = data.cooldowns[key] || 0;
+          if (lastUse && now - lastUse < duration * 1000) {
+            const remaining = Math.ceil((duration * 1000 - (now - lastUse)) / 1000);
+            return { ok: false, msg: `冷却中，还需 ${remaining} 秒` };
+          }
+        }
+        break;
+      }
+      case 'custom':
+        return { ok: false, msg: `自定义条件 ${condition.handler || 'unknown'} 暂未实现` };
       default:
         return { ok: false, msg: `${condition.type || '未知'} 条件暂未支持` };
     }
@@ -6288,11 +6316,74 @@ function executeItemEffect(effect, context) {
     case 'expandStorage':
       data.maxStorage = (data.maxStorage || 15) + (amount || 5);
       return { ok: true, msg: `仓库容量已扩展！当前容量: ${data.maxStorage}` };
-    case 'buff':
-    case 'chance':
-    case 'resource':
-    case 'custom':
-      return { ok: false, msg: `${effect.action} 效果已预留，当前插件暂未执行` };
+    case 'buff': {
+      const key = effect.key || 'default';
+      const duration = Math.max(0, Math.floor(Number(effect.duration || 3600)));
+      const value = effect.value || {};
+      data.buffs = data.buffs || {};
+      const now = Date.now();
+      data.buffs[key] = {
+        ...value,
+        expiresAt: now + duration * 1000,
+        createdAt: now
+      };
+      const buffDesc = Object.entries(value).map(([k, v]) => `${k}:${v}`).join(', ') || '无效果';
+      return { ok: true, msg: `获得 Buff [${key}]：${buffDesc}，持续 ${duration} 秒` };
+    }
+    case 'chance': {
+      const rate = Math.max(0, Math.min(1, Number(effect.rate || 0.5)));
+      const success = Math.random() < rate;
+      const effects = success ? effect.success : effect.failure;
+      if (!Array.isArray(effects) || !effects.length) {
+        return { ok: true, msg: success ? '触发成功，但无后续效果' : '触发失败' };
+      }
+      const messages = [];
+      for (const subEffect of effects) {
+        const result = executeItemEffect(subEffect, context);
+        if (!result.ok) return result;
+        if (result.msg) messages.push(result.msg);
+      }
+      return { ok: true, msg: messages.join('\n') || (success ? '触发成功' : '触发失败') };
+    }
+    case 'resource': {
+      const resource = effect.resource || 'money';
+      const operation = effect.operation || 'add';
+      const target = effect.target || 'user';
+      const resAmount = amount || 0;
+      if (target === 'guild') {
+        if (!data.guild) return { ok: false, msg: '你未加入公会' };
+        GuildManager.load();
+        const guild = GuildManager._guilds[data.guild];
+        if (!guild) return { ok: false, msg: '公会不存在' };
+        if (resource === 'bank' || resource === '资金') {
+          if (operation === 'add') guild.bank = (guild.bank || 0) + resAmount;
+          else if (operation === 'subtract') guild.bank = Math.max(0, (guild.bank || 0) - resAmount);
+          GuildManager.save();
+          return { ok: true, msg: `公会资金${operation === 'add' ? '+' : '-'}${resAmount}，当前 ${guild.bank}` };
+        }
+        return { ok: false, msg: `公会资源 ${resource} 暂不支持` };
+      }
+      switch (resource) {
+        case 'money':
+        case '金币':
+          if (operation === 'add') data.money = Math.min(CONFIG.maxMoney, (data.money || 0) + resAmount);
+          else if (operation === 'subtract') data.money = Math.max(0, (data.money || 0) - resAmount);
+          return { ok: true, msg: `金币${operation === 'add' ? '+' : '-'}${resAmount}，当前 ${data.money}` };
+        case 'exp':
+        case '经验':
+          data.player = data.player || {};
+          data.player.totalExp = (data.player.totalExp || 0) + resAmount;
+          return { ok: true, msg: `获得经验 +${resAmount}` };
+        default:
+          return { ok: false, msg: `资源 ${resource} 暂不支持` };
+      }
+    }
+    case 'custom': {
+      const handler = effect.handler || 'default';
+      const params = effect.params || {};
+      WanwuYouling.emit('customItemEffect', { uid, handler, params, effect, data, context });
+      return { ok: true, msg: `自定义效果 [${handler}] 已触发，请检查是否有扩展模块处理` };
+    }
     default:
       return { ok: false, msg: '未知道具效果' };
   }
@@ -9809,7 +9900,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.51',
+  version: '4.3.52',
   ext,
 
   DB: {
