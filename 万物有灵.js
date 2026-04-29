@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.37
+// @version     4.3.38
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276340
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.37');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.38');
   seal.ext.register(ext);
 }
 
@@ -320,7 +320,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.36' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.38' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -585,6 +585,28 @@ const WebUIReporter = {
     }
   },
 
+  resolveCompensationTargets(item) {
+    const channel = String(item?.channel || '').trim();
+    const uid = String(item?.uid || '').trim();
+    const explicit = Array.isArray(item?.targetUids)
+      ? item.targetUids.map(x => String(x || '').trim()).filter(Boolean)
+      : [];
+
+    if (channel === 'all' || uid === '__all__') {
+      try {
+        return Object.keys(DB.getNameMap ? DB.getNameMap() : {}).filter(Boolean);
+      } catch (e) {
+        return [];
+      }
+    }
+
+    if (channel === 'custom' && explicit.length) {
+      return Array.from(new Set(explicit));
+    }
+
+    return uid ? [uid] : [];
+  },
+
   applyCompensationToPlayer(item) {
     const uid = String(item?.uid || '').trim();
     if (!uid) {
@@ -669,18 +691,44 @@ const WebUIReporter = {
             continue;
           }
 
-          const ret = this.applyCompensationToPlayer(item);
-          if (!ret.ok) {
+          const targets = this.resolveCompensationTargets(item);
+          if (!targets.length) {
             await this.ackCompensation(idemKey, {
               status: 'failed',
               ackBy: 'wanwu_plugin',
-              error: ret.error || 'unknown_error',
+              error: '没有可发放的目标玩家',
             });
             failed++;
             continue;
           }
 
-          ackedMap[idemKey] = ret.result;
+          const results = [];
+          const errors = [];
+          for (const targetUid of targets) {
+            const ret = this.applyCompensationToPlayer({ ...item, uid: targetUid });
+            if (ret.ok) results.push(ret.result);
+            else errors.push({ uid: targetUid, error: ret.error || 'unknown_error' });
+          }
+
+          if (!results.length) {
+            await this.ackCompensation(idemKey, {
+              status: 'failed',
+              ackBy: 'wanwu_plugin',
+              error: errors.map(x => `${x.uid}:${x.error}`).join('; ') || 'unknown_error',
+            });
+            failed++;
+            continue;
+          }
+
+          const result = {
+            total: targets.length,
+            success: results.length,
+            failed: errors.length,
+            items: results,
+            errors,
+          };
+
+          ackedMap[idemKey] = result;
           if (!this._saveCompAcked()) {
             delete ackedMap[idemKey];
             failed++;
@@ -691,7 +739,7 @@ const WebUIReporter = {
           const ackOk = await this.ackCompensation(idemKey, {
             status: 'issued',
             ackBy: 'wanwu_plugin',
-            ackResult: ret.result,
+            ackResult: result,
           });
           if (ackOk) {
             delete ackedMap[idemKey];
@@ -900,7 +948,7 @@ const WebUIReporter = {
           const ret = this.executeAdminCommand(cmd);
           
           await this.ackAdminCommand(cmdId, {
-            status: ret.ok ? 'success' : 'failed',
+            status: ret.ok ? 'completed' : 'failed',
             result: ret.ok ? ret.result : undefined,
             error: ret.ok ? undefined : ret.error,
           });
@@ -9430,7 +9478,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.36',
+  version: '4.3.38',
   ext,
 
   DB: {
