@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.3.67
+// @version     4.3.68
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.3.67');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.3.68');
   seal.ext.register(ext);
 }
 
@@ -38,6 +38,7 @@ const WebUIReporter = {
   _installedMods: null,
   _lastPatchDigest: '',
   _lastPatchCheckAt: 0,
+  _runtimeReady: false,
   _remoteTips: [],
   _lastTipsSyncAt: 0,
   _isSyncingCompensations: false,
@@ -50,12 +51,18 @@ const WebUIReporter = {
       this._startPeriodicReport();
       this._loadInstalledMods();
       this._loadCompAcked();
-      void this.syncTips();
-      setTimeout(() => {
-        void this._autoSyncPatches({ force: true });
-      }, 3000);
+      if (this._runtimeReady) this.startRuntimeSync();
       console.log('[WebUI Reporter] 已启用，端点:', this.config.endpoint);
     }
+  },
+
+  startRuntimeSync() {
+    this._runtimeReady = true;
+    if (!this.config.enabled || !this.config.endpoint) return;
+    void this.syncTips().catch(e => console.warn('[WebUI Reporter] 同步 Tips 失败:', e.message));
+    setTimeout(() => {
+      this._autoSyncPatches({ force: true }).catch(e => console.error('[WebUI Reporter] 首次补丁同步失败:', e));
+    }, 3000);
   },
 
   _loadInstalledMods() {
@@ -423,7 +430,7 @@ const WebUIReporter = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.token}`,
         },
-        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.67' })
+        body: JSON.stringify({ batch, source: 'wanwu_plugin', version: '4.3.68' })
       });
       if (!res.ok) {
         console.error('[WebUI Reporter] 上报失败:', res.status);
@@ -1218,14 +1225,16 @@ if (typeof globalThis !== 'undefined') {
 }
 
 // 从存储加载 WebUI 配置
-try {
-  const savedConfig = ext.storageGet('webui_config');
-  if (savedConfig) {
-    const cfg = JSON.parse(savedConfig);
-    WebUIReporter.init(cfg);
+function loadWebUIConfig() {
+  try {
+    const savedConfig = ext.storageGet('webui_config');
+    if (savedConfig) {
+      const cfg = JSON.parse(savedConfig);
+      WebUIReporter.init(cfg);
+    }
+  } catch (e) {
+    console.log('[万物有灵] 加载 WebUI 配置失败:', e);
   }
-} catch (e) {
-  console.log('[万物有灵] 加载 WebUI 配置失败:', e);
 }
 
 const CONFIG = {
@@ -1243,6 +1252,10 @@ const CONFIG = {
   fightLogLimit: 20,
 };
 const MAIN_SCHEMA_VERSION = 1;
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
 // 游戏小贴士
 const GAME_TIPS = [
@@ -4146,26 +4159,33 @@ function applyDefinitionPatch(target, entries = {}, sanitizer) {
 function applyShopPatch(payload = {}) {
   const shopPayload = payload.shops || payload;
   if (!shopPayload || typeof shopPayload !== 'object') return false;
+  let changed = false;
 
   if (Array.isArray(shopPayload.basicFoods) || shopPayload.basicFoods === null) {
     SHOP_RUNTIME.basicFoods = applyListPatch(SHOP_RUNTIME.basicFoods, shopPayload.basicFoods);
+    changed = true;
   }
   if (shopPayload.cityFoods && typeof shopPayload.cityFoods === 'object') {
     applyKeyedListPatch(SHOP_RUNTIME.cityFoods, shopPayload.cityFoods);
+    changed = true;
   }
   if (shopPayload.npcFoods && typeof shopPayload.npcFoods === 'object') {
     applyKeyedListPatch(SHOP_RUNTIME.npcFoods, shopPayload.npcFoods);
+    changed = true;
   }
   if (shopPayload.npcSells && typeof shopPayload.npcSells === 'object') {
     applyKeyedListPatch(SHOP_RUNTIME.npcSellOverrides, shopPayload.npcSells);
+    changed = true;
   }
   if (shopPayload.foods && typeof shopPayload.foods === 'object' && typeof FOODS !== 'undefined') {
     applyDefinitionPatch(FOODS, shopPayload.foods, sanitizeFoodDefinition);
+    changed = true;
   }
   if (shopPayload.items && typeof shopPayload.items === 'object' && typeof ITEMS !== 'undefined') {
     applyDefinitionPatch(ITEMS, shopPayload.items, sanitizeItemDefinition);
+    changed = true;
   }
-  return true;
+  return changed;
 }
 
 // 遭遇池热更新注册表
@@ -4194,14 +4214,17 @@ function getRarityWeights() {
 function applyEncounterPatch(payload = {}) {
   const encPayload = payload.encounters || payload;
   if (!encPayload || typeof encPayload !== 'object') return false;
+  let changed = false;
 
   // 更新地区物种
   if (encPayload.regionSpecies && typeof encPayload.regionSpecies === 'object') {
     for (const [regionId, species] of Object.entries(encPayload.regionSpecies)) {
       if (species === null) {
         delete ENCOUNTER_RUNTIME.regionSpecies[regionId];
+        changed = true;
       } else if (Array.isArray(species)) {
         ENCOUNTER_RUNTIME.regionSpecies[regionId] = [...new Set(species.filter(v => typeof v === 'string' && v))];
+        changed = true;
       }
     }
   }
@@ -4216,10 +4239,11 @@ function applyEncounterPatch(payload = {}) {
     }
     if (Object.keys(weights).length > 0) {
       ENCOUNTER_RUNTIME.rarityWeights = weights;
+      changed = true;
     }
   }
 
-  return true;
+  return changed;
 }
 
 // 副本热更新注册表
@@ -4723,14 +4747,14 @@ const DB = {
 
       // 兼容旧数据：检查是否原本没有storage字段
       const hadStorage = 'storage' in data;
-      data.pets = data.pets || [];
-      data.storage = data.storage || [];
+      data.pets = Array.isArray(data.pets) ? data.pets.filter(p => isPlainObject(p)) : [];
+      data.storage = Array.isArray(data.storage) ? data.storage.filter(p => isPlainObject(p)) : [];
       data.money = data.money || 100;
-      data.food = data.food || { '面包': 5 };
-      data.items = data.items || {};
+      data.food = isPlainObject(data.food) ? data.food : { '面包': 5 };
+      data.items = isPlainObject(data.items) ? data.items : {};
       data.maxStorage = data.maxStorage || 15;
-      data.feedTracker = data.feedTracker || {};
-      data.feedDaily = data.feedDaily || { date: 0, firstBonusClaimed: false };
+      data.feedTracker = isPlainObject(data.feedTracker) ? data.feedTracker : {};
+      data.feedDaily = isPlainObject(data.feedDaily) ? data.feedDaily : { date: 0, firstBonusClaimed: false };
       data.currentTown = data.currentTown || '';
       data.currentShopNpc = data.currentShopNpc || '';
 
@@ -4764,6 +4788,7 @@ const DB = {
       }
 
       // 玩家属性兼容
+      data.player = isPlainObject(data.player) ? data.player : null;
       if (!data.player) {
         data.player = {
           level: 1, exp: 0,
@@ -4784,14 +4809,14 @@ const DB = {
       data.player.vit = data.player.vit ?? 10;
       data.player.energy = data.player.energy ?? 100;
       data.player.maxEnergy = data.player.maxEnergy ?? 100;
-      data.player.equipment = data.player.equipment ?? { weapon: null, armor: null, accessory: null };
-      data.player.skills = data.player.skills ?? [];
+      data.player.equipment = isPlainObject(data.player.equipment) ? data.player.equipment : { weapon: null, armor: null, accessory: null };
+      data.player.skills = Array.isArray(data.player.skills) ? data.player.skills : [];
       data.player.dailyTrain = data.player.dailyTrain ?? 0;
       data.player.lastTrainDate = data.player.lastTrainDate ?? '';
       data.player.race = data.player.race ?? '';
       data.player.raceSelected = data.player.raceSelected ?? false;
       if (data.player.race === '人族') data.player.race = '精灵族';
-      data.playerItems = data.playerItems ?? {};
+      data.playerItems = isPlainObject(data.playerItems) ? data.playerItems : {};
 
       let energyRecovered = false;
       const now = Date.now();
@@ -10177,7 +10202,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.3.67',
+  version: '4.3.68',
   ext,
 
   DB: {
@@ -10665,3 +10690,6 @@ if (typeof global !== 'undefined') {
 if (typeof globalThis !== 'undefined') {
   globalThis.WanwuYouling = WanwuYouling;
 }
+
+loadWebUIConfig();
+WebUIReporter.startRuntimeSync();
