@@ -94,8 +94,8 @@ function registerRuleIfNeeded() {
       return ret;
     }
 
-    // 仅在大成功/大失败时重骰
-    if (first.successRank === 4 || first.successRank === -2) {
+    // 1-5 或 95-100 直接触发重骰
+    if ((d100Value >= 1 && d100Value <= 5) || (d100Value >= 95 && d100Value <= 100)) {
       const secondRoll = d100();
       const second = baseResult(secondRoll, checkValue, difficultyRequired);
 
