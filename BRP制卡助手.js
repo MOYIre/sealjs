@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.3
+// @version     1.0.4
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
@@ -34,9 +34,16 @@ if (!seal.ext.find('BRP制卡助手')) {
     ext.storageSet(`${AUTO_PREFIX}${uid(ctx)}`, on ? '1' : '0');
   }
 
-  function getIntValue(ctx, key) {
+  function getIntInfo(ctx, key) {
     const ret = seal.vars.intGet(ctx, key);
-    return Array.isArray(ret) ? (ret[0] || 0) : 0;
+    if (Array.isArray(ret)) {
+      return { value: ret[0] || 0, exists: !!ret[1] };
+    }
+    return { value: 0, exists: false };
+  }
+
+  function getIntValue(ctx, key) {
+    return getIntInfo(ctx, key).value;
   }
 
   function initNewCardState(ctx) {
@@ -62,6 +69,17 @@ if (!seal.ext.find('BRP制卡助手')) {
     const t = tmpl || getTemplate(ctx);
     ctx.player.autoSetNameTemplate = t;
     return seal.applyPlayerGroupCardByTemplate(ctx, t);
+  }
+
+  function adjustCurrentValue(ctx, valueKey, maxKey, delta) {
+    const curInfo = getIntInfo(ctx, valueKey);
+    const maxInfo = getIntInfo(ctx, maxKey);
+    const base = curInfo.exists ? curInfo.value : maxInfo.value;
+    let next = base + delta;
+    if (maxInfo.exists && maxInfo.value > 0 && next > maxInfo.value) next = maxInfo.value;
+    if (next < 0) next = 0;
+    seal.vars.intSet(ctx, valueKey, next);
+    return { before: base, after: next, max: maxInfo.value };
   }
 
   function replyDone(ctx, msg, text) {
@@ -167,6 +185,37 @@ if (!seal.ext.find('BRP制卡助手')) {
     return replyDone(ctx, msg, `已录入：${updated.join(' ')}`);
   };
 
+  const cmdStbrp = seal.ext.newCmdItemInfo();
+  cmdStbrp.name = 'stbrp';
+  cmdStbrp.help = '.stbrp hp +1 / .stbrp pp -1\n调整当前生命或能量';
+  cmdStbrp.solve = (ctx, msg, cmdArgs) => {
+    const attr = (cmdArgs.getArgN(1) || '').trim().toLowerCase();
+    const deltaRaw = (cmdArgs.getArgN(2) || '').trim();
+    const delta = parseInt(deltaRaw, 10);
+
+    if (!attr || Number.isNaN(delta)) {
+      return replyDone(ctx, msg, '用法：.stbrp hp +1 / .stbrp pp -1');
+    }
+
+    if (attr === 'hp' || attr === '生命') {
+      const ret = adjustCurrentValue(ctx, '生命', '最大生命', delta);
+      if (isAutoOn(ctx)) {
+        try { applyCard(ctx); } catch (e) {}
+      }
+      return replyDone(ctx, msg, `生命 ${ret.before} -> ${ret.after}${ret.max > 0 ? ` / ${ret.max}` : ''}`);
+    }
+
+    if (attr === 'pp' || attr === '能量') {
+      const ret = adjustCurrentValue(ctx, '能量', '最大能量', delta);
+      if (isAutoOn(ctx)) {
+        try { applyCard(ctx); } catch (e) {}
+      }
+      return replyDone(ctx, msg, `能量 ${ret.before} -> ${ret.after}${ret.max > 0 ? ` / ${ret.max}` : ''}`);
+    }
+
+    return replyDone(ctx, msg, '仅支持 hp / pp。');
+  };
+
   const cmdSnbrp = seal.ext.newCmdItemInfo();
   cmdSnbrp.name = 'snbrp';
   cmdSnbrp.help = '.snbrp <名字>\n改角色名并同步群名片\n.snbrp\n立即同步群名片\n.snbrp auto / .snbrp auto off\n开启/关闭自动名片\n.snbrp tmpl <模板>\n设置名片模板';
@@ -231,6 +280,7 @@ if (!seal.ext.find('BRP制卡助手')) {
 
   ext.cmdMap.brp = cmdBrp;
   ext.cmdMap.brpst = cmdBrpst;
+  ext.cmdMap.stbrp = cmdStbrp;
   ext.cmdMap.snbrp = cmdSnbrp;
 
   seal.ext.register(ext);
