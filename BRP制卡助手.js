@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.4
+// @version     1.0.5
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.4');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.5');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -167,8 +167,16 @@ if (!seal.ext.find('BRP制卡助手')) {
     ].join('\n');
   }
 
-  function formatCards(cards) {
-    return cards.map((c, i) => `【第${i + 1}组】\n${cardToText(c)}`).join('\n━━━━━━━━━━━━━━━━\n');
+  function formatOneCard(ctx, card, index, total) {
+    seal.vars.strSet(ctx, '$tBRP制卡结果前缀', `BRP制卡结果（共${total}组）`);
+    seal.vars.strSet(ctx, '$tBRP制卡组号', String(index + 1));
+    seal.vars.strSet(ctx, '$tBRP制卡内容', cardToText(card));
+    return seal.formatTmpl(ctx, 'BRP:制卡_单组');
+  }
+
+  function formatCards(ctx, cards) {
+    seal.vars.strSet(ctx, '$tBRP制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'BRP:制卡_分隔符')));
+    return seal.formatTmpl(ctx, 'BRP:制卡');
   }
 
   const cmdSetbrp = seal.ext.newCmdItemInfo();
@@ -196,8 +204,13 @@ if (!seal.ext.find('BRP制卡助手')) {
     const cards = [];
     for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
 
-    const head = `BRP制卡结果（共${times}组）`;
-    return replyDone(ctx, msg, `${head}\n\n${formatCards(cards)}`);
+    seal.vars.strSet(ctx, '$tBRP制卡结果前缀', `BRP制卡结果（共${times}组）`);
+    seal.vars.strSet(ctx, '$tBRP制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'BRP:制卡_分隔符')));
+    seal.vars.strSet(ctx, '$tBRP制卡默认结果模板', '{$tBRP制卡结果前缀}\n\n{$tBRP制卡结果文本}');
+    seal.vars.strSet(ctx, '$tBRP制卡默认分隔符模板', '\n━━━━━━━━━━━━━━━━\n');
+    seal.vars.strSet(ctx, '$tBRP制卡默认单组模板', '【第{$tBRP制卡组号}组】\n{$tBRP制卡内容}');
+    const text = seal.formatTmpl(ctx, 'BRP:制卡');
+    return replyDone(ctx, msg, text);
   };
 
   const cmdBrpst = seal.ext.newCmdItemInfo();
