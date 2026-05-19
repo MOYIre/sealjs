@@ -174,6 +174,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     const a1 = (cmdArgs.getArgN(1) || '').trim();
 
     if (!a1) {
+      initNewCardState(ctx);
       if (!canApplyGroupCard()) return replyDone(ctx, msg, '当前环境不支持自动改群名片');
       const text = applyCard(ctx);
       return replyDone(ctx, msg, `已同步群名片：${text || ctx.player.name}`);
