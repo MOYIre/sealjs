@@ -80,11 +80,13 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function cardToText(card) {
-    const line1 = `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力}`;
-    const line2 = `意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}`;
-    const line3 = `气力:${card.气力} 耐力:${card.耐力} 灵感:${card.灵感} 幸运:${card.幸运}`;
-    const line4 = `灵巧:${card.灵巧} 魅力:${card.魅力} 生命:${card.生命}/${card.最大生命} 能量:${card.能量}/${card.最大能量}`;
-    return `${line1}\n${line2}\n${line3}\n${line4}`;
+    const n = (k) => String(card[k]);
+    return [
+      `力量:${n('力量').padEnd(2)}  体质:${n('体质').padEnd(2)}   体型:${n('体型').padEnd(2)}  智力:${n('智力')}`,
+      `意志:${n('意志').padEnd(2)}    敏捷:${n('敏捷').padEnd(2)}   外貌:${n('外貌').padEnd(2)}    气力:${n('气力')}`,
+      `耐力:${n('耐力')} 灵感:${n('灵感')} 幸运:${n('幸运')} 灵巧:${n('灵巧')}`,
+      `魅力:${n('魅力')}     生命:${n('生命')}/${n('最大生命')}      能量:${n('能量')}/${n('最大能量')}`
+    ].join('\n');
   }
 
   function formatCards(cards) {
