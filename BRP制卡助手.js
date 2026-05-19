@@ -47,6 +47,10 @@ if (!seal.ext.find('BRP制卡助手')) {
     if (ppMax > 0) seal.vars.intSet(ctx, '能量', ppMax);
   }
 
+  function canApplyGroupCard() {
+    return typeof seal.applyPlayerGroupCardByTemplate === 'function';
+  }
+
   function applyCard(ctx, tmpl) {
     if (!canApplyGroupCard()) return '';
     const t = tmpl || getTemplate(ctx);
