@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.0
+// @version     1.0.1
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.0');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.1');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -119,16 +119,15 @@ if (!seal.ext.find('BRP制卡助手')) {
   function cardToText(card) {
     const n = (k) => String(card[k]);
     return [
-      `力量:${n('力量').padEnd(2)}   体质:${n('体质').padEnd(2)}  体型:${n('体型').padEnd(2)}   智力:${n('智力')}`,
-      `意志:${n('意志').padEnd(2)}  敏捷:${n('敏捷').padEnd(2)}  外貌:${n('外貌').padEnd(2)}   气力:${n('气力')}`,
+      `力量:${n('力量')} 体质:${n('体质')} 体型:${n('体型')} 智力:${n('智力')}`,
+      `意志:${n('意志')} 敏捷:${n('敏捷')} 外貌:${n('外貌')} 气力:${n('气力')}`,
       `耐力:${n('耐力')} 灵感:${n('灵感')} 幸运:${n('幸运')} 灵巧:${n('灵巧')}`,
-      `魅力:${n('魅力')}    生命:${n('生命')}/${n('最大生命')}     能量:${n('能量')}/${n('最大能量')}`
+      `魅力:${n('魅力')} 生命:${n('生命')}/${n('最大生命')} 能量:${n('能量')}/${n('最大能量')}`
     ].join('\n');
   }
 
   function formatCards(cards) {
-    const sep = '\n━━━━━━━━━━━━━━━━\n';
-    return cards.map((c, i) => `【第${i + 1}组】\n${cardToText(c)}`).join(sep);
+    return cards.map((c, i) => `【第${i + 1}组】\n${cardToText(c)}`).join('\n━━━━━━━━━━━━━━━━\n');
   }
 
   const cmdBrp = seal.ext.newCmdItemInfo();
