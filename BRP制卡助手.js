@@ -40,11 +40,17 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function initNewCardState(ctx) {
-    const hpMax = getIntValue(ctx, '最大生命') || Math.floor((getIntValue(ctx, '体质') + getIntValue(ctx, '体型')) / 2);
-    if (hpMax > 0) seal.vars.intSet(ctx, '生命', hpMax);
+    const hpMax = Math.floor((getIntValue(ctx, '体质') + getIntValue(ctx, '体型')) / 2);
+    if (hpMax > 0) {
+      seal.vars.intSet(ctx, '最大生命', hpMax);
+      seal.vars.intSet(ctx, '生命', hpMax);
+    }
 
-    const ppMax = getIntValue(ctx, '最大能量') || getIntValue(ctx, '意志');
-    if (ppMax > 0) seal.vars.intSet(ctx, '能量', ppMax);
+    const ppMax = getIntValue(ctx, '意志');
+    if (ppMax > 0) {
+      seal.vars.intSet(ctx, '最大能量', ppMax);
+      seal.vars.intSet(ctx, '能量', ppMax);
+    }
   }
 
   function canApplyGroupCard() {
