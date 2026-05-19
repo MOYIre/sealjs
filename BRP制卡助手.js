@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.9
+// @version     1.0.8
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.9');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.8');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -170,9 +170,8 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function formatOneCard(ctx, card) {
-    const body = cardToText(card);
-    seal.vars.strSet(ctx, '$t制卡内容', body);
-    return `\`\`\`\n${body}\n\`\`\``;
+    seal.vars.strSet(ctx, '$t制卡内容', cardToText(card));
+    return cardToText(card);
   }
 
   function formatCards(ctx, cards) {
