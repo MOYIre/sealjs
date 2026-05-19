@@ -167,14 +167,13 @@ if (!seal.ext.find('BRP制卡助手')) {
     ].join('\n');
   }
 
-  function formatOneCard(ctx, card, index, total) {
-    seal.vars.strSet(ctx, '$t制卡组号', String(index + 1));
+  function formatOneCard(ctx, card) {
     seal.vars.strSet(ctx, '$t制卡内容', cardToText(card));
-    return `【第${index + 1}组】\n${cardToText(card)}`;
+    return cardToText(card);
   }
 
   function formatCards(ctx, cards) {
-    seal.vars.strSet(ctx, '$t制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'COC:制卡_分隔符')));
+    seal.vars.strSet(ctx, '$t制卡结果文本', cards.map((c) => formatOneCard(ctx, c)).join(seal.formatTmpl(ctx, 'COC:制卡_分隔符')));
     seal.vars.strSet(ctx, '$t玩家', ctx.player && ctx.player.name ? ctx.player.name : '角色');
     return seal.formatTmpl(ctx, 'COC:制卡');
   }
