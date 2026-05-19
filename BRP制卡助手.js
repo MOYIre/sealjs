@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        BRP制卡助手
-// @author      Qwen
+// @author      铭茗
 // @version     1.0.3
-// @description 海豹版 BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
+// @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
@@ -80,16 +80,27 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function cardToText(card) {
-    return `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力} 意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}\n生命:${card.生命}/${card.最大生命} 能量:${card.能量}/${card.最大能量}`;
+    const line1 = `STR:${card.力量} CON:${card.体质} SIZ:${card.体型} INT:${card.智力}`;
+    const line2 = `POW:${card.意志} DEX:${card.敏捷} CHA:${card.外貌}`;
+    const line3 = `HP:${card.生命}/${card.最大生命} PP:${card.能量}/${card.最大能量}`;
+    const line4 = `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力} 意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}`;
+    return `${line1}\n${line2}\n${line3}\n${line4}`;
   }
 
   const cmdBrp = seal.ext.newCmdItemInfo();
   cmdBrp.name = 'brp';
-  cmdBrp.help = '.brp[数字]\n按 BRP 规则生成属性并写入当前卡';
+  cmdBrp.help = '.brp[数字] / .brp [数字]\n按 BRP 规则生成属性并写入当前卡';
   cmdBrp.solve = (ctx, msg, cmdArgs) => {
     let times = 1;
     const suffix = (cmdArgs.command || 'brp').slice(3);
-    if (/^\d+$/.test(suffix)) times = Math.max(1, Math.min(parseInt(suffix, 10), 10));
+    const arg1 = (cmdArgs.getArgN(1) || '').trim();
+
+    if (/^\d+$/.test(suffix)) {
+      times = parseInt(suffix, 10);
+    } else if (/^\d+$/.test(arg1)) {
+      times = parseInt(arg1, 10);
+    }
+    times = Math.max(1, Math.min(times, 10));
 
     const cards = [];
     for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
@@ -100,8 +111,10 @@ if (!seal.ext.find('BRP制卡助手')) {
       try { applyCard(ctx); } catch (e) {}
     }
 
-    const lines = cards.map((c, i) => `#${i + 1}\n${cardToText(c)}`);
-    return replyDone(ctx, msg, `BRP制卡结果：\n${lines.join('\n\n')}${times > 1 ? '\n\n已将第1组写入当前卡。' : ''}`);
+    const lines = cards.map((c, i) => `━━━ 第${i + 1}组 ━━━\n${cardToText(c)}`);
+    const head = `BRP制卡结果（共${times}组）`;
+    const tail = times > 1 ? '\n\n※ 已将第1组写入当前卡' : '';
+    return replyDone(ctx, msg, `${head}\n\n${lines.join('\n\n')}${tail}`);
   };
 
   const cmdBrpst = seal.ext.newCmdItemInfo();
