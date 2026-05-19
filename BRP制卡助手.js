@@ -111,8 +111,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
 
     const head = `BRP制卡结果（共${times}组）`;
-    const tail = '\n\n※ 结果仅展示，未自动写入当前卡';
-    return replyDone(ctx, msg, `${head}\n\n${formatCards(cards)}${tail}`);
+    return replyDone(ctx, msg, `${head}\n\n${formatCards(cards)}`);
   };
 
   const cmdBrpst = seal.ext.newCmdItemInfo();
