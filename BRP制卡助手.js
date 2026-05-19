@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.7
+// @version     1.0.8
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.7');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.8');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -158,14 +158,14 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function cardToText(card) {
-    const n = (k) => String(card[k]);
-    const row = (a, b, c) => `${a}:${n(a)}  ${b}:${n(b)}  ${c}:${n(c)}`;
+    const n2 = (k) => String(card[k]).padStart(2, ' ');
+    const row = (a, b, c) => `${a}:${n2(a)}  ${b}:${n2(b)}  ${c}:${n2(c)}`;
     return [
       row('力量', '体质', '体型'),
       row('智力', '意志', '敏捷'),
       row('外貌', '气力', '耐力'),
       row('灵感', '幸运', '灵巧'),
-      `魅力:${n('魅力')}  生命:${n('生命')}/${n('最大生命')}  能量:${n('能量')}/${n('最大能量')}`
+      `魅力:${n2('魅力')}  生命:${n2('生命')}/${n2('最大生命')}  能量:${n2('能量')}/${n2('最大能量')}`
     ].join('\n');
   }
 
