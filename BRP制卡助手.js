@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.2
+// @version     1.0.3
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.1');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.3');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -170,31 +170,6 @@ if (!seal.ext.find('BRP制卡助手')) {
     setRule(ctx, 'brp');
     return replyDone(ctx, msg, '已切换为 BRP 房规。');
   };
-
-  const cmdSetcoc1 = seal.ext.newCmdItemInfo();
-  cmdSetcoc1.name = 'setcoc1';
-  cmdSetcoc1.help = '.setcoc1\n切换到 COC1 房规';
-  cmdSetcoc1.solve = (ctx, msg) => {
-    setRule(ctx, 'coc1');
-    return replyDone(ctx, msg, '已切换为 COC1 房规。');
-  };
-
-  const cmdSetcoc2 = seal.ext.newCmdItemInfo();
-  cmdSetcoc2.name = 'setcoc2';
-  cmdSetcoc2.help = '.setcoc2\n切换到 COC2 房规';
-  cmdSetcoc2.solve = (ctx, msg) => {
-    setRule(ctx, 'coc2');
-    return replyDone(ctx, msg, '已切换为 COC2 房规。');
-  };
-
-  const cmdSetcoc3 = seal.ext.newCmdItemInfo();
-  cmdSetcoc3.name = 'setcoc3';
-  cmdSetcoc3.help = '.setcoc3\n切换到 COC3 房规';
-  cmdSetcoc3.solve = (ctx, msg) => {
-    setRule(ctx, 'coc3');
-    return replyDone(ctx, msg, '已切换为 COC3 房规。');
-  };
-
   const cmdBrp = seal.ext.newCmdItemInfo();
   cmdBrp.name = 'brp';
   cmdBrp.help = '.brp[数字] / .brp [数字]\n按 BRP 规则生成属性并写入当前卡';
