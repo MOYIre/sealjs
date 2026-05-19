@@ -1,209 +1,198 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      Qwen
-// @version     1.0.2
-// @description 为 COC/BRP 提供 .brp / .brpst / .snbrp 命令，并实时同步群名片
+// @version     1.0.3
+// @description 海豹版 BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', 'Qwen', '1.0.2');
+  const ext = seal.ext.new('BRP制卡助手', 'Qwen', '1.0.3');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
-  const DEFAULT_TEMPLATE = '{$t玩家_RAW}';
+  const AUTO_PREFIX = 'brp_auto_card:';
+  const DEFAULT_TEMPLATE = '{$t玩家_RAW} hp{生命}/{最大生命} pp{能量}/{最大能量} DEX{敏捷}';
 
-  function getTemplateKey(ctx) {
-    const uid = ctx && ctx.player && ctx.player.userId ? ctx.player.userId : 'default';
-    return `${TEMPLATE_PREFIX}${uid}`;
+  function uid(ctx) {
+    return (ctx && ctx.player && ctx.player.userId) ? ctx.player.userId : 'default';
   }
 
   function getTemplate(ctx) {
-    const saved = ext.storageGet(getTemplateKey(ctx));
-    return saved || DEFAULT_TEMPLATE;
+    return ext.storageGet(`${TEMPLATE_PREFIX}${uid(ctx)}`) || DEFAULT_TEMPLATE;
   }
 
   function setTemplate(ctx, tmpl) {
-    ext.storageSet(getTemplateKey(ctx), tmpl || DEFAULT_TEMPLATE);
+    ext.storageSet(`${TEMPLATE_PREFIX}${uid(ctx)}`, tmpl || DEFAULT_TEMPLATE);
+  }
+
+  function isAutoOn(ctx) {
+    return ext.storageGet(`${AUTO_PREFIX}${uid(ctx)}`) === '1';
+  }
+
+  function setAutoOn(ctx, on) {
+    ext.storageSet(`${AUTO_PREFIX}${uid(ctx)}`, on ? '1' : '0');
   }
 
   function canApplyGroupCard() {
     return typeof seal.applyPlayerGroupCardByTemplate === 'function';
   }
 
-  function applyRealtimeTemplate(ctx, tmpl) {
-    const finalTemplate = tmpl || getTemplate(ctx);
-    ctx.player.autoSetNameTemplate = finalTemplate;
-    if (!canApplyGroupCard()) return ctx.player.name || '';
-    return seal.applyPlayerGroupCardByTemplate(ctx, finalTemplate);
+  function applyCard(ctx, tmpl) {
+    if (!canApplyGroupCard()) return '';
+    const t = tmpl || getTemplate(ctx);
+    ctx.player.autoSetNameTemplate = t;
+    return seal.applyPlayerGroupCardByTemplate(ctx, t);
   }
 
-  function buildProxyArgs(commandText) {
-    const body = commandText.replace(/^\./, '');
-    const parts = body.split(/\s+/).filter(Boolean);
-    return {
-      command: parts[0] || '',
-      args: parts.slice(1),
-      rawArgs: parts.slice(1).join(' '),
-      kwargs: [],
-      at: [],
-      amIBeMentioned: false,
-      amIBeMentionedFirst: false,
-      cleanArgs: parts.slice(1).join(' '),
-      getArgN(n) { return this.args[n - 1] || ''; },
-      getRestArgsFrom(n) { return this.args.slice(Math.max(0, n - 1)).join(' '); },
-      getKwarg() { return { name: '', valueExists: false, value: '', asBool: false }; },
-      chopPrefixToArgsWith(...prefixes) {
-        const first = this.getArgN(1);
-        if (!first) return false;
-        for (const prefix of prefixes) {
-          if (first.startsWith(prefix)) {
-            this.args[0] = first.slice(prefix.length);
-            return true;
-          }
-        }
-        return false;
-      },
-      eatPrefixWith(...prefixes) {
-        const first = this.getArgN(1);
-        if (!first) return ['', false];
-        for (const prefix of prefixes) {
-          if (first.startsWith(prefix)) {
-            const val = `${first.slice(prefix.length)} ${this.args.slice(1).join(' ')}`.trim();
-            return [val, true];
-          }
-        }
-        return ['', false];
-      },
-      isArgEqual(n, ...s) { return s.includes(this.getArgN(n)); }
-    };
-  }
-
-  function buildForwardContext(ctx, msg, commandText) {
-    if (typeof seal.createTempCtx !== 'function' || typeof seal.newMessage !== 'function') {
-      return null;
-    }
-
-    const targetMsg = seal.newMessage();
-    targetMsg.message = commandText;
-    targetMsg.messageType = msg.messageType;
-    targetMsg.groupId = msg.groupId;
-    targetMsg.guildId = msg.guildId;
-    targetMsg.platform = msg.platform;
-    targetMsg.time = Date.now();
-    targetMsg.sender = msg.sender;
-    targetMsg.rawId = msg.rawId;
-
-    const tempCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
-    tempCtx.player = ctx.player;
-    tempCtx.group = ctx.group;
-    tempCtx.isPrivate = ctx.isPrivate;
-    tempCtx.endPoint = ctx.endPoint;
-    tempCtx.session = ctx.session;
-    return { tempCtx, targetMsg, args: buildProxyArgs(commandText) };
-  }
-
-  function findBuiltinCmd(extName, cmdName) {
-    const targetExt = seal.ext.find(extName);
-    if (!targetExt || !targetExt.cmdMap) return null;
-    return targetExt.cmdMap[cmdName] || null;
-  }
-
-  function forwardBuiltinCommand(ctx, msg, commandText, extName, cmdName) {
-    const cmd = findBuiltinCmd(extName, cmdName);
-    if (!cmd || typeof cmd.solve !== 'function') return null;
-    const forwarded = buildForwardContext(ctx, msg, commandText);
-    if (!forwarded) return null;
-    return cmd.solve(forwarded.tempCtx, forwarded.targetMsg, forwarded.args);
-  }
-
-  function replyAndDone(ctx, msg, text) {
+  function replyDone(ctx, msg, text) {
     seal.replyToSender(ctx, msg, text);
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  function syncGroupCardIfNeeded(ctx, msg) {
-    const tmpl = (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx);
-    if (!tmpl || !canApplyGroupCard()) return;
-    try {
-      applyRealtimeTemplate(ctx, tmpl);
-    } catch (e) {
-      seal.replyToSender(ctx, msg, '已完成操作，但同步群名片失败，请检查骰子权限或平台支持');
-    }
+  function rollD6() { return Math.floor(Math.random() * 6) + 1; }
+  function roll3d6() { return rollD6() + rollD6() + rollD6(); }
+
+  function buildBrpCard() {
+    const STR = roll3d6();
+    const CON = roll3d6();
+    const SIZ = roll3d6();
+    const INT = roll3d6();
+    const POW = roll3d6();
+    const DEX = roll3d6();
+    const CHA = roll3d6();
+    const HP = Math.floor((CON + SIZ) / 2);
+    const PP = POW;
+    return {
+      力量: STR, 体质: CON, 体型: SIZ, 智力: INT, 意志: POW, 敏捷: DEX, 外貌: CHA,
+      气力: STR * 5, 耐力: CON * 5, 灵感: INT * 5, 幸运: POW * 5, 灵巧: DEX * 5, 魅力: CHA * 5,
+      生命: HP, 最大生命: HP, 能量: PP, 最大能量: PP
+    };
+  }
+
+  function applyCardDataToVars(ctx, card) {
+    Object.keys(card).forEach((k) => {
+      const v = card[k];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        seal.vars.intSet(ctx, k, v);
+      }
+    });
+  }
+
+  function cardToText(card) {
+    return `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力} 意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}\n生命:${card.生命}/${card.最大生命} 能量:${card.能量}/${card.最大能量}`;
   }
 
   const cmdBrp = seal.ext.newCmdItemInfo();
   cmdBrp.name = 'brp';
-  cmdBrp.help = '.brp[数字]\n等价于 .coc[数字] 的制卡命令';
+  cmdBrp.help = '.brp[数字]\n按 BRP 规则生成属性并写入当前卡';
   cmdBrp.solve = (ctx, msg, cmdArgs) => {
+    let times = 1;
     const suffix = (cmdArgs.command || 'brp').slice(3);
-    const rest = cmdArgs.getRestArgsFrom(1);
-    const target = `.coc${suffix}${rest ? ` ${rest}` : ''}`;
-    const result = forwardBuiltinCommand(ctx, msg, target, 'coc7', 'coc');
-    if (!result) {
-      return replyAndDone(ctx, msg, '未找到内建 .coc 命令，当前环境暂无法执行 .brp');
+    if (/^\d+$/.test(suffix)) times = Math.max(1, Math.min(parseInt(suffix, 10), 10));
+
+    const cards = [];
+    for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
+
+    applyCardDataToVars(ctx, cards[0]);
+
+    if (isAutoOn(ctx)) {
+      try { applyCard(ctx); } catch (e) {}
     }
-    syncGroupCardIfNeeded(ctx, msg);
-    return result;
+
+    const lines = cards.map((c, i) => `#${i + 1}\n${cardToText(c)}`);
+    return replyDone(ctx, msg, `BRP制卡结果：\n${lines.join('\n\n')}${times > 1 ? '\n\n已将第1组写入当前卡。' : ''}`);
   };
 
   const cmdBrpst = seal.ext.newCmdItemInfo();
   cmdBrpst.name = 'brpst';
-  cmdBrpst.help = '.brpst ...\n等价于 .st ... 的录卡命令';
+  cmdBrpst.help = '.brpst 属性值...\n录入 BRP 属性，如 .brpst 力量12 敏捷14 生命10';
   cmdBrpst.solve = (ctx, msg, cmdArgs) => {
-    const rest = cmdArgs.getRestArgsFrom(1);
-    const target = `.st${rest ? ` ${rest}` : ''}`;
-    const result = forwardBuiltinCommand(ctx, msg, target, 'coc7', 'st');
-    if (!result) {
-      return replyAndDone(ctx, msg, '未找到内建 .st 命令，当前环境暂无法执行 .brpst');
+    const raw = cmdArgs.getRestArgsFrom(1).trim();
+    if (!raw) return replyDone(ctx, msg, '用法：.brpst 力量12 敏捷14 生命10');
+
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const updated = [];
+    const reg = /^(.+?)([-+]?\d+)$/;
+
+    for (const p of parts) {
+      const m = p.match(reg);
+      if (!m) continue;
+      const key = m[1].trim();
+      const val = parseInt(m[2], 10);
+      if (!key || Number.isNaN(val)) continue;
+      seal.vars.intSet(ctx, key, val);
+      updated.push(`${key}:${val}`);
     }
-    syncGroupCardIfNeeded(ctx, msg);
-    return result;
+
+    if (!updated.length) {
+      return replyDone(ctx, msg, '未识别到可写入的属性，请使用“属性名+数字”的格式。');
+    }
+
+    if (isAutoOn(ctx)) {
+      try { applyCard(ctx); } catch (e) {}
+    }
+
+    return replyDone(ctx, msg, `已录入：${updated.join(' ')}`);
   };
 
   const cmdSnbrp = seal.ext.newCmdItemInfo();
   cmdSnbrp.name = 'snbrp';
-  cmdSnbrp.help = '.snbrp <名字>\n修改当前角色名，并像 sncoc 一样实时同步群名片\n.snbrp\n将群名片同步为当前角色名\n.snbrp tmpl <模板>\n设置实时同步使用的群名片模板';
+  cmdSnbrp.help = '.snbrp <名字>\n改角色名并同步群名片\n.snbrp\n立即同步群名片\n.snbrp auto / .snbrp auto off\n开启/关闭自动名片\n.snbrp tmpl <模板>\n设置名片模板';
   cmdSnbrp.solve = (ctx, msg, cmdArgs) => {
-    const sub = cmdArgs.getArgN(1);
-    if (!sub) {
-      if (!canApplyGroupCard()) {
-        return replyAndDone(ctx, msg, '当前环境不支持自动同步群名片');
-      }
-      const applied = applyRealtimeTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
-      return replyAndDone(ctx, msg, `已同步群名片：${applied || ctx.player.name}`);
+    const a1 = (cmdArgs.getArgN(1) || '').trim();
+
+    if (!a1) {
+      if (!canApplyGroupCard()) return replyDone(ctx, msg, '当前环境不支持自动改群名片');
+      const text = applyCard(ctx);
+      return replyDone(ctx, msg, `已同步群名片：${text || ctx.player.name}`);
     }
 
-    if (sub === 'help') {
+    if (a1 === 'help') {
       const ret = seal.ext.newCmdExecuteResult(true);
       ret.showHelp = true;
       return ret;
     }
 
-    if (sub === 'tmpl' || sub === 'template') {
-      const tmpl = cmdArgs.getRestArgsFrom(2).trim();
-      if (!tmpl) {
-        return replyAndDone(ctx, msg, `当前模板：${(ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx)}`);
+    if (a1 === 'auto' || a1 === 'on') {
+      const off = (cmdArgs.getArgN(2) || '').trim() === 'off';
+      setAutoOn(ctx, !off);
+      if (!off && canApplyGroupCard()) {
+        try { applyCard(ctx); } catch (e) {}
       }
-      setTemplate(ctx, tmpl);
-      const applied = applyRealtimeTemplate(ctx, tmpl);
-      return replyAndDone(ctx, msg, `已设置实时同步模板为：${tmpl}\n当前群名片：${applied || ctx.player.name}`);
+      return replyDone(ctx, msg, off ? '已关闭 BRP 自动名片。' : '已开启 BRP 自动名片。');
+    }
+
+    if (a1 === 'off') {
+      setAutoOn(ctx, false);
+      return replyDone(ctx, msg, '已关闭 BRP 自动名片。');
+    }
+
+    if (a1 === 'tmpl' || a1 === 'template') {
+      const t = cmdArgs.getRestArgsFrom(2).trim();
+      if (!t) return replyDone(ctx, msg, `当前模板：${getTemplate(ctx)}`);
+      setTemplate(ctx, t);
+      if (canApplyGroupCard()) {
+        try { applyCard(ctx, t); } catch (e) {}
+      }
+      return replyDone(ctx, msg, `已设置模板：${t}`);
     }
 
     const name = cmdArgs.getRestArgsFrom(1).trim();
-    if (!name) {
-      return replyAndDone(ctx, msg, '用法：.snbrp <名字>');
-    }
+    if (!name) return replyDone(ctx, msg, '用法：.snbrp <名字>');
 
     ctx.player.name = name;
-    const applied = applyRealtimeTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
-    return replyAndDone(ctx, msg, `已将当前角色名改为「${name}」并同步群名片${applied ? `：${applied}` : ''}`);
+    if (canApplyGroupCard()) {
+      try { applyCard(ctx); } catch (e) {}
+    }
+    return replyDone(ctx, msg, `已将角色名改为「${name}」并同步名片。`);
   };
 
   ext.onCommandReceived = (ctx, msg, cmdArgs) => {
+    if (!isAutoOn(ctx)) return;
     const command = cmdArgs.command || '';
-    if (command === 'st' || command === 'nn' || command === 'pc' || command === 'coc' || command.startsWith('coc')) {
-      syncGroupCardIfNeeded(ctx, msg);
+    if (command === 'brpst' || command === 'brp' || command === 'st' || command === 'nn') {
+      try { applyCard(ctx); } catch (e) {}
     }
   };
 
