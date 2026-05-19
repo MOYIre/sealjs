@@ -122,6 +122,11 @@ if (!seal.ext.find('BRP制卡助手')) {
     return `当前房规：${getRuleLabel(ctx)}`;
   }
 
+  function replyDone(ctx, msg, text) {
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
   function rollD6() { return Math.floor(Math.random() * 6) + 1; }
   function roll3d6() { return rollD6() + rollD6() + rollD6(); }
 
