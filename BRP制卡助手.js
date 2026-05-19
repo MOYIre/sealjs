@@ -168,15 +168,15 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function formatOneCard(ctx, card, index, total) {
-    seal.vars.strSet(ctx, '$tBRP制卡结果前缀', `BRP制卡结果（共${total}组）`);
-    seal.vars.strSet(ctx, '$tBRP制卡组号', String(index + 1));
-    seal.vars.strSet(ctx, '$tBRP制卡内容', cardToText(card));
-    return seal.formatTmpl(ctx, 'BRP:制卡_单组');
+    seal.vars.strSet(ctx, '$t制卡组号', String(index + 1));
+    seal.vars.strSet(ctx, '$t制卡内容', cardToText(card));
+    return `【第${index + 1}组】\n${cardToText(card)}`;
   }
 
   function formatCards(ctx, cards) {
-    seal.vars.strSet(ctx, '$tBRP制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'BRP:制卡_分隔符')));
-    return seal.formatTmpl(ctx, 'BRP:制卡');
+    seal.vars.strSet(ctx, '$t制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'COC:制卡_分隔符')));
+    seal.vars.strSet(ctx, '$t玩家', ctx.player && ctx.player.name ? ctx.player.name : '角色');
+    return seal.formatTmpl(ctx, 'COC:制卡');
   }
 
   const cmdSetbrp = seal.ext.newCmdItemInfo();
@@ -204,12 +204,8 @@ if (!seal.ext.find('BRP制卡助手')) {
     const cards = [];
     for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
 
-    seal.vars.strSet(ctx, '$tBRP制卡结果前缀', `BRP制卡结果（共${times}组）`);
-    seal.vars.strSet(ctx, '$tBRP制卡结果文本', cards.map((c, i) => formatOneCard(ctx, c, i, cards.length)).join(seal.formatTmpl(ctx, 'BRP:制卡_分隔符')));
-    seal.vars.strSet(ctx, '$tBRP制卡默认结果模板', '{$tBRP制卡结果前缀}\n\n{$tBRP制卡结果文本}');
-    seal.vars.strSet(ctx, '$tBRP制卡默认分隔符模板', '\n━━━━━━━━━━━━━━━━\n');
-    seal.vars.strSet(ctx, '$tBRP制卡默认单组模板', '【第{$tBRP制卡组号}组】\n{$tBRP制卡内容}');
-    const text = seal.formatTmpl(ctx, 'BRP:制卡');
+    seal.vars.strSet(ctx, '$t玩家', ctx.player && ctx.player.name ? ctx.player.name : '角色');
+    const text = formatCards(ctx, cards);
     return replyDone(ctx, msg, text);
   };
 
