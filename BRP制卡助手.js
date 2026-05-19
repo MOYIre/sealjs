@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.3
+// @version     1.0.4
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.3');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.4');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -121,6 +121,9 @@ if (!seal.ext.find('BRP制卡助手')) {
   function buildRuleStateText(ctx) {
     return `当前房规：${getRuleLabel(ctx)}`;
   }
+
+  function rollD6() { return Math.floor(Math.random() * 6) + 1; }
+  function roll3d6() { return rollD6() + rollD6() + rollD6(); }
 
 
   function buildBrpCard() {
