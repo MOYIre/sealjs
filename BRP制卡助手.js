@@ -335,6 +335,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     }
   };
 
+  ext.cmdMap.setbrp = cmdSetbrp;
   ext.cmdMap.brp = cmdBrp;
   ext.cmdMap.brpst = cmdBrpst;
   ext.cmdMap.stbrp = cmdStbrp;
