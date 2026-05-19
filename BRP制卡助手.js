@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.1
+// @version     1.0.2
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
@@ -82,13 +82,46 @@ if (!seal.ext.find('BRP制卡助手')) {
     return { before: base, after: next, max: maxInfo.value };
   }
 
-  function replyDone(ctx, msg, text) {
-    seal.replyToSender(ctx, msg, text);
-    return seal.ext.newCmdExecuteResult(true);
+  function getRuleKey(ctx) {
+    return `brp_rule:${uid(ctx)}`;
   }
 
-  function rollD6() { return Math.floor(Math.random() * 6) + 1; }
-  function roll3d6() { return rollD6() + rollD6() + rollD6(); }
+  function getRule(ctx) {
+    return ext.storageGet(getRuleKey(ctx)) || 'brp';
+  }
+
+  function setRule(ctx, rule) {
+    ext.storageSet(getRuleKey(ctx), rule || 'brp');
+  }
+
+  function isBrpRule(ctx) {
+    return getRule(ctx) === 'brp';
+  }
+
+  function getRuleLabel(ctx) {
+    const rule = getRule(ctx);
+    if (rule === 'coc1') return 'COC1';
+    if (rule === 'coc2') return 'COC2';
+    if (rule === 'coc3') return 'COC3';
+    return 'BRP';
+  }
+
+  function refreshGroupCard(ctx) {
+    initNewCardState(ctx);
+    if (!canApplyGroupCard()) return '';
+    return applyCard(ctx);
+  }
+
+  function refreshCurrentCardForRule(ctx) {
+    if (isBrpRule(ctx)) {
+      initNewCardState(ctx);
+    }
+  }
+
+  function buildRuleStateText(ctx) {
+    return `当前房规：${getRuleLabel(ctx)}`;
+  }
+
 
   function buildBrpCard() {
     const STR = roll3d6();
@@ -129,6 +162,38 @@ if (!seal.ext.find('BRP制卡助手')) {
   function formatCards(cards) {
     return cards.map((c, i) => `【第${i + 1}组】\n${cardToText(c)}`).join('\n━━━━━━━━━━━━━━━━\n');
   }
+
+  const cmdSetbrp = seal.ext.newCmdItemInfo();
+  cmdSetbrp.name = 'setbrp';
+  cmdSetbrp.help = '.setbrp\n切换到 BRP 房规';
+  cmdSetbrp.solve = (ctx, msg) => {
+    setRule(ctx, 'brp');
+    return replyDone(ctx, msg, '已切换为 BRP 房规。');
+  };
+
+  const cmdSetcoc1 = seal.ext.newCmdItemInfo();
+  cmdSetcoc1.name = 'setcoc1';
+  cmdSetcoc1.help = '.setcoc1\n切换到 COC1 房规';
+  cmdSetcoc1.solve = (ctx, msg) => {
+    setRule(ctx, 'coc1');
+    return replyDone(ctx, msg, '已切换为 COC1 房规。');
+  };
+
+  const cmdSetcoc2 = seal.ext.newCmdItemInfo();
+  cmdSetcoc2.name = 'setcoc2';
+  cmdSetcoc2.help = '.setcoc2\n切换到 COC2 房规';
+  cmdSetcoc2.solve = (ctx, msg) => {
+    setRule(ctx, 'coc2');
+    return replyDone(ctx, msg, '已切换为 COC2 房规。');
+  };
+
+  const cmdSetcoc3 = seal.ext.newCmdItemInfo();
+  cmdSetcoc3.name = 'setcoc3';
+  cmdSetcoc3.help = '.setcoc3\n切换到 COC3 房规';
+  cmdSetcoc3.solve = (ctx, msg) => {
+    setRule(ctx, 'coc3');
+    return replyDone(ctx, msg, '已切换为 COC3 房规。');
+  };
 
   const cmdBrp = seal.ext.newCmdItemInfo();
   cmdBrp.name = 'brp';
@@ -222,7 +287,9 @@ if (!seal.ext.find('BRP制卡助手')) {
     const a1 = (cmdArgs.getArgN(1) || '').trim();
 
     if (!a1) {
-      initNewCardState(ctx);
+      if (isBrpRule(ctx)) {
+        initNewCardState(ctx);
+      }
       if (!canApplyGroupCard()) return replyDone(ctx, msg, '当前环境不支持自动改群名片');
       const text = applyCard(ctx);
       return replyDone(ctx, msg, `已同步群名片：${text || ctx.player.name}`);
