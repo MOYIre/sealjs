@@ -1,18 +1,17 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      Qwen
-// @version     1.0.1
+// @version     1.0.2
 // @description 为 COC/BRP 提供 .brp / .brpst / .snbrp 命令，并实时同步群名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', 'Qwen', '1.0.1');
+  const ext = seal.ext.new('BRP制卡助手', 'Qwen', '1.0.2');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const DEFAULT_TEMPLATE = '{$t玩家_RAW}';
-  const FORWARD_EXT_NAMES = ['coc7', 'COC7', 'coc', 'COC', 'story', 'Story'];
 
   function getTemplateKey(ctx) {
     const uid = ctx && ctx.player && ctx.player.userId ? ctx.player.userId : 'default';
@@ -32,7 +31,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     return typeof seal.applyPlayerGroupCardByTemplate === 'function';
   }
 
-  function setAutoTemplate(ctx, tmpl) {
+  function applyRealtimeTemplate(ctx, tmpl) {
     const finalTemplate = tmpl || getTemplate(ctx);
     ctx.player.autoSetNameTemplate = finalTemplate;
     if (!canApplyGroupCard()) return ctx.player.name || '';
@@ -54,13 +53,33 @@ if (!seal.ext.find('BRP制卡助手')) {
       getArgN(n) { return this.args[n - 1] || ''; },
       getRestArgsFrom(n) { return this.args.slice(Math.max(0, n - 1)).join(' '); },
       getKwarg() { return { name: '', valueExists: false, value: '', asBool: false }; },
-      chopPrefixToArgsWith() { return false; },
-      eatPrefixWith() { return ['', false]; },
+      chopPrefixToArgsWith(...prefixes) {
+        const first = this.getArgN(1);
+        if (!first) return false;
+        for (const prefix of prefixes) {
+          if (first.startsWith(prefix)) {
+            this.args[0] = first.slice(prefix.length);
+            return true;
+          }
+        }
+        return false;
+      },
+      eatPrefixWith(...prefixes) {
+        const first = this.getArgN(1);
+        if (!first) return ['', false];
+        for (const prefix of prefixes) {
+          if (first.startsWith(prefix)) {
+            const val = `${first.slice(prefix.length)} ${this.args.slice(1).join(' ')}`.trim();
+            return [val, true];
+          }
+        }
+        return ['', false];
+      },
       isArgEqual(n, ...s) { return s.includes(this.getArgN(n)); }
     };
   }
 
-  function forwardBuiltinCommand(ctx, msg, commandText, cmdName) {
+  function buildForwardContext(ctx, msg, commandText) {
     if (typeof seal.createTempCtx !== 'function' || typeof seal.newMessage !== 'function') {
       return null;
     }
@@ -78,15 +97,24 @@ if (!seal.ext.find('BRP制卡助手')) {
     const tempCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
     tempCtx.player = ctx.player;
     tempCtx.group = ctx.group;
+    tempCtx.isPrivate = ctx.isPrivate;
+    tempCtx.endPoint = ctx.endPoint;
+    tempCtx.session = ctx.session;
+    return { tempCtx, targetMsg, args: buildProxyArgs(commandText) };
+  }
 
-    for (const extName of FORWARD_EXT_NAMES) {
-      const targetExt = seal.ext.find(extName);
-      if (!targetExt || !targetExt.cmdMap || !targetExt.cmdMap[cmdName]) continue;
-      const result = targetExt.cmdMap[cmdName].solve(tempCtx, targetMsg, buildProxyArgs(commandText));
-      return result || seal.ext.newCmdExecuteResult(true);
-    }
+  function findBuiltinCmd(extName, cmdName) {
+    const targetExt = seal.ext.find(extName);
+    if (!targetExt || !targetExt.cmdMap) return null;
+    return targetExt.cmdMap[cmdName] || null;
+  }
 
-    return null;
+  function forwardBuiltinCommand(ctx, msg, commandText, extName, cmdName) {
+    const cmd = findBuiltinCmd(extName, cmdName);
+    if (!cmd || typeof cmd.solve !== 'function') return null;
+    const forwarded = buildForwardContext(ctx, msg, commandText);
+    if (!forwarded) return null;
+    return cmd.solve(forwarded.tempCtx, forwarded.targetMsg, forwarded.args);
   }
 
   function replyAndDone(ctx, msg, text) {
@@ -96,9 +124,9 @@ if (!seal.ext.find('BRP制卡助手')) {
 
   function syncGroupCardIfNeeded(ctx, msg) {
     const tmpl = (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx);
-    if (!tmpl) return;
+    if (!tmpl || !canApplyGroupCard()) return;
     try {
-      setAutoTemplate(ctx, tmpl);
+      applyRealtimeTemplate(ctx, tmpl);
     } catch (e) {
       seal.replyToSender(ctx, msg, '已完成操作，但同步群名片失败，请检查骰子权限或平台支持');
     }
@@ -111,9 +139,9 @@ if (!seal.ext.find('BRP制卡助手')) {
     const suffix = (cmdArgs.command || 'brp').slice(3);
     const rest = cmdArgs.getRestArgsFrom(1);
     const target = `.coc${suffix}${rest ? ` ${rest}` : ''}`;
-    const result = forwardBuiltinCommand(ctx, msg, target, `coc${suffix}`) || forwardBuiltinCommand(ctx, msg, target, 'coc');
+    const result = forwardBuiltinCommand(ctx, msg, target, 'coc7', 'coc');
     if (!result) {
-      return replyAndDone(ctx, msg, '未找到可转发的 .coc 命令，当前环境暂无法执行 .brp');
+      return replyAndDone(ctx, msg, '未找到内建 .coc 命令，当前环境暂无法执行 .brp');
     }
     syncGroupCardIfNeeded(ctx, msg);
     return result;
@@ -125,9 +153,9 @@ if (!seal.ext.find('BRP制卡助手')) {
   cmdBrpst.solve = (ctx, msg, cmdArgs) => {
     const rest = cmdArgs.getRestArgsFrom(1);
     const target = `.st${rest ? ` ${rest}` : ''}`;
-    const result = forwardBuiltinCommand(ctx, msg, target, 'st');
+    const result = forwardBuiltinCommand(ctx, msg, target, 'coc7', 'st');
     if (!result) {
-      return replyAndDone(ctx, msg, '未找到可转发的 .st 命令，当前环境暂无法执行 .brpst');
+      return replyAndDone(ctx, msg, '未找到内建 .st 命令，当前环境暂无法执行 .brpst');
     }
     syncGroupCardIfNeeded(ctx, msg);
     return result;
@@ -142,7 +170,7 @@ if (!seal.ext.find('BRP制卡助手')) {
       if (!canApplyGroupCard()) {
         return replyAndDone(ctx, msg, '当前环境不支持自动同步群名片');
       }
-      const applied = setAutoTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
+      const applied = applyRealtimeTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
       return replyAndDone(ctx, msg, `已同步群名片：${applied || ctx.player.name}`);
     }
 
@@ -158,7 +186,7 @@ if (!seal.ext.find('BRP制卡助手')) {
         return replyAndDone(ctx, msg, `当前模板：${(ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx)}`);
       }
       setTemplate(ctx, tmpl);
-      const applied = setAutoTemplate(ctx, tmpl);
+      const applied = applyRealtimeTemplate(ctx, tmpl);
       return replyAndDone(ctx, msg, `已设置实时同步模板为：${tmpl}\n当前群名片：${applied || ctx.player.name}`);
     }
 
@@ -168,19 +196,14 @@ if (!seal.ext.find('BRP制卡助手')) {
     }
 
     ctx.player.name = name;
-    const applied = setAutoTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
+    const applied = applyRealtimeTemplate(ctx, (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx));
     return replyAndDone(ctx, msg, `已将当前角色名改为「${name}」并同步群名片${applied ? `：${applied}` : ''}`);
   };
 
   ext.onCommandReceived = (ctx, msg, cmdArgs) => {
     const command = cmdArgs.command || '';
     if (command === 'st' || command === 'nn' || command === 'pc' || command === 'coc' || command.startsWith('coc')) {
-      const tmpl = (ctx.player && ctx.player.autoSetNameTemplate) || getTemplate(ctx);
-      if (tmpl && canApplyGroupCard()) {
-        try {
-          setAutoTemplate(ctx, tmpl);
-        } catch (e) {}
-      }
+      syncGroupCardIfNeeded(ctx, msg);
     }
   };
 
