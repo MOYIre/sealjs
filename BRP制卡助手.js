@@ -34,8 +34,17 @@ if (!seal.ext.find('BRP制卡助手')) {
     ext.storageSet(`${AUTO_PREFIX}${uid(ctx)}`, on ? '1' : '0');
   }
 
-  function canApplyGroupCard() {
-    return typeof seal.applyPlayerGroupCardByTemplate === 'function';
+  function getIntValue(ctx, key) {
+    const ret = seal.vars.intGet(ctx, key);
+    return Array.isArray(ret) ? (ret[0] || 0) : 0;
+  }
+
+  function initNewCardState(ctx) {
+    const hpMax = getIntValue(ctx, '最大生命') || Math.floor((getIntValue(ctx, '体质') + getIntValue(ctx, '体型')) / 2);
+    if (hpMax > 0) seal.vars.intSet(ctx, '生命', hpMax);
+
+    const ppMax = getIntValue(ctx, '最大能量') || getIntValue(ctx, '意志');
+    if (ppMax > 0) seal.vars.intSet(ctx, '能量', ppMax);
   }
 
   function applyCard(ctx, tmpl) {
@@ -194,6 +203,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     if (!name) return replyDone(ctx, msg, '用法：.snbrp <名字>');
 
     ctx.player.name = name;
+    initNewCardState(ctx);
     if (canApplyGroupCard()) {
       try { applyCard(ctx); } catch (e) {}
     }
