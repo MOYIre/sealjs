@@ -110,14 +110,15 @@ if (!seal.ext.find('BRP制卡助手')) {
     const cards = [];
     for (let i = 0; i < times; i += 1) cards.push(buildBrpCard());
 
-    applyCardDataToVars(ctx, cards[0]);
-
-    if (isAutoOn(ctx)) {
-      try { applyCard(ctx); } catch (e) {}
+    if (times === 1) {
+      applyCardDataToVars(ctx, cards[0]);
+      if (isAutoOn(ctx)) {
+        try { applyCard(ctx); } catch (e) {}
+      }
     }
 
     const head = `BRP制卡结果（共${times}组）`;
-    const tail = times > 1 ? '\n\n※ 已将第1组写入当前卡' : '';
+    const tail = times > 1 ? '\n\n※ 多组结果仅展示，未自动写入当前卡' : '';
     return replyDone(ctx, msg, `${head}\n\n${formatCards(cards)}${tail}`);
   };
 
