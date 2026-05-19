@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.8
+// @version     1.0.9
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.8');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.9');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -157,15 +157,30 @@ if (!seal.ext.find('BRP制卡助手')) {
     });
   }
 
+  function displayWidth(text) {
+    let width = 0;
+    for (const ch of String(text)) {
+      width += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
+    }
+    return width;
+  }
+
+  function padDisplay(text, size) {
+    const s = String(text);
+    const need = Math.max(0, size - displayWidth(s));
+    return s + ' '.repeat(need);
+  }
+
   function cardToText(card) {
     const n2 = (k) => String(card[k]).padStart(2, ' ');
-    const row = (a, b, c) => `${a}:${n2(a)}  ${b}:${n2(b)}  ${c}:${n2(c)}`;
+    const cell = (label, value, width = 12) => padDisplay(`${label}:${value}`, width);
+    const cell2 = (label, value, width = 14) => padDisplay(`${label}:${value}`, width);
     return [
-      row('力量', '体质', '体型'),
-      row('智力', '意志', '敏捷'),
-      row('外貌', '气力', '耐力'),
-      row('灵感', '幸运', '灵巧'),
-      `魅力:${n2('魅力')}  生命:${n2('生命')}/${n2('最大生命')}  能量:${n2('能量')}/${n2('最大能量')}`
+      `${cell('力量', n2('力量'))}${cell('体质', n2('体质'))}${cell('体型', n2('体型'))}`,
+      `${cell('智力', n2('智力'))}${cell('意志', n2('意志'))}${cell('敏捷', n2('敏捷'))}`,
+      `${cell('外貌', n2('外貌'))}${cell('气力', n2('气力'))}${cell('耐力', n2('耐力'))}`,
+      `${cell('灵感', n2('灵感'))}${cell('幸运', n2('幸运'))}${cell('灵巧', n2('灵巧'))}`,
+      `${cell('魅力', n2('魅力'))}${cell2('生命', `${n2('生命')}/${n2('最大生命')}`)}${cell2('能量', `${n2('能量')}/${n2('最大能量')}`)}`
     ].join('\n');
   }
 
