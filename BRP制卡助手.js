@@ -80,11 +80,16 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function cardToText(card) {
-    const line1 = `STR:${card.力量} CON:${card.体质} SIZ:${card.体型} INT:${card.智力}`;
-    const line2 = `POW:${card.意志} DEX:${card.敏捷} CHA:${card.外貌}`;
-    const line3 = `HP:${card.生命}/${card.最大生命} PP:${card.能量}/${card.最大能量}`;
-    const line4 = `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力} 意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}`;
+    const line1 = `力量:${card.力量} 体质:${card.体质} 体型:${card.体型} 智力:${card.智力}`;
+    const line2 = `意志:${card.意志} 敏捷:${card.敏捷} 外貌:${card.外貌}`;
+    const line3 = `气力:${card.气力} 耐力:${card.耐力} 灵感:${card.灵感} 幸运:${card.幸运}`;
+    const line4 = `灵巧:${card.灵巧} 魅力:${card.魅力} 生命:${card.生命}/${card.最大生命} 能量:${card.能量}/${card.最大能量}`;
     return `${line1}\n${line2}\n${line3}\n${line4}`;
+  }
+
+  function formatCards(cards) {
+    const sep = '\n━━━━━━━━━━━━━━━━\n';
+    return cards.map((c, i) => `【第${i + 1}组】\n${cardToText(c)}`).join(sep);
   }
 
   const cmdBrp = seal.ext.newCmdItemInfo();
@@ -111,10 +116,9 @@ if (!seal.ext.find('BRP制卡助手')) {
       try { applyCard(ctx); } catch (e) {}
     }
 
-    const lines = cards.map((c, i) => `━━━ 第${i + 1}组 ━━━\n${cardToText(c)}`);
     const head = `BRP制卡结果（共${times}组）`;
     const tail = times > 1 ? '\n\n※ 已将第1组写入当前卡' : '';
-    return replyDone(ctx, msg, `${head}\n\n${lines.join('\n\n')}${tail}`);
+    return replyDone(ctx, msg, `${head}\n\n${formatCards(cards)}${tail}`);
   };
 
   const cmdBrpst = seal.ext.newCmdItemInfo();
