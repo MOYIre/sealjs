@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.17
+// @version     1.0.18
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.17');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.18');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -17,7 +17,6 @@ if (!seal.ext.find('BRP制卡助手')) {
 
   function registerConfigs() {
     seal.ext.registerTemplateConfig(ext, '制卡结果前缀', ['<{$t玩家}>的brp人物做成:'], 'BRP制卡结果前缀文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
-    seal.ext.registerTemplateConfig(ext, '制卡结果分隔符', ['\n'], '多组 BRP 制卡结果之间的分隔文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
   }
 
   function getTemplateConfigFirst(key, fallback) {
@@ -193,8 +192,7 @@ if (!seal.ext.find('BRP制卡助手')) {
   }
 
   function formatCards(ctx, cards) {
-    const defaultSep = seal.formatTmpl(ctx, 'COC:制卡_分隔符');
-    const sep = getTemplateConfigFirst('制卡结果分隔符', defaultSep);
+    const sep = seal.formatTmpl(ctx, 'COC:制卡_分隔符');
     const ss = cards.map((c) => cardToText(c));
     const name = ctx.player && ctx.player.name ? ctx.player.name : '角色';
     seal.vars.strSet(ctx, '$t玩家', name);
