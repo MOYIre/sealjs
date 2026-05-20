@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.2.4
+// @version     1.2.6
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.4');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.6');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -62,11 +62,12 @@ if (!seal.ext.find('BRP制卡助手')) {
     const hpCur = getIntInfo(ctx, '生命');
     const hpMaxCur = getIntInfo(ctx, '最大生命');
     if (hpMax > 0) {
-      if (!hpMaxCur.exists || hpMaxCur.value <= 0) {
-        seal.vars.intSet(ctx, '最大生命', hpMax);
+      const nextHpMax = hpCur.exists && hpCur.value > hpMax ? hpCur.value : hpMax;
+      if (!hpMaxCur.exists || hpMaxCur.value !== nextHpMax) {
+        seal.vars.intSet(ctx, '最大生命', nextHpMax);
       }
       if (!hpCur.exists) {
-        seal.vars.intSet(ctx, '生命', hpMax);
+        seal.vars.intSet(ctx, '生命', nextHpMax);
       }
     }
 
@@ -74,11 +75,12 @@ if (!seal.ext.find('BRP制卡助手')) {
     const ppCur = getIntInfo(ctx, '能量');
     const ppMaxCur = getIntInfo(ctx, '最大能量');
     if (ppMax > 0) {
-      if (!ppMaxCur.exists || ppMaxCur.value <= 0) {
-        seal.vars.intSet(ctx, '最大能量', ppMax);
+      const nextPpMax = ppCur.exists && ppCur.value > ppMax ? ppCur.value : ppMax;
+      if (!ppMaxCur.exists || ppMaxCur.value !== nextPpMax) {
+        seal.vars.intSet(ctx, '最大能量', nextPpMax);
       }
       if (!ppCur.exists) {
-        seal.vars.intSet(ctx, '能量', ppMax);
+        seal.vars.intSet(ctx, '能量', nextPpMax);
       }
     }
   }
@@ -304,6 +306,8 @@ if (!seal.ext.find('BRP制卡助手')) {
     if (!updated.length) {
       return replyDone(ctx, msg, '未识别到可写入的属性，请使用“属性名+数字”的格式。');
     }
+
+    initNewCardState(ctx);
 
     if (isAutoOn(ctx)) {
       try { applyCard(ctx); } catch (e) {}
