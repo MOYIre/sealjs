@@ -187,8 +187,8 @@ if (!seal.ext.find('BRP制卡助手')) {
     const name = ctx.player && ctx.player.name ? ctx.player.name : '角色';
     const body = ss.join(sep);
     seal.vars.strSet(ctx, '$t玩家', name);
-    seal.vars.strSet(ctx, '$t制卡结果文本', `${name}的brp人物做成:\n${body}`);
-    return seal.formatTmpl(ctx, 'COC:制卡');
+    seal.vars.strSet(ctx, '$t制卡结果文本', body);
+    return `${name}的brp人物做成:\n${body}`;
   }
 
   const cmdSetbrp = seal.ext.newCmdItemInfo();
