@@ -16,7 +16,7 @@ if (!seal.ext.find('BRP制卡助手')) {
   const CONFIG_GROUP = 'BRP制卡';
 
   function registerConfigs() {
-    seal.ext.registerTemplateConfig(ext, '制卡结果前缀', ['{$t玩家}的brp人物做成:'], 'BRP制卡结果前缀文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
+    seal.ext.registerTemplateConfig(ext, '制卡结果前缀', ['<{$t玩家}>的brp人物做成:'], 'BRP制卡结果前缀文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
     seal.ext.registerTemplateConfig(ext, '制卡结果分隔符', ['\n'], '多组 BRP 制卡结果之间的分隔文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
   }
 
@@ -200,7 +200,7 @@ if (!seal.ext.find('BRP制卡助手')) {
     const name = ctx.player && ctx.player.name ? ctx.player.name : '角色';
     seal.vars.strSet(ctx, '$t玩家', name);
     seal.vars.strSet(ctx, '$t制卡结果文本', ss.join(sep));
-    const prefix = getTemplateConfigFirst('制卡结果前缀', '{$t玩家}的brp人物做成:').replace(/\{\$t玩家\}/g, name);
+    const prefix = getTemplateConfigFirst('制卡结果前缀', '<{$t玩家}>的brp人物做成:').replace(/\{\$t玩家\}/g, name);
     return `${prefix}\n${ss.join(sep)}`;
   }
 
