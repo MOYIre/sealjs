@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.2.3
+// @version     1.2.4
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.3');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.4');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -243,14 +243,51 @@ if (!seal.ext.find('BRP制卡助手')) {
     return replyDone(ctx, msg, text);
   };
 
+  function parseBrpStatInput(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return [];
+
+    const parts = text.split(/\s+/).filter(Boolean);
+    if (parts.length > 1) return parts;
+
+    const compact = [];
+    const reg = /([A-Za-z\u4e00-\u9fa5]+)([-+]?\d+)/g;
+    let m;
+    while ((m = reg.exec(text)) !== null) {
+      compact.push(`${m[1]}${m[2]}`);
+    }
+    return compact.length ? compact : parts;
+  }
+
+  function normalizeBrpStatKey(key) {
+    const k = String(key || '').trim().toLowerCase();
+    if (k === 'hp' || k === '生命' || k === '最大生命') return '生命';
+    if (k === 'pp' || k === '能量' || k === '最大能量') return '能量';
+    return key;
+  }
+
+  function handleBrpStatKey(ctx, key, val) {
+    const k = normalizeBrpStatKey(key);
+    seal.vars.intSet(ctx, k, val);
+    if (k === '生命') {
+      const maxInfo = getIntInfo(ctx, '最大生命');
+      if (!maxInfo.exists || maxInfo.value < val) seal.vars.intSet(ctx, '最大生命', val);
+    }
+    if (k === '能量') {
+      const maxInfo = getIntInfo(ctx, '最大能量');
+      if (!maxInfo.exists || maxInfo.value < val) seal.vars.intSet(ctx, '最大能量', val);
+    }
+    return k;
+  }
+
   const cmdBrpst = seal.ext.newCmdItemInfo();
   cmdBrpst.name = 'brpst';
-  cmdBrpst.help = '.brpst 属性值...\n录入 BRP 属性，如 .brpst 力量12 敏捷14 生命10';
+  cmdBrpst.help = '.brpst 属性值...\n录入 BRP 属性，如 .brpst 力量12 敏捷14 生命10 或 .brpsthp12pp13';
   cmdBrpst.solve = (ctx, msg, cmdArgs) => {
-    const raw = cmdArgs.getRestArgsFrom(1).trim();
+    const raw = cmdArgs.getRestArgsFrom(1).trim() || (cmdArgs.command || '').slice(5).trim();
     if (!raw) return replyDone(ctx, msg, '用法：.brpst 力量12 敏捷14 生命10');
 
-    const parts = raw.split(/\s+/).filter(Boolean);
+    const parts = parseBrpStatInput(raw);
     const updated = [];
     const reg = /^(.+?)([-+]?\d+)$/;
 
@@ -260,8 +297,8 @@ if (!seal.ext.find('BRP制卡助手')) {
       const key = m[1].trim();
       const val = parseInt(m[2], 10);
       if (!key || Number.isNaN(val)) continue;
-      seal.vars.intSet(ctx, key, val);
-      updated.push(`${key}:${val}`);
+      const realKey = handleBrpStatKey(ctx, key, val);
+      updated.push(`${realKey}:${val}`);
     }
 
     if (!updated.length) {
