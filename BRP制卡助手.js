@@ -15,8 +15,10 @@ if (!seal.ext.find('BRP制卡助手')) {
   const DEFAULT_TEMPLATE = '{$t玩家_RAW} hp{生命}/{最大生命} pp{能量}/{最大能量} DEX{敏捷}';
   const CONFIG_GROUP = 'BRP制卡';
 
-  seal.ext.registerTemplateConfig(ext, '制卡结果前缀', ['{$t玩家}的brp人物做成:'], 'BRP制卡结果前缀文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
-  seal.ext.registerTemplateConfig(ext, '制卡结果分隔符', ['\n'], '多组 BRP 制卡结果之间的分隔文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
+  function registerConfigs() {
+    seal.ext.registerTemplateConfig(ext, '制卡结果前缀', ['{$t玩家}的brp人物做成:'], 'BRP制卡结果前缀文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
+    seal.ext.registerTemplateConfig(ext, '制卡结果分隔符', ['\n'], '多组 BRP 制卡结果之间的分隔文案，可在 WebUI 插件设置中修改。', CONFIG_GROUP);
+  }
 
   function getTemplateConfigFirst(key, fallback) {
     const arr = seal.ext.getTemplateConfig(ext, key);
@@ -366,4 +368,5 @@ if (!seal.ext.find('BRP制卡助手')) {
   ext.cmdMap.snbrp = cmdSnbrp;
 
   seal.ext.register(ext);
+  registerConfigs();
 }
