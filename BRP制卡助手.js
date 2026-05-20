@@ -184,8 +184,10 @@ if (!seal.ext.find('BRP制卡助手')) {
   function formatCards(ctx, cards) {
     const sep = seal.formatTmpl(ctx, 'COC:制卡_分隔符');
     const ss = cards.map((c) => cardToText(c));
-    seal.vars.strSet(ctx, '$t制卡结果文本', ss.join(sep));
-    seal.vars.strSet(ctx, '$t玩家', ctx.player && ctx.player.name ? ctx.player.name : '角色');
+    const name = ctx.player && ctx.player.name ? ctx.player.name : '角色';
+    const body = ss.join(sep);
+    seal.vars.strSet(ctx, '$t玩家', name);
+    seal.vars.strSet(ctx, '$t制卡结果文本', `${name}的brp人物做成:\n${body}`);
     return seal.formatTmpl(ctx, 'COC:制卡');
   }
 
