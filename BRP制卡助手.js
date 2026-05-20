@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.2.2
+// @version     1.2.3
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.2');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.2.3');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -59,15 +59,27 @@ if (!seal.ext.find('BRP制卡助手')) {
 
   function initNewCardState(ctx) {
     const hpMax = Math.floor((getIntValue(ctx, '体质') + getIntValue(ctx, '体型')) / 2);
+    const hpCur = getIntInfo(ctx, '生命');
+    const hpMaxCur = getIntInfo(ctx, '最大生命');
     if (hpMax > 0) {
-      seal.vars.intSet(ctx, '最大生命', hpMax);
-      seal.vars.intSet(ctx, '生命', hpMax);
+      if (!hpMaxCur.exists || hpMaxCur.value <= 0) {
+        seal.vars.intSet(ctx, '最大生命', hpMax);
+      }
+      if (!hpCur.exists) {
+        seal.vars.intSet(ctx, '生命', hpMax);
+      }
     }
 
     const ppMax = getIntValue(ctx, '意志');
+    const ppCur = getIntInfo(ctx, '能量');
+    const ppMaxCur = getIntInfo(ctx, '最大能量');
     if (ppMax > 0) {
-      seal.vars.intSet(ctx, '最大能量', ppMax);
-      seal.vars.intSet(ctx, '能量', ppMax);
+      if (!ppMaxCur.exists || ppMaxCur.value <= 0) {
+        seal.vars.intSet(ctx, '最大能量', ppMax);
+      }
+      if (!ppCur.exists) {
+        seal.vars.intSet(ctx, '能量', ppMax);
+      }
     }
   }
 
