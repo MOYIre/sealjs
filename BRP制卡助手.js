@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name        BRP制卡助手
 // @author      铭茗
-// @version     1.0.19
+// @version     1.0.20
 // @description BRP：.brp 制卡、.brpst 录卡、.snbrp 改名与自动名片
 // @timestamp   1779148800
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/BRP制卡助手.js
 // ==/UserScript==
 
 if (!seal.ext.find('BRP制卡助手')) {
-  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.19');
+  const ext = seal.ext.new('BRP制卡助手', '铭茗', '1.0.20');
 
   const TEMPLATE_PREFIX = 'brp_auto_template:';
   const AUTO_PREFIX = 'brp_auto_card:';
@@ -187,8 +187,8 @@ if (!seal.ext.find('BRP制卡助手')) {
     const total = ['力量', '敏捷', '意志', '体质', '外貌', '智力', '体型'].reduce((sum, key) => sum + (parseInt(card[key], 10) || 0), 0);
     return `力量:${d('力量')} 敏捷:${d('敏捷')} 意志:${d('意志')}\n` +
            `体质:${d('体质')} 外貌:${d('外貌')} 智力:${d('智力')}\n` +
-           `体型:${d('体型')} 灵感:${d('灵感')}\n` +
-           `HP:${card['生命']}/${card['最大生命']} PP:${card['能量']}/${card['最大能量']} [${total}]`;
+           `体型:${d('体型')} 灵感:${d('灵感')} [${total}]\n` +
+           `HP:${card['生命']}/${card['最大生命']} PP:${card['能量']}/${card['最大能量']}`;
   }
 
   function formatCards(ctx, cards) {
