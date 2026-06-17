@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        闻钟
 // @author      铭茗
-// @version     1.1.0
+// @version     1.3.0
 // @description 无需前缀监听触发词，支持文本与正则匹配，命中后引用原消息并@全体成员
 // @timestamp   1781654400
 // @updateUrl   https://fastly.jsdelivr.net/gh/MOYIre/sealjs@main/闻钟.js
@@ -9,16 +9,46 @@
 
 let ext = seal.ext.find('闻钟');
 if (!ext) {
-  ext = seal.ext.new('闻钟', '铭茗', '1.1.0');
+  ext = seal.ext.new('闻钟', '铭茗', '1.3.0');
   seal.ext.register(ext);
 }
 
-const STORAGE_KEY = 'wenzhong_rules_v1';
+const RULES_STORAGE_KEY = 'wenzhong_rules_v1';
+const TEMPLATE_STORAGE_KEY = 'wenzhong_reply_template_v1';
+const CONFIG_GROUP = '闻钟';
+const CONFIG_TEXT_RULES = '文本触发词';
+const CONFIG_REGEX_RULES = '正则触发词';
+const CONFIG_REPLY_TEMPLATE = '回复模板';
 const DEFAULT_RULES = [
-  { type: 'text', value: '开团' },
-  { type: 'text', value: '集合' },
-  { type: 'text', value: '全体集合' }
+  { type: 'text', value: '测试²' }
 ];
+const DEFAULT_REPLY_TEMPLATE = '';
+
+registerConfigs();
+
+function registerConfigs() {
+  seal.ext.registerTemplateConfig(
+    ext,
+    CONFIG_TEXT_RULES,
+    DEFAULT_RULES.filter((item) => item.type === 'text').map((item) => item.value),
+    '无需前缀时命中的文本触发词，每行一个。',
+    CONFIG_GROUP
+  );
+  seal.ext.registerTemplateConfig(
+    ext,
+    CONFIG_REGEX_RULES,
+    DEFAULT_RULES.filter((item) => item.type === 'regex').map((item) => item.value),
+    '无需前缀时命中的正则表达式，每行一个。',
+    CONFIG_GROUP
+  );
+  seal.ext.registerTemplateConfig(
+    ext,
+    CONFIG_REPLY_TEMPLATE,
+    [DEFAULT_REPLY_TEMPLATE],
+    '触发后附加在@全体后的回复模板，支持 {rule} 和 {text}，留空则只发送引用和@全体。',
+    CONFIG_GROUP
+  );
+}
 
 function normalizeRule(item) {
   if (!item || typeof item !== 'object') return null;
@@ -28,20 +58,43 @@ function normalizeRule(item) {
   return { type, value };
 }
 
+function getTemplateConfigList(key) {
+  const list = seal.ext.getTemplateConfig(ext, key);
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((item) => (item || '').toString().trim())
+    .filter(Boolean);
+}
+
+function uniqueRules(list) {
+  const seen = new Set();
+  return list.filter((item) => {
+    const key = `${item.type}:${item.value}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getConfigRules() {
+  const textRules = getTemplateConfigList(CONFIG_TEXT_RULES).map((value) => ({ type: 'text', value }));
+  const regexRules = getTemplateConfigList(CONFIG_REGEX_RULES).map((value) => ({ type: 'regex', value }));
+  return uniqueRules(textRules.concat(regexRules));
+}
+
 function loadRules() {
+  const configRules = getConfigRules();
+  if (configRules.length) {
+    return configRules;
+  }
+
   try {
-    const raw = ext.storageGet(STORAGE_KEY);
+    const raw = ext.storageGet(RULES_STORAGE_KEY);
     const list = raw ? JSON.parse(raw) : null;
     if (Array.isArray(list)) {
-      const normalized = list.map(normalizeRule).filter(Boolean);
+      const normalized = uniqueRules(list.map(normalizeRule).filter(Boolean));
       if (normalized.length) {
-        const seen = new Set();
-        return normalized.filter((item) => {
-          const key = `${item.type}:${item.value}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        return normalized;
       }
     }
   } catch (e) {
@@ -51,11 +104,40 @@ function loadRules() {
 }
 
 function saveRules(list) {
-  ext.storageSet(STORAGE_KEY, JSON.stringify(list));
+  ext.storageSet(RULES_STORAGE_KEY, JSON.stringify(list));
 }
 
 function getRules() {
   return loadRules();
+}
+
+function getConfigReplyTemplate() {
+  const list = seal.ext.getTemplateConfig(ext, CONFIG_REPLY_TEMPLATE);
+  if (Array.isArray(list) && list.length > 0) {
+    return (list[0] || '').toString();
+  }
+  return DEFAULT_REPLY_TEMPLATE;
+}
+
+function loadReplyTemplate() {
+  const configTemplate = getConfigReplyTemplate();
+  if (configTemplate !== DEFAULT_REPLY_TEMPLATE) {
+    return configTemplate;
+  }
+
+  try {
+    const raw = ext.storageGet(TEMPLATE_STORAGE_KEY);
+    if (typeof raw === 'string') {
+      return raw;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return DEFAULT_REPLY_TEMPLATE;
+}
+
+function saveReplyTemplate(template) {
+  ext.storageSet(TEMPLATE_STORAGE_KEY, template);
 }
 
 function quotePrefix(msg) {
@@ -63,7 +145,8 @@ function quotePrefix(msg) {
 }
 
 function buildAtAllReply(msg, text) {
-  return `${quotePrefix(msg)}[CQ:at,qq=all] ${text}`;
+  const body = text ? ` ${text}` : '';
+  return `${quotePrefix(msg)}[CQ:at,qq=all]${body}`;
 }
 
 function formatRule(item) {
@@ -103,15 +186,23 @@ function matchRule(text, rules) {
   return null;
 }
 
+function renderReplyTemplate(template, text, rule) {
+  return (template || '')
+    .replace(/\{text\}/g, text)
+    .replace(/\{rule\}/g, formatRule(rule));
+}
+
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '闻钟';
 cmd.help = [
-  '.闻钟 list // 查看规则',
-  '.闻钟 add <触发词> // 添加文本触发词',
-  '.闻钟 addre <正则> // 添加正则触发词',
-  '.闻钟 del <触发词> // 删除文本触发词',
-  '.闻钟 delre <正则> // 删除正则触发词',
-  '.闻钟 reset // 恢复默认规则'
+  '.闻钟 list // 查看当前生效规则',
+  '.闻钟 add <触发词> // 添加文本触发词（旧版存储）',
+  '.闻钟 addre <正则> // 添加正则触发词（旧版存储）',
+  '.闻钟 del <触发词> // 删除文本触发词（旧版存储）',
+  '.闻钟 delre <正则> // 删除正则触发词（旧版存储）',
+  '.闻钟 text // 查看当前回复模板',
+  '.闻钟 text set <内容> // 设置回复模板（旧版存储），支持 {rule} 和 {text}',
+  '.闻钟 text clear // 清空回复模板（旧版存储）'
 ].join('\n');
 cmd.solve = (ctx, msg, cmdArgs) => {
   const sub = (cmdArgs.getArgN(1) || 'list').trim();
@@ -138,7 +229,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     rules.push(rule);
     saveRules(rules);
-    seal.replyToSender(ctx, msg, `已添加规则：${formatRule(rule)}`);
+    seal.replyToSender(ctx, msg, `已添加规则：${formatRule(rule)}\n如设置页已填写配置项，请以设置页为准。`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -156,13 +247,32 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       return seal.ext.newCmdExecuteResult(true);
     }
     saveRules(next);
-    seal.replyToSender(ctx, msg, `已删除规则：${formatRule(rule)}`);
+    seal.replyToSender(ctx, msg, `已删除规则：${formatRule(rule)}\n如设置页已填写配置项，请同步修改设置页。`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  if (sub === 'reset') {
-    saveRules(DEFAULT_RULES.map((item) => ({ ...item })));
-    seal.replyToSender(ctx, msg, `已恢复默认规则：${DEFAULT_RULES.map(formatRule).join(' / ')}`);
+  if (sub === 'text') {
+    const action = (cmdArgs.getArgN(2) || '').trim();
+    if (!action) {
+      const current = loadReplyTemplate();
+      seal.replyToSender(ctx, msg, current ? `当前回复模板：${current}` : '当前回复模板为空');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (action === 'set') {
+      const template = cmdArgs.getRestArgsFrom(3);
+      saveReplyTemplate(template);
+      seal.replyToSender(ctx, msg, template ? `已设置回复模板：${template}\n如设置页已填写回复模板，请以设置页为准。` : '已设置为空模板');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (action === 'clear') {
+      saveReplyTemplate('');
+      seal.replyToSender(ctx, msg, '已清空回复模板；如设置页已填写回复模板，请同步清空设置页。');
+      return seal.ext.newCmdExecuteResult(true);
+    }
+
+    seal.replyToSender(ctx, msg, '用法：.闻钟 text / .闻钟 text set <内容> / .闻钟 text clear');
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -182,9 +292,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
   const rule = matchRule(text, getRules());
   if (!rule) return;
 
-  seal.replyToSender(
-    ctx,
-    msg,
-    buildAtAllReply(msg, `检测到触发规则「${formatRule(rule)}」\n${text}`)
-  );
+  const replyText = renderReplyTemplate(loadReplyTemplate(), text, rule).trim();
+  seal.replyToSender(ctx, msg, buildAtAllReply(msg, replyText));
 };
