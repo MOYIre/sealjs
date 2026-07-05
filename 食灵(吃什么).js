@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.2.0
+// @version     5.2.1
 // @description 不知道吃什么/喝什么？问问饭笥大人吧。发送.食灵查看帮助。发送.吃什么/.喝什么直接获取！推荐在插件设置改一下食灵名字哦～
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题联系铭茗QQ:3029590078
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.2.0');
+  ext = seal.ext.new('食灵', '铭茗', '5.2.1');
   seal.ext.register(ext);
 }
 
@@ -598,14 +598,25 @@ cmd.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap['食灵'] = cmd;
 ext.cmdMap['饭笥'] = cmd;
 
-const cmdEat = seal.ext.newCmdItemInfo();
-cmdEat.name = '吃什么';
-cmdEat.solve = (ctx, msg) => {
+function replyEatRecommendation(ctx, msg) {
   (async () => {
     const menus = await Data.getMenus();
     const period = Data.getPeriod();
     seal.replyToSender(ctx, msg, Picker.getPrefix(CONFIG.periods.food.names[period]) + (pickFoodForUser(ctx, menus, period) || '无'));
   })();
+}
+
+function replyDrinkRecommendation(ctx, msg) {
+  (async () => {
+    const menus = await Data.getMenus();
+    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (pickDrinkForUser(ctx, menus) || '无'));
+  })();
+}
+
+const cmdEat = seal.ext.newCmdItemInfo();
+cmdEat.name = '吃什么';
+cmdEat.solve = (ctx, msg) => {
+  replyEatRecommendation(ctx, msg);
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['吃什么'] = cmdEat;
@@ -613,13 +624,24 @@ ext.cmdMap['吃什么'] = cmdEat;
 const cmdDrink = seal.ext.newCmdItemInfo();
 cmdDrink.name = '喝什么';
 cmdDrink.solve = (ctx, msg) => {
-  (async () => {
-    const menus = await Data.getMenus();
-    seal.replyToSender(ctx, msg, Picker.getDrinkPrefix() + (pickDrinkForUser(ctx, menus) || '无'));
-  })();
+  replyDrinkRecommendation(ctx, msg);
   return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['喝什么'] = cmdDrink;
+
+ext.onNotCommandReceived = (ctx, msg) => {
+  if (!ctx || !msg) return;
+
+  const text = (msg.message || '').trim();
+  if (text === '吃什么') {
+    replyEatRecommendation(ctx, msg);
+    return;
+  }
+
+  if (text === '喝什么') {
+    replyDrinkRecommendation(ctx, msg);
+  }
+};
 
 const cmdTodayEat = seal.ext.newCmdItemInfo();
 cmdTodayEat.name = '今天吃什么';
