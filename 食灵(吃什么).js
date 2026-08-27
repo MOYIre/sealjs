@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       食灵
 // @author      御铭茗
-// @version     5.3.0
+// @version     5.3.1
 // @description 不知道吃什么/喝什么？问问饭笥大人吧。发送.食灵查看帮助。发送.吃什么/.喝什么直接获取！推荐在插件设置改一下食灵名字哦～
 // @timestamp   1743456000
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题联系铭茗QQ:3029590078
 let ext = seal.ext.find('食灵');
 if (!ext) {
-  ext = seal.ext.new('食灵', '铭茗', '5.3.0');
+  ext = seal.ext.new('食灵', '铭茗', '5.3.1');
   seal.ext.register(ext);
 }
 
@@ -103,7 +103,7 @@ const Data = {
 
   saveLocal(d) { ext.storageSet('localData', JSON.stringify(d)); },
 
-  // 本地私有菜单操作
+  // 本地菜单操作
   addLocalFood(period, name) {
     const local = this.loadLocal();
     if (period === 'extra' || !period) {
@@ -439,7 +439,7 @@ function pickDrinkForUser(ctx, menus) {
 
 const cmd = seal.ext.newCmdItemInfo();
 cmd.name = '食灵';
-cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 今天吃什么 - 一次推荐早餐/午餐/晚餐/夜宵\n.食灵 忌口 [关键词...] - 设置个人忌口(如: 牛肉 香菜)\n.食灵 忌口查看 - 查看个人忌口\n.食灵 忌口清空 - 清空个人忌口\n.食灵 忌饮 [关键词...] - 设置个人不喝(如: 奶茶 可乐)\n.食灵 忌饮查看 - 查看个人不喝\n.食灵 忌饮清空 - 清空个人不喝\n.食灵 菜单/.饮单 - 查看总菜单\n.食灵 私有菜单/.私有饮单 - 查看本地私有菜单\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 添加到本地私有菜单\n.食灵 云加菜 [时段] <菜名> - 提交到云端待审核\n.食灵 删菜 <时段> <菜名> - 删除本地私有菜品\n.食灵 云删菜 <时段> <菜名> - 申请删除云端菜品\n.食灵 加饮 <饮名> - 添加到本地私有饮单\n.食灵 云加饮 <饮名> - 提交到云端饮品\n.食灵 删饮 <饮名> - 删除本地私有饮品\n.食灵 云删饮 <饮名> - 申请删除云端饮品\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
+cmd.help = '.食灵 吃什么/.喝什么 - 推荐\n.食灵 今天吃什么 - 一次推荐早餐/午餐/晚餐/夜宵\n.食灵 忌口 [关键词...] - 设置个人忌口(如: 牛肉 香菜)\n.食灵 忌口查看 - 查看个人忌口\n.食灵 忌口清空 - 清空个人忌口\n.食灵 忌饮 [关键词...] - 设置个人不喝(如: 奶茶 可乐)\n.食灵 忌饮查看 - 查看个人不喝\n.食灵 忌饮清空 - 清空个人不喝\n.食灵 菜单/.饮单 - 查看总菜单\n.食灵 本地菜单/.本地饮单 - 查看本地菜单\n.食灵 公告 - 查看公告\n.食灵 加菜 [时段] <菜名> - 添加到本地菜单\n.食灵 云加菜 [时段] <菜名> - 提交到云端待审核\n.食灵 删菜 <时段> <菜名> - 删除本地菜品\n.食灵 云删菜 <时段> <菜名> - 申请删除云端菜品\n.食灵 加饮 <饮名> - 添加到本地饮单\n.食灵 云加饮 <饮名> - 提交到云端饮品\n.食灵 删饮 <饮名> - 删除本地饮品\n.食灵 云删饮 <饮名> - 申请删除云端饮品\n.食灵 刷新 - 刷新数据\n.食灵 登录 - 获取Token';
 
 cmd.solve = (ctx, msg, cmdArgs) => {
   const text = (cmdArgs.rawArgs || '').trim();
@@ -565,9 +565,9 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  if (text === '私有菜单' || text === '本地菜单') {
+  if (text === '本地菜单') {
     const local = Data.loadLocal();
-    const lines = ['=== 本地私有菜单 ==='];
+    const lines = ['=== 本地菜单 ==='];
     let hasData = false;
     for (const p of CONFIG.periods.food.order) {
       const items = local.food?.[p] || [];
@@ -580,7 +580,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       hasData = true;
       lines.push('通用池: ' + local.extraPool.join('、'));
     }
-    seal.replyToSender(ctx, msg, hasData ? lines.join('\n') : '暂无本地私有菜品，使用 .食灵 加菜 添加');
+    seal.replyToSender(ctx, msg, hasData ? lines.join('\n') : '暂无本地菜品，使用 .食灵 加菜 添加');
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -593,7 +593,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  if (text === '私有饮单' || text === '本地饮单') {
+  if (text === '本地饮单') {
     const local = Data.loadLocal();
     const all = [
       ...(local.drink?.morning || []),
@@ -601,7 +601,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       ...(local.drink?.evening || []),
       ...(local.drink?.night || [])
     ].filter((v, i, a) => a.indexOf(v) === i);
-    seal.replyToSender(ctx, msg, all.length ? ('=== 本地私有饮品 ===\n' + all.join('、')) : '暂无本地私有饮品，使用 .食灵 加饮 添加');
+    seal.replyToSender(ctx, msg, all.length ? ('=== 本地饮品 ===\n' + all.join('、')) : '暂无本地饮品，使用 .食灵 加饮 添加');
     return seal.ext.newCmdExecuteResult(true);
   }
   
@@ -658,7 +658,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     const ok = Data.addLocalFood(period, name);
     const target = period ? CONFIG.periods.food.names[period] : '通用池';
-    seal.replyToSender(ctx, msg, ok ? `已将「${name}」添加到本地私有菜单(${target})` : `「${name}」已存在于本地私有菜单(${target})`);
+    seal.replyToSender(ctx, msg, ok ? `已将「${name}」添加到本地菜单(${target})` : `「${name}」已存在于本地菜单(${target})`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -684,7 +684,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
     }
     const ok = Data.removeLocalFood(period, name);
     const target = period ? CONFIG.periods.food.names[period] : '通用池';
-    seal.replyToSender(ctx, msg, ok ? `已从本地私有菜单(${target})中移除「${name}」` : `本地私有菜单(${target})中未找到「${name}」`);
+    seal.replyToSender(ctx, msg, ok ? `已从本地菜单(${target})中移除「${name}」` : `本地菜单(${target})中未找到「${name}」`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -711,7 +711,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       return seal.ext.newCmdExecuteResult(true);
     }
     const ok = Data.addLocalDrink(name);
-    seal.replyToSender(ctx, msg, ok ? `已将「${name}」添加到本地私有饮品` : `「${name}」已存在于本地私有饮品中`);
+    seal.replyToSender(ctx, msg, ok ? `已将「${name}」添加到本地饮品` : `「${name}」已存在于本地饮品中`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -734,7 +734,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
       return seal.ext.newCmdExecuteResult(true);
     }
     const ok = Data.removeLocalDrink(name);
-    seal.replyToSender(ctx, msg, ok ? `已从本地私有饮品中移除「${name}」` : `本地私有饮品中未找到「${name}」`);
+    seal.replyToSender(ctx, msg, ok ? `已从本地饮品中移除「${name}」` : `本地饮品中未找到「${name}」`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
