@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name 联合技能检定
 // @author 铭茗
-// @version 1.1.0
+// @version 1.1.1
 // @description COC7联合技能检定：投一个骰子与多个技能比较，支持技能默认值
 // @timestamp 1742716800
 // @license apache2.0
@@ -15,7 +15,7 @@
  * 支持COC7规则：优先使用玩家录入值，未录入则使用技能默认值
  */
 //请支持铭茗喵，有问题发给我QQ:3029590078
-const ext = seal.ext.new('联合技能检定', '铭茗', '1.1.0');
+const ext = seal.ext.new('联合技能检定', '铭茗', '1.1.1');
 const cmdCombined = seal.ext.newCmdItemInfo();
 
 cmdCombined.name = 'ram';
@@ -106,12 +106,12 @@ function checkResult(d100, attrValue) {
 }
 
 function getResultText(successRank, passed) {
-    if (successRank === 5) return '大成功！';
     if (successRank === -1) return '大失败';
+    if (!passed) return '失败';
+    if (successRank === 5) return '大成功';
     if (successRank === 4) return '极难成功';
     if (successRank === 3) return '困难成功';
-    if (successRank === 2) return '成功';
-    return '失败';
+    return '成功';
 }
 
 function getDifficultyText(difficulty) {
@@ -255,7 +255,7 @@ cmdCombined.solve = (ctx, msg, cmdArgs) => {
         reply += `${status} ${r.displayName}${diffText}: ${valueText} ${r.resultText}\n`;
     }
     //之前真的好难看
-    reply += `─────────────\n最终结果: ${overallPassed ? '成功！' : '失败'}`;
+    reply += `─────────────\n最终结果: ${overallPassed ? '成功！' : '失败！'}`;
     
     if (mode === 'any' && anyPassed) {
         reply += ` (${results.filter(r => r.passed).length}/${results.length}通过)`;
