@@ -106,7 +106,7 @@ function checkResult(d100, attrValue) {
 }
 
 function getResultText(successRank, passed) {
-    if (successRank === 5) return '大成功';
+    if (successRank === 5) return '大成功！';
     if (successRank === -1) return '大失败';
     if (successRank === 4) return '极难成功';
     if (successRank === 3) return '困难成功';
