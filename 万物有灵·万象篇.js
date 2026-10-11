@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.5
+// @version     3.2.7
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696320
 // @license     Apache-2
@@ -66,6 +66,11 @@ const TaskNotifier = {
     };
   },
 
+  clear(uid) {
+    if (uid) delete this.userContexts[uid];
+    else this.userContexts = {};
+  },
+
   // 发送通知给用户
   notify(uid, text) {
     const context = this.userContexts[uid];
@@ -122,6 +127,7 @@ const TaskNotifier = {
         if (notifications.length > 0) {
           this.notify(uid, notifications.join('\n\n'));
           saveUserData(main, uid, userData);
+          this.clear(uid);
 
           // 清理已通知的任务
           data.explore = (data.explore || []).filter(e => e.endTime > now || !e.notified);
@@ -164,6 +170,21 @@ function getPetCapacity(main, data) {
     maxPets: main?.Config?.maxPets || 3,
     maxStorage: data?.maxStorage || main?.Config?.maxStorage || 15,
   };
+}
+
+function addPetToAvailableSlot(main, data, pet) {
+  const capacity = getPetCapacity(main, data);
+  data.pets = data.pets || [];
+  data.storage = data.storage || [];
+  if (data.pets.length < capacity.maxPets) {
+    data.pets.push(pet);
+    return 'team';
+  }
+  if (data.storage.length < capacity.maxStorage) {
+    data.storage.push(pet);
+    return 'storage';
+  }
+  return null;
 }
 
 function normalizePetState(pet) {
@@ -271,16 +292,15 @@ function loadMarket() {
 }
 function saveMarket() {
   const main = getMain();
-  if (main?.saveMarketData) {
-    main.saveMarketData(marketData);
-    return;
-  }
+  if (main?.saveMarketData) return main.saveMarketData(marketData) !== false;
   const sharedStorage = getSharedStorage(main);
-  if (sharedStorage?.setJSON) {
-    sharedStorage.setJSON('market_global', marketData);
-    return;
+  if (sharedStorage?.setJSON) return sharedStorage.setJSON('market_global', marketData) !== false;
+  try {
+    ext.storageSet('market_global', JSON.stringify(marketData));
+    return true;
+  } catch {
+    return false;
   }
-  ext.storageSet('market_global', JSON.stringify(marketData));
 }
 
 // ==================== 配置定义 ====================
@@ -429,14 +449,16 @@ function getCurrentFestival() {
   });
 }
 
-function getEquipStats(pet, equipData) {
-  const equipped = equipData.equipped[pet.id] || {};
-  let bonus = { atk: 0, def: 0, hp: 0, luck: 0, spd: 0 };
-  Object.values(equipped).forEach(name => {
-    const eq = EQUIPS[name];
-    if (eq) { if (eq.atk) bonus.atk += eq.atk; if (eq.def) bonus.def += eq.def; if (eq.hp) bonus.hp += eq.hp; if (eq.luck) bonus.luck += eq.luck; if (eq.spd) bonus.spd += eq.spd; }
-  });
-  return bonus;
+function getSeasonalArea() {
+  return SEASONAL_AREAS[getCurrentSeason()];
+}
+
+function getSeasonalRewardRate() {
+  const festival = getCurrentFestival();
+  return {
+    gold: festival?.bonus?.gold || 1,
+    exp: festival?.bonus?.exp || 1,
+  };
 }
 
 function getRandomSkillDrop(type, area) {
@@ -477,8 +499,25 @@ function scaleRangeReward(range, rate) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function grantTaskExp(pet, amount) {
+  const exp = Math.max(0, Math.floor(amount));
+  pet.exp = (pet.exp || 0) + exp;
+  let levels = 0;
+  while (pet.exp >= (pet.level || 1) * 100) {
+    pet.exp -= (pet.level || 1) * 100;
+    pet.level = (pet.level || 1) + 1;
+    pet.maxHp = (pet.maxHp || 50) + 5;
+    pet.hp = Math.min(pet.maxHp, (pet.hp || 0) + 5);
+    pet.atk = (pet.atk || 1) + 2;
+    pet.def = (pet.def || 1) + 2;
+    levels++;
+  }
+  return { exp, levels };
+}
+
 function completeExploreTask(uid, playerData, data, task) {
-  const area = EXPLORE_AREAS.find(a => a.name === task.area);
+  const seasonalArea = getSeasonalArea();
+  const area = [...EXPLORE_AREAS, seasonalArea].find(a => a.name === task.area);
   if (!area) return null;
   const found = findPetById(playerData, task.petId);
   if (!found) return null;
@@ -490,13 +529,35 @@ function completeExploreTask(uid, playerData, data, task) {
     r += '遭遇危险受伤！\n';
   }
   const rewardRate = getTaskRewardRate(data, 'explore');
-  const gold = scaleRangeReward(area.gold, rewardRate.rate);
+  const seasonalRate = getSeasonalRewardRate();
+  const gold = Math.floor(scaleRangeReward(area.gold, rewardRate.rate) * seasonalRate.gold);
+  const expResult = grantTaskExp(pet, 10 * seasonalRate.exp);
   root.money = (root.money || 0) + gold;
-  r += `获得 ${gold} 金币${rewardRate.rate < 1 ? '（收益递减）' : ''}\n`;
+  r += `获得 ${gold} 金币${rewardRate.rate < 1 ? '（收益递减）' : ''}\n获得 ${expResult.exp} 经验${expResult.levels ? `，升级${expResult.levels}级` : ''}\n`;
   const food = area.foods[Math.floor(Math.random() * area.foods.length)];
   root.food = root.food || {};
   root.food[food] = (root.food[food] || 0) + 1;
   r += `获得 ${food} x1`;
+  if (area === seasonalArea && Math.random() < 0.15) {
+    const main = getMain();
+    const seasonalPet = SEASONAL_PETS[getCurrentSeason()][Math.floor(Math.random() * SEASONAL_PETS[getCurrentSeason()].length)];
+    const pet = main?.PetFactory?.create ? main.PetFactory.create(0, false, seasonalPet.species) : null;
+    if (!pet) return `${r}\n季节限定宠物生成失败`;
+    pet.name = seasonalPet.species;
+    pet.species = seasonalPet.species;
+    pet.element = seasonalPet.element;
+    pet.rarity = seasonalPet.rarity;
+    Object.entries(seasonalPet.bonus || {}).forEach(([key, value]) => {
+      if (key === 'hp') { pet.maxHp += value; pet.hp = pet.maxHp; }
+      else if (key === 'energy') { pet.maxEnergy += value; pet.energy = pet.maxEnergy; }
+      else pet[key] = (pet[key] || 0) + value;
+    });
+    const location = addPetToAvailableSlot(main, root, pet);
+    if (location) {
+      r += `\n发现季节限定宠物【${pet.name}】并收入${location === 'team' ? '队伍' : '仓库'}！`;
+      main.emit('capture', { uid, pet });
+    }
+  }
   const skillBook = getRandomSkillDrop('explore', area.name);
   if (skillBook && Math.random() < 0.1) {
     const sbData = DB.skillbook.get(uid);
@@ -521,9 +582,11 @@ function completeWorkTask(uid, playerData, data, task) {
   const pet = found.pet;
   const root = playerData?.data || playerData;
   const rewardRate = getTaskRewardRate(data, 'work');
-  const gold = scaleRangeReward(work.gold, rewardRate.rate);
+  const seasonalRate = getSeasonalRewardRate();
+  const gold = Math.floor(scaleRangeReward(work.gold, rewardRate.rate) * seasonalRate.gold);
+  const expResult = grantTaskExp(pet, 10 * seasonalRate.exp);
   root.money = (root.money || 0) + gold;
-  let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币${rewardRate.rate < 1 ? '（收益递减）' : ''}`;
+  let r = `${pet.name} 完成${work.name}，获得 ${gold} 金币${rewardRate.rate < 1 ? '（收益递减）' : ''}，获得 ${expResult.exp} 经验${expResult.levels ? `，升级${expResult.levels}级` : ''}`;
   const skillBook = getRandomSkillDrop('work', work.name);
   if (skillBook && Math.random() < 0.05) {
     const sbData = DB.skillbook.get(uid);
@@ -618,40 +681,6 @@ function addMarketItemToOwner(main, uid, item) {
   return true;
 }
 
-function takeMarketItemFromSeller(main, uid, itemName, count) {
-  const data = getUserData(main, uid);
-  if (!data) return { success: false };
-  data.playerItems = data.playerItems || {};
-  data.items = data.items || {};
-  if ((data.playerItems[itemName] || 0) >= count) {
-    data.playerItems[itemName] -= count;
-    if (data.playerItems[itemName] <= 0) delete data.playerItems[itemName];
-    saveUserData(main, uid, data);
-    return { success: true, source: 'playerItems' };
-  }
-  if ((data.items[itemName] || 0) >= count) {
-    data.items[itemName] -= count;
-    if (data.items[itemName] <= 0) delete data.items[itemName];
-    saveUserData(main, uid, data);
-    return { success: true, source: 'items' };
-  }
-  const eq = DB.equip.get(uid);
-  if ((eq.bag[itemName] || 0) >= count) {
-    eq.bag[itemName] -= count;
-    if (eq.bag[itemName] <= 0) delete eq.bag[itemName];
-    DB.equip.save(uid, eq);
-    return { success: true, source: 'equip' };
-  }
-  const sb = DB.skillbook.get(uid);
-  if ((sb.books[itemName] || 0) >= count) {
-    sb.books[itemName] -= count;
-    if (sb.books[itemName] <= 0) delete sb.books[itemName];
-    DB.skillbook.save(uid, sb);
-    return { success: true, source: 'skillbook' };
-  }
-  return { success: false };
-}
-
 function prepareMarketItemFromSeller(main, uid, itemName, count) {
   const data = getUserData(main, uid);
   if (!data) return { success: false };
@@ -734,10 +763,8 @@ function cleanExpired() {
       try {
         const sellerData = getUserData(main, item.sellerId);
         if (sellerData) {
-          const capacity = getPetCapacity(main, sellerData);
-          sellerData.storage = sellerData.storage || [];
-          if (sellerData.storage.length < capacity.maxStorage) {
-            sellerData.storage.push(normalizePetState(item.pet));
+          const recoveredPet = normalizePetState(item.pet);
+          if (addPetToAvailableSlot(main, sellerData, recoveredPet)) {
             saveUserData(main, item.sellerId, sellerData);
             recovered = true;
           }
@@ -775,7 +802,29 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.5', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [] });
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.7', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
+    onUnload() {
+      if (TaskNotifier._interval) clearInterval(TaskNotifier._interval);
+      TaskNotifier.clear();
+    },
+  });
+
+  // 接入季节和节日的核心概率计算
+  main.on('captureChance', (payload) => {
+    const festival = getCurrentFestival();
+    if (festival?.bonus?.captureChance) {
+      payload.captureRate += festival.bonus.captureChance;
+    }
+    return payload;
+  }, 'wanwu-all', { mode: 'hook', key: 'season-capture-chance' });
+
+  main.on('breedChance', (payload) => {
+    const festival = getCurrentFestival();
+    if (festival?.bonus?.breedChance) {
+      payload.twinChance += festival.bonus.breedChance;
+    }
+    return payload;
+  }, 'wanwu-all', { mode: 'hook', key: 'festival-breed-chance' });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -803,6 +852,13 @@ function init() {
   }, 'wanwu-all', '万象篇');
 
   main.on('battle', ({ uid, winner, draw, isNPC, targetUid, pet1, mode, playerMode }) => {
+    const extData = DB.ext.get(uid);
+    const arena = extData.arenaPending;
+    const arenaBattle = !isNPC && mode === 'pvp' && arena && arena.targetUid === targetUid && arena.expiresAt > Date.now();
+    if (arena && (!arenaBattle || arena.expiresAt <= Date.now())) {
+      delete extData.arenaPending;
+      DB.ext.save(uid, extData);
+    }
     if (draw) return;
 
     const data = DB.achievement.get(uid);
@@ -827,9 +883,8 @@ function init() {
       DB.achievement.save(uid, data);
     }
 
-    // 竞技场积分
-    if (!isNPC && targetUid) {
-      const extData = DB.ext.get(uid);
+    // 竞技场积分只结算由竞技场入口发起的对局
+    if (arenaBattle && targetUid) {
       const targetData = DB.ext.get(targetUid);
       if (extData && targetData) {
         // 积分变化基于双方分差计算，更公平
@@ -876,9 +931,18 @@ function init() {
   // ========== 竞技场 ==========
   main.registerCommand('竞技场', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
-    p.reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}`);
+    if (p.p1 === '挑战' || p.p1 === 'challenge') {
+      const target = p.p2 || '';
+      if (!target) return replyAndDone(p, '用法: .宠物 竞技场 挑战 <QQ号> [己方宠物编号]');
+      const petIndex = p.p3 || '1';
+      data.arenaPending = { targetUid: target.startsWith('QQ:') ? target : `QQ:${target}`, petIndex, expiresAt: Date.now() + 10 * 60 * 1000 };
+      DB.ext.save(p.uid, data);
+      p.reply(`竞技场挑战已发起：对手 ${target}\n请在10分钟内使用 .宠物 对战 ${petIndex} ${target} 完成结算`);
+      return seal.ext.newCmdExecuteResult(true);
+    }
+    p.reply(`【竞技场】\n积分: ${data.arenaRank || 1000}\n胜场: ${data.arenaWins || 0}\n用法: .宠物 竞技场 挑战 <QQ号> [己方宠物编号]`);
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看竞技场', 'wanwu-all', '万象篇');
+  }, '查看竞技场或发起挑战', 'wanwu-all', '万象篇');
 
   // ========== 成就 ==========
   main.registerCommand('成就', (ctx, msg, p) => {
@@ -904,7 +968,7 @@ function init() {
     const mainData = getUserData(main, p.uid);
     const lines = ['【宠物装备商店】', `金币: ${mainData.money}`];
     Object.entries(EQUIPS).forEach(([name, eq]) => {
-      const e = []; if (eq.atk) e.push(`攻+${eq.atk}`); if (eq.def) e.push(`防+${eq.def}`); if (eq.hp) e.push(`血+${eq.hp}`); if (eq.spd) e.push(`速+${eq.spd}`);
+      const e = []; if (eq.atk) e.push(`攻+${eq.atk}`); if (eq.def) e.push(`防+${eq.def}`); if (eq.hp) e.push(`血+${eq.hp}`); if (eq.spd) e.push(`速+${eq.spd}`); if (eq.luck) e.push(`幸+${eq.luck}`);
       lines.push(`[${EQUIP_TYPES[eq.type].name}] ${name}: ${eq.cost}金 (${e.join(',')})`);
     });
     p.reply(lines.join('\n'));
@@ -951,6 +1015,7 @@ function init() {
         if (oldEq.def) pet.def = Math.max(1, (pet.def || 10) - oldEq.def);
         if (oldEq.hp) { pet.maxHp = Math.max(10, (pet.maxHp || 50) - oldEq.hp); pet.hp = Math.min(pet.hp, pet.maxHp); }
         if (oldEq.spd) pet.spd = Math.max(1, (pet.spd || 100) - oldEq.spd);
+        if (oldEq.luck) pet.luck = Math.max(0, (pet.luck || 0) - oldEq.luck);
       }
       data.bag[oldName] = (data.bag[oldName] || 0) + 1;
     }
@@ -964,7 +1029,8 @@ function init() {
     if (eq.def) pet.def = (pet.def || 10) + eq.def;
     if (eq.hp) { pet.maxHp = (pet.maxHp || 50) + eq.hp; pet.hp = Math.min(pet.hp + eq.hp, pet.maxHp); }
     if (eq.spd) pet.spd = (pet.spd || 100) + eq.spd;
-    
+    if (eq.luck) pet.luck = (pet.luck || 0) + eq.luck;
+
     DB.equip.save(p.uid, data);
     saveUserData(main, p.uid, mainData);
     p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}\n${getRandomTip()}`);
@@ -1090,7 +1156,12 @@ function init() {
     if (prepared.source !== 'playerItems' && prepared.source !== 'items' && (mainData.money || 0) < listingTax) return replyAndDone(p, `上架需要手续费${listingTax}金币`);
     if (!commitPreparedMarketItem(main, p.uid, target, count, prepared, listingTax)) return replyAndDone(p, '挂售失败，请稍后再试');
     marketData.listings[listingId] = { type: 'item', itemName: target, count, source: prepared.source, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
-    saveMarket();
+    if (!saveMarket()) {
+      addMarketItemToOwner(main, p.uid, marketData.listings[listingId]);
+      delete marketData.listings[listingId];
+      saveMarket();
+      return replyAndDone(p, '挂售失败，物品已退回');
+    }
     p.reply(`已挂售 ${target}x${count} ${price}金 #${listingId.slice(-6)}${listingTax ? `\n已扣上架费${listingTax}金币` : ''}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '挂售宠物', 'wanwu-all', '万象篇');
@@ -1119,6 +1190,10 @@ function init() {
     }
 
     const lockedItem = { ...item, processingAt: Date.now() };
+    const buyerSnapshot = JSON.parse(JSON.stringify(mainData));
+    const sellerSnapshot = JSON.parse(JSON.stringify(sellerData));
+    const equipSnapshot = item.type === 'item' && item.source === 'equip' ? DB.equip.get(p.uid) : null;
+    const skillbookSnapshot = item.type === 'item' && item.source === 'skillbook' ? DB.skillbook.get(p.uid) : null;
     delete marketData.listings[listingId];
     saveMarket();
     try {
@@ -1141,14 +1216,18 @@ function init() {
         }
       } else {
         const adoptedPet = normalizePetState(item.pet);
-        const capacity = getPetCapacity(main, mainData);
-        if (mainData.pets.length < capacity.maxPets) mainData.pets.push(adoptedPet);
-        else mainData.storage.push(adoptedPet);
+        if (!addPetToAvailableSlot(main, mainData, adoptedPet)) {
+          throw new Error('购买后宠物空间不足');
+        }
       }
       sellerData.money = (sellerData.money || 0) + Math.floor(item.price * (1 - MARKET_CONFIG.taxRate));
       saveUserData(main, p.uid, mainData);
       saveUserData(main, item.sellerId, sellerData);
     } catch (e) {
+      saveUserData(main, p.uid, buyerSnapshot);
+      saveUserData(main, item.sellerId, sellerSnapshot);
+      if (equipSnapshot) DB.equip.save(p.uid, equipSnapshot);
+      if (skillbookSnapshot) DB.skillbook.save(p.uid, skillbookSnapshot);
       marketData.listings[listingId] = lockedItem;
       saveMarket();
       console.log('[万物有灵-万象篇] 市场交易失败，已恢复挂单:', e);
@@ -1171,10 +1250,9 @@ function init() {
     if (item.type === 'pet') {
       const data = getUserData(main, p.uid);
       if (!data) return replyAndDone(p, '读取玩家数据失败');
-      const capacity = getPetCapacity(main, data);
-      data.storage = data.storage || [];
-      if (data.storage.length >= capacity.maxStorage) return replyAndDone(p, '仓库已满，暂时无法取回宠物');
-      data.storage.push(normalizePetState(item.pet));
+      if (!addPetToAvailableSlot(main, data, normalizePetState(item.pet))) {
+        return replyAndDone(p, '队伍和仓库都已满，暂时无法取回宠物');
+      }
       saveUserData(main, p.uid, data);
     } else if (!addMarketItemToOwner(main, p.uid, item)) {
       return replyAndDone(p, '取回物品失败，请稍后再试');
@@ -1252,17 +1330,11 @@ function init() {
 
     const item = shelter[listingId];
     const mainData = getUserData(main, p.uid);
-    if (mainData.money < item.price) return replyAndDone(p, `金币不足，需要 ${item.price} 金币`);
+    if (!mainData || (mainData.money || 0) < item.price) return replyAndDone(p, `金币不足，需要 ${item.price} 金币`);
 
-    mainData.money -= item.price;
     const rescuedPet = normalizePetState(item.pet);
-    const capacity = getPetCapacity(main, mainData);
-    if (mainData.pets.length < capacity.maxPets) mainData.pets.push(rescuedPet);
-    else {
-      mainData.storage = mainData.storage || [];
-      if (mainData.storage.length >= capacity.maxStorage) return replyAndDone(p, '仓库已满，无法领养');
-      mainData.storage.push(rescuedPet);
-    }
+    if (!addPetToAvailableSlot(main, mainData, rescuedPet)) return replyAndDone(p, '队伍和仓库都已满，无法领养');
+    mainData.money -= item.price;
     saveUserData(main, p.uid, mainData);
 
     delete shelter[listingId];
@@ -1290,8 +1362,9 @@ function init() {
     const pet = result.pet;
     if (pet.hp <= 0) return replyAndDone(p, '宠物已阵亡，无法探险');
     if (pet.energy < 15) return replyAndDone(p, '宠物精力不足，需要15点精力');
-    const area = EXPLORE_AREAS.find(a => a.name === p.p2);
-    if (!area) return replyAndDone(p, `未知区域\n可用: ${EXPLORE_AREAS.map(a => a.name).join('、')}`);
+    const seasonalArea = getSeasonalArea();
+    const area = [...EXPLORE_AREAS, seasonalArea].find(a => a.name === p.p2);
+    if (!area) return replyAndDone(p, `未知区域\n可用: ${[...EXPLORE_AREAS, seasonalArea].map(a => a.name).join('、')}`);
 
     const data = DB.ext.get(p.uid);
     const now = Date.now();

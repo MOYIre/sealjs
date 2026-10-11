@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.6
+// @version     4.8
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.6');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.8');
   seal.ext.register(ext);
 }
 
@@ -2190,7 +2190,7 @@ const WorldBossManager = {
 
 //   繁殖优化
 const BreedManager = {
-  breed(data, pet1Idx, pet2Idx) {
+  breed(data, pet1Idx, pet2Idx, uid) {
     // 索引有效性检查
     if (pet1Idx < 1 || pet2Idx < 1 || pet1Idx > data.pets.length || pet2Idx > data.pets.length) {
       return { success: false, msg: '宠物编号无效' };
@@ -2220,7 +2220,14 @@ const BreedManager = {
     if (needCard2 && !data.items['计划生育卡']) return { success: false, msg: `${p2.name}已育种${breedCount2}次，需要计划生育卡` };
 
     const hasTwinPotion = data.items['多胞胎药水'] > 0;
-    const isTwin = hasTwinPotion || Math.random() < 0.08;
+    const breedChance = WanwuYouling.runHook('breedChance', {
+      uid,
+      data,
+      pet1: p1,
+      pet2: p2,
+      twinChance: 0.08,
+    });
+    const isTwin = hasTwinPotion || Math.random() < Math.max(0, Math.min(1, breedChance.twinChance));
     const babyCount = isTwin ? 2 : 1;
 
     if (data.pets.length + babyCount > CONFIG.maxPets && (data.storage || []).length + babyCount > CONFIG.maxStorage) {
@@ -3839,6 +3846,18 @@ function formatAttrDelta(attrs = {}) {
     .join(' ');
 }
 
+function grantPlayerExp(player, amount) {
+  player.exp = (player.exp || 0) + Math.max(0, Math.floor(amount));
+  let levels = 0;
+  while (player.exp >= (PLAYER_EXP_TABLE[player.level] || player.level * 500)) {
+    player.exp -= PLAYER_EXP_TABLE[player.level] || player.level * 500;
+    player.level = (player.level || 1) + 1;
+    applyPlayerRaceGrowth(player);
+    levels++;
+  }
+  return levels;
+}
+
 // 玩家战斗技能 (v3.6.9 仙侠风)
 const PLAYER_SKILLS = ['灵击', '灵刃', '护盾'];
 
@@ -4078,8 +4097,11 @@ const Battle = {
       dmg *= critMult;
     }
 
-    // 幸运天赋：暴击率+5%
-    if (attacker?.talent === '幸运' && Math.random() < TALENTS['幸运'].critMod) {
+    // 幸运天赋和装备：提升暴击率
+    const luckCrit = (attacker?.luck || 0) / 100;
+    if (attacker?.talent === '幸运' && Math.random() < TALENTS['幸运'].critMod + luckCrit) {
+      dmg *= 1.5;
+    } else if (luckCrit > 0 && Math.random() < luckCrit) {
       dmg *= 1.5;
     }
 
@@ -5060,12 +5082,9 @@ function checkItemConditions(conditions, context) {
       case 'custom': {
         const handler = condition.handler || 'default';
         const params = condition.params || {};
-        const customResult = WanwuYouling.emit('customItemCondition', { uid, handler, params, condition, data, context });
-        if (customResult && customResult.length > 0) {
-          const firstResult = customResult[0];
-          if (firstResult && typeof firstResult.ok === 'boolean') return firstResult;
-        }
-        return { ok: true };
+        const customResult = WanwuYouling.runHook('customItemCondition', { uid, handler, params, condition, data, context, result: null });
+        if (customResult.result && typeof customResult.result.ok === 'boolean') return customResult.result;
+        return { ok: false, msg: `自定义条件【${handler}】没有可用处理器` };
       }
       default:
         return { ok: false, msg: `${condition.type || '未知'} 条件暂未支持` };
@@ -5194,8 +5213,8 @@ function executeItemEffect(effect, context) {
         case 'exp':
         case '经验':
           data.player = data.player || {};
-          data.player.totalExp = (data.player.totalExp || 0) + resAmount;
-          return { ok: true, msg: `获得经验 +${resAmount}` };
+          const expLevels = grantPlayerExp(data.player, resAmount);
+          return { ok: true, msg: `获得经验 +${resAmount}${expLevels ? `，升级${expLevels}级` : ''}` };
         default:
           return { ok: false, msg: `资源 ${resource} 暂不支持` };
       }
@@ -5328,6 +5347,7 @@ const HELP_PAGES = {
 
   训练师: `【训练师系统】
 .宠物 训练师 - 查看训练师信息
+.宠物 锻炼 <力量/敏捷/智力/体质> - 每日最多3次，消耗10精力和100金币
 .宠物 种族 - 查看可选玩家初始种族
 .宠物 种族 选择 <种族名> - 选择玩家初始种族(仅一次)
 .宠物 装备玩家 [装备名] - 装备训练师装备
@@ -6020,14 +6040,8 @@ cmd.solve = async (ctx, msg, argv) => {
         // 给玩家加经验
         const playerExpGain = Math.floor(expGain * 0.5);
         data.player = data.player || { level: 1, exp: 0, str: 10, agi: 10, int: 10, vit: 10, energy: 100, maxEnergy: 100, equipment: {}, skills: [], dailyTrain: 0, lastTrainDate: '' };
-        data.player.exp = (data.player.exp || 0) + playerExpGain;
-        const playerExpNeed = PLAYER_EXP_TABLE[data.player.level] || data.player.level * 500;
-        if (data.player.exp >= playerExpNeed) {
-          data.player.exp -= playerExpNeed;
-          data.player.level++;
-          const growth = applyPlayerRaceGrowth(data.player);
-          logs.push(`训练师升级到 Lv.${data.player.level}！${data.player.race || '精灵族'}成长：${formatAttrDelta(growth) || '全属性提升'}`);
-        }
+        const playerLevels = grantPlayerExp(data.player, playerExpGain);
+        if (playerLevels) logs.push(`训练师升级到 Lv.${data.player.level}！`);
 
         if (hasCharm) {
           // 有符咒，可以捕捉宠物
@@ -6041,6 +6055,8 @@ cmd.solve = async (ctx, msg, argv) => {
             // 玩家技能：神话契约
             if (data.player.skills?.includes('神话契约')) bonus += 0.05;
             captureRate = Math.min(0.2, baseRate + bonus);
+            const captureChance = WanwuYouling.runHook('captureChance', { uid, data, wildPet, captureRate });
+            captureRate = Math.max(0, Math.min(1, captureChance.captureRate));
             captureSuccess = Math.random() < captureRate;
 
             logs.push(`[捕捉] 捕捉概率: ${(captureRate * 100).toFixed(1)}%`);
@@ -6057,6 +6073,8 @@ cmd.solve = async (ctx, msg, argv) => {
             // 玩家技能：捕捉大师
             if (data.player.skills?.includes('捕捉大师')) captureRate += 0.1;
             captureRate = Math.min(0.9, captureRate);
+            const captureChance = WanwuYouling.runHook('captureChance', { uid, data, wildPet, captureRate });
+            captureRate = Math.max(0, Math.min(1, captureChance.captureRate));
             captureSuccess = Math.random() < captureRate;
 
             logs.push(`[捕捉] 捕捉概率: ${(captureRate * 100).toFixed(1)}%`);
@@ -7213,7 +7231,7 @@ cmd.solve = async (ctx, msg, argv) => {
   }
 
   //   进化系统
-  if (action === '进化') {
+  if (action === '进化' && !(p2 && !isNaN(parseInt(p2)))) {
     const pet = getPet(p1);
     if (!pet) return reply('请指定正确的宠物编号');
     const guardianKey = `${pet.species}:${pet.name}`;
@@ -7510,6 +7528,7 @@ cmd.solve = async (ctx, msg, argv) => {
       if (oldEquip.bonus.def) pet.def -= oldEquip.bonus.def;
       if (oldEquip.bonus.spd) pet.spd -= oldEquip.bonus.spd;
       if (oldEquip.bonus.energy) pet.maxEnergy -= oldEquip.bonus.energy;
+      if (oldEquip.bonus.luck) pet.luck = Math.max(0, (pet.luck || 0) - oldEquip.bonus.luck);
       // 移除旧装备技能
       if (oldEquip.skill && pet.skills) {
         pet.skills = pet.skills.filter(s => s !== oldEquip.skill);
@@ -7526,6 +7545,7 @@ cmd.solve = async (ctx, msg, argv) => {
     if (equip.bonus.def) pet.def += equip.bonus.def;
     if (equip.bonus.spd) pet.spd += equip.bonus.spd;
     if (equip.bonus.energy) pet.maxEnergy += equip.bonus.energy;
+    if (equip.bonus.luck) pet.luck = (pet.luck || 0) + equip.bonus.luck;
     // v3.6.10 新增：添加装备技能
     if (equip.skill && !pet.skills.includes(equip.skill)) {
       pet.skills.push(equip.skill);
@@ -7541,11 +7561,11 @@ cmd.solve = async (ctx, msg, argv) => {
 
   //   排行榜系统  
   if (action === '排行' || action === 'rank') {
-    const type = p1 || 'power';
-    const allData = {}; // 这里需要从全局存储获取所有玩家数据
-    // 简化：只显示当前玩家排名
-    const power = LeaderboardManager.calcPower(getPet(1) || { atk: 10, def: 10, hp: 50, spd: 100, level: 1 });
-    return reply(`【排行榜】\n你的最高潜能: ${power}\n\n排行榜功能需要多玩家数据支持`);
+    const type = ['power', 'level', 'count', 'money'].includes(p1) ? p1 : 'power';
+    const allData = {};
+    for (const playerId of Object.keys(DB.getNameMap())) allData[playerId] = DB.get(playerId);
+    const ranking = LeaderboardManager.formatRanking(allData, type);
+    return reply(`${ranking}\n\n类型: power/level/count/money`);
   }
 
   //   副本系统
@@ -8142,9 +8162,33 @@ cmd.solve = async (ctx, msg, argv) => {
   //   繁殖优化  
   if (action === '繁殖') {
     if (!p1 || !p2) return reply('用法: .宠物 繁殖 [宠物1编号] [宠物2编号]');
-    const result = BreedManager.breed(data, parseInt(p1), parseInt(p2));
+    const result = BreedManager.breed(data, parseInt(p1), parseInt(p2), uid);
     save();
     return reply(result.msg);
+  }
+
+  //   训练师锻炼
+  if (action === '锻炼' || action === '训练') {
+    const player = data.player;
+    const today = new Date().toISOString().slice(0, 10);
+    if (player.lastTrainDate !== today) {
+      player.lastTrainDate = today;
+      player.dailyTrain = 0;
+    }
+    const limit = 3;
+    if (player.dailyTrain >= limit) return reply(`今日锻炼次数已用完(${limit}次)`);
+    const attrNames = { 力量: 'str', 力: 'str', 敏捷: 'agi', 敏: 'agi', 智力: 'int', 智: 'int', 体质: 'vit', 体: 'vit' };
+    const attr = attrNames[p1] || p1;
+    if (!['str', 'agi', 'int', 'vit'].includes(attr)) return reply('用法: .宠物 锻炼 <力量/敏捷/智力/体质>');
+    if ((player.energy || 0) < 10) return reply('训练师精力不足，需要10点');
+    if ((data.money || 0) < 100) return reply('金币不足，需要100金币');
+    player.energy -= 10;
+    data.money -= 100;
+    player[attr] = (player[attr] || 10) + 1;
+    player.dailyTrain++;
+    const levels = grantPlayerExp(player, 50);
+    save();
+    return reply(`【锻炼完成】${attr === 'str' ? '力量' : attr === 'agi' ? '敏捷' : attr === 'int' ? '智力' : '体质'}+1\n训练师经验+50${levels ? `，升级${levels}级` : ''}\n今日次数: ${player.dailyTrain}/${limit}`);
   }
 
   //   玩家系统
@@ -8366,12 +8410,17 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.6',
+  version: '4.7',
   ext,
 
   DB: {
     get: (userId) => DB.get(userId),
     save: (userId, data) => DB.save(userId, data),
+    list: () => {
+      const users = {};
+      for (const uid of Object.keys(DB.getNameMap())) users[uid] = DB.get(uid);
+      return users;
+    },
   },
 
   Tips: {
@@ -8533,9 +8582,9 @@ const WanwuYouling = {
   },
   saveMarketData(data) {
     this._marketData = data;
-    if (!this.Storage.setJSON('market_global', data)) {
-      console.log('[万物有灵] 市场数据保存失败');
-    }
+    const saved = this.Storage.setJSON('market_global', data);
+    if (!saved) console.log('[万物有灵] 市场数据保存失败');
+    return saved;
   },
 
   _shelterMarket: null,
@@ -8844,6 +8893,15 @@ const WanwuYouling = {
     }
   },
 };
+
+WanwuYouling.registerMod({
+  id: 'wanwu-core',
+  name: '万物有灵核心',
+  version: WanwuYouling.version,
+  author: '铭茗',
+  description: '宠物养成与战斗核心',
+  dependencies: [],
+});
 
 if (typeof global !== 'undefined') {
   global.WanwuYouling = WanwuYouling;
