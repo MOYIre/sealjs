@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.8
+// @version     4.9
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.8');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.9');
   seal.ext.register(ext);
 }
 
@@ -2260,10 +2260,11 @@ const BreedManager = {
         child.species = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
       }
 
-      child.maxHp = Math.floor((p1.maxHp + p2.maxHp) / 2 * (0.9 + Math.random() * 0.2));
-      child.atk = Math.floor((p1.atk + p2.atk) / 2 * (0.9 + Math.random() * 0.2));
-      child.def = Math.floor((p1.def + p2.def) / 2 * (0.9 + Math.random() * 0.2));
-      child.spd = Math.floor((p1.spd + p2.spd) / 2 * (0.9 + Math.random() * 0.2));
+      const inheritance = (p1.talent === '血脉' || p2.talent === '血脉') ? 1.3 : 1;
+      child.maxHp = Math.floor((p1.maxHp + p2.maxHp) / 2 * (0.9 + Math.random() * 0.2) * inheritance);
+      child.atk = Math.floor((p1.atk + p2.atk) / 2 * (0.9 + Math.random() * 0.2) * inheritance);
+      child.def = Math.floor((p1.def + p2.def) / 2 * (0.9 + Math.random() * 0.2) * inheritance);
+      child.spd = Math.floor((p1.spd + p2.spd) / 2 * (0.9 + Math.random() * 0.2) * inheritance);
       child.hp = child.maxHp;
 
       const allSkills = [...(p1.skills || []), ...(p2.skills || [])];
@@ -5866,7 +5867,19 @@ cmd.solve = async (ctx, msg, argv) => {
     // 应用玩家技能被动效果
     const playerSkills = player.skills || [];
     const playerBuffs = {};
-    if (playerSkills.includes('战斗直觉')) playerBuffs.critBoost = 0.05;
+    const now = Date.now();
+    for (const [key, buff] of Object.entries(data.buffs || {})) {
+      if (buff.expiresAt && buff.expiresAt <= now) {
+        delete data.buffs[key];
+        continue;
+      }
+      Object.entries(buff).forEach(([name, value]) => {
+        if (name !== 'expiresAt' && name !== 'createdAt' && typeof value === 'number') {
+          playerBuffs[name] = (playerBuffs[name] || 0) + value;
+        }
+      });
+    }
+    if (playerSkills.includes('战斗直觉')) playerBuffs.critBoost = (playerBuffs.critBoost || 0) + 0.05;
     if (playerSkills.includes('元素亲和')) playerBuffs.elementBoost = 0.1;
     if (playerSkills.includes('生命链接')) playerBuffs.hpRegen = 0.02;
     if (playerSkills.includes('能量涌动')) playerBuffs.energySave = 0.1;
@@ -6611,7 +6624,19 @@ cmd.solve = async (ctx, msg, argv) => {
     }, player);
     const playerSkills = player.skills || [];
     const playerBuffs = {};
-    if (playerSkills.includes('战斗直觉')) playerBuffs.critBoost = 0.05;
+    const now = Date.now();
+    for (const [key, buff] of Object.entries(data.buffs || {})) {
+      if (buff.expiresAt && buff.expiresAt <= now) {
+        delete data.buffs[key];
+        continue;
+      }
+      Object.entries(buff).forEach(([name, value]) => {
+        if (name !== 'expiresAt' && name !== 'createdAt' && typeof value === 'number') {
+          playerBuffs[name] = (playerBuffs[name] || 0) + value;
+        }
+      });
+    }
+    if (playerSkills.includes('战斗直觉')) playerBuffs.critBoost = (playerBuffs.critBoost || 0) + 0.05;
     if (playerSkills.includes('元素亲和')) playerBuffs.elementBoost = 0.1;
     if (playerSkills.includes('生命链接')) playerBuffs.hpRegen = 0.02;
     if (playerSkills.includes('能量涌动')) playerBuffs.energySave = 0.1;
@@ -7099,8 +7124,12 @@ cmd.solve = async (ctx, msg, argv) => {
 
       case 'luck':
       case 'breed':
-      case 'speed':
         return reply(`${itemName} 在对应操作时自动使用`);
+      case 'speed': {
+        const result = WanwuYouling.runHook('speedItem', { uid, data, itemName, useItem, save });
+        if (!result.ok) return reply(result.msg || `${itemName} 当前无法使用`);
+        return reply(result.msg || `${itemName} 使用成功`);
+      }
 
       default:
         if (item.effect) {

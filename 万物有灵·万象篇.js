@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.7
+// @version     3.2.8
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696320
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.7');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.8');
   seal.ext.register(ext);
 }
 
@@ -224,7 +224,7 @@ const DB = {
       return data;
     },
     get(userId) {
-      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, pokedex: {}, explore: [], work: [], arenaWins: 0, arenaRank: 1000 };
+      const defaultData = { schemaVersion: EXT_SCHEMA_VERSION, pokedex: {}, explore: [], work: [], seasonalClaims: {}, arenaWins: 0, arenaRank: 1000 };
       try {
         const d = ext.storageGet('e_' + userId);
         if (!d) return defaultData;
@@ -831,7 +831,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.7', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.8', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
     onUnload() {
       if (TaskNotifier._interval) clearInterval(TaskNotifier._interval);
       TaskNotifier.clear();
@@ -854,6 +854,20 @@ function init() {
     }
     return payload;
   }, 'wanwu-all', { mode: 'hook', key: 'festival-breed-chance' });
+
+  main.on('speedItem', (payload) => {
+    const data = DB.ext.get(payload.uid);
+    const tasks = payload.itemName === '全速卡'
+      ? [...(data.explore || []), ...(data.work || [])]
+      : [...(data.explore || []), ...(data.work || [])].slice(0, 1);
+    if (!tasks.length) return { ok: false, msg: '当前没有可加速的探险或打工任务' };
+    tasks.forEach(task => { task.endTime = Date.now(); });
+    const messages = completeDueTasks(main, payload.uid, getUserData(main, payload.uid), data);
+    payload.useItem();
+    payload.save();
+    DB.ext.save(payload.uid, data);
+    return { ok: true, msg: `${payload.itemName}使用成功\n${messages.join('\n\n')}` };
+  }, 'wanwu-all', { mode: 'hook', key: 'task-speed-item' });
 
   // 启动任务通知系统
   TaskNotifier.startInterval(main);
@@ -1389,11 +1403,44 @@ function init() {
     const season = getCurrentSeason();
     const s = SEASONS[season], area = SEASONAL_AREAS[season], pets = SEASONAL_PETS[season];
     const festival = getCurrentFestival();
-    const lines = [`【${s.name}】`, `限定区域: ${area.name}`, `限定宠物: ${pets.map(x => x.species).join('、')}`];
+    if (p.p1 === '领取' || p.p1 === '获取') {
+      const target = pets.find(item => item.species === p.p2) || pets[0];
+      const extData = DB.ext.get(p.uid);
+      extData.seasonalClaims = extData.seasonalClaims || {};
+      const claimKey = `${season}:${target.species}`;
+      if (extData.seasonalClaims[claimKey]) return replyAndDone(p, '这只季节限定宠物本季已经领取过了');
+      const mainData = getUserData(main, p.uid);
+      if (!mainData) return replyAndDone(p, '读取玩家数据失败');
+      if (!addPetToAvailableSlot(main, mainData, {
+        id: `season_${Date.now().toString(36)}`,
+        name: target.species,
+        species: target.species,
+        element: target.element,
+        rarity: target.rarity,
+        level: 1,
+        maxHp: 50 + (target.bonus?.hp || 0),
+        hp: 50 + (target.bonus?.hp || 0),
+        atk: 10 + (target.bonus?.atk || 0),
+        def: 10 + (target.bonus?.def || 0),
+        spd: 100,
+        maxEnergy: 100 + (target.bonus?.energy || 0),
+        energy: 100 + (target.bonus?.energy || 0),
+        skills: ['冲撞'],
+        exp: 0,
+        affection: 50,
+        breedCount: 0,
+        canBreed: true,
+      })) return replyAndDone(p, '队伍和仓库都已满，无法领取限定宠物');
+      saveUserData(main, p.uid, mainData);
+      extData.seasonalClaims[claimKey] = Date.now();
+      DB.ext.save(p.uid, extData);
+      return replyAndDone(p, `已领取季节限定宠物【${target.species}】`);
+    }
+    const lines = [`【${s.name}】`, `限定区域: ${area.name}`, `限定宠物: ${pets.map(x => x.species).join('、')}`, '领取: .宠物 季节 领取 [宠物名]'];
     if (festival) lines.push(`[活动] ${festival.name}进行中`);
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
-  }, '查看季节', 'wanwu-all', '万象篇');
+  }, '查看季节或领取限定宠物', 'wanwu-all', '万象篇');
 
   // ========== 探险系统 ==========
   main.registerCommand('探险', (ctx, msg, p) => {
