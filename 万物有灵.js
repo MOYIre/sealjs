@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.9
+// @version     4.11
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.9');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.11');
   seal.ext.register(ext);
 }
 
@@ -5883,6 +5883,11 @@ cmd.solve = async (ctx, msg, argv) => {
     if (playerSkills.includes('元素亲和')) playerBuffs.elementBoost = 0.1;
     if (playerSkills.includes('生命链接')) playerBuffs.hpRegen = 0.02;
     if (playerSkills.includes('能量涌动')) playerBuffs.energySave = 0.1;
+    playerCombatAttrs.hp += playerBuffs.hp || 0;
+    playerCombatAttrs.atk += playerBuffs.atk || 0;
+    playerCombatAttrs.def += playerBuffs.def || 0;
+    playerCombatAttrs.spd += playerBuffs.spd || 0;
+    playerCombatAttrs.energy += playerBuffs.energy || 0;
 
     // 判断出战方式
     if (petIdx && petIdx !== '肉身') {
@@ -6640,6 +6645,11 @@ cmd.solve = async (ctx, msg, argv) => {
     if (playerSkills.includes('元素亲和')) playerBuffs.elementBoost = 0.1;
     if (playerSkills.includes('生命链接')) playerBuffs.hpRegen = 0.02;
     if (playerSkills.includes('能量涌动')) playerBuffs.energySave = 0.1;
+    playerCombatAttrs.hp += playerBuffs.hp || 0;
+    playerCombatAttrs.atk += playerBuffs.atk || 0;
+    playerCombatAttrs.def += playerBuffs.def || 0;
+    playerCombatAttrs.spd += playerBuffs.spd || 0;
+    playerCombatAttrs.energy += playerBuffs.energy || 0;
 
     // 己方玩家战斗单位
     const player1Fighter = {
@@ -8151,6 +8161,21 @@ cmd.solve = async (ctx, msg, argv) => {
     return reply('用法: .宠物 世界Boss [攻击/排行]');
   }
 
+  //   核心装备回收与销毁
+  if (action === '出售装备' || action === '销毁装备') {
+    const equipmentIndex = parseInt(p1);
+    if (!Number.isInteger(equipmentIndex) || equipmentIndex < 1 || !data.equipments?.[equipmentIndex - 1]) return reply('用法: .宠物 出售装备/销毁装备 <装备编号>');
+    const equip = data.equipments[equipmentIndex - 1];
+    data.equipments.splice(equipmentIndex - 1, 1);
+    if (action === '出售装备') {
+      data.money = (data.money || 0) + 10;
+      save();
+      return reply(`【系统回收】\n出售装备 ${equip.name}，获得10金币`);
+    }
+    save();
+    return reply(`已销毁装备 ${equip.name}`);
+  }
+
   //   出售系统
   if (action === '出售' || action === 'sell') {
     if (!p1) return reply('用法: .宠物 出售 [物品名/宠物编号] [数量]\n      编号: 1-3队伍, 4-18仓库\n      挂售到市场: .宠物 挂售 [物品名/编号] [价格]\n      说明: 装备/技能书/道具也可以出售给系统，系统默认以 10 金币回收装备/技能书。');
@@ -8158,7 +8183,7 @@ cmd.solve = async (ctx, msg, argv) => {
     // 首先检查是否是出售装备/技能书/道具
     const playerItems = data.playerItems || {};
     const items = data.items || {};
-    
+
     // 检查是否是玩家装备或技能书
     let isEquipOrBook = false;
     for (const [type, typeItems] of Object.entries(PLAYER_EQUIPMENT)) {

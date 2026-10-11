@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.8
+// @version     3.2.9
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696320
 // @license     Apache-2
@@ -518,23 +518,25 @@ function grantTaskExp(pet, amount) {
   return { exp, levels };
 }
 
-function completeDueTasks(main, uid, playerData, data) {
+function completeDueTasks(main, uid, playerData, data, selectedTasks = null) {
   const now = Date.now();
   const messages = [];
+  const selected = selectedTasks ? new Set(selectedTasks) : null;
   for (const task of [...(data.explore || [])]) {
-    if (task.endTime <= now && !task.notified) {
+    if ((!selected || selected.has(task)) && task.endTime <= now && !task.notified) {
       const result = completeExploreTask(uid, playerData, data, task);
       if (result) messages.push(`【探险完成】\n${result}`);
     }
   }
   for (const task of [...(data.work || [])]) {
-    if (task.endTime <= now && !task.notified) {
+    if ((!selected || selected.has(task)) && task.endTime <= now && !task.notified) {
       const result = completeWorkTask(uid, playerData, data, task);
       if (result) messages.push(`【打工完成】\n${result}`);
     }
   }
-  data.explore = (data.explore || []).filter(task => !task.notified);
-  data.work = (data.work || []).filter(task => !task.notified);
+  const shouldRemove = task => !selected || selected.has(task);
+  data.explore = (data.explore || []).filter(task => !shouldRemove(task) || !task.notified);
+  data.work = (data.work || []).filter(task => !shouldRemove(task) || !task.notified);
   return messages;
 }
 
@@ -831,7 +833,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.8', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.9', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
     onUnload() {
       if (TaskNotifier._interval) clearInterval(TaskNotifier._interval);
       TaskNotifier.clear();
@@ -862,7 +864,7 @@ function init() {
       : [...(data.explore || []), ...(data.work || [])].slice(0, 1);
     if (!tasks.length) return { ok: false, msg: '当前没有可加速的探险或打工任务' };
     tasks.forEach(task => { task.endTime = Date.now(); });
-    const messages = completeDueTasks(main, payload.uid, getUserData(main, payload.uid), data);
+    const messages = completeDueTasks(main, payload.uid, getUserData(main, payload.uid), data, tasks);
     payload.useItem();
     payload.save();
     DB.ext.save(payload.uid, data);
@@ -1039,6 +1041,58 @@ function init() {
     return seal.ext.newCmdExecuteResult(true);
   }, '查看宠物装备背包', 'wanwu-all', '万象篇');
 
+  main.registerCommand('出售宠物装备', (ctx, msg, p) => {
+    const name = p.p1;
+    const count = Math.max(1, parseInt(p.p2) || 1);
+    const data = DB.equip.get(p.uid);
+    if (!EQUIPS[name] || (data.bag[name] || 0) < count) return replyAndDone(p, '装备不存在或数量不足');
+    data.bag[name] -= count;
+    if (data.bag[name] <= 0) delete data.bag[name];
+    DB.equip.save(p.uid, data);
+    const total = Math.max(1, Math.floor(EQUIPS[name].cost * 0.5)) * count;
+    const mainData = getUserData(main, p.uid);
+    mainData.money = (mainData.money || 0) + total;
+    saveUserData(main, p.uid, mainData);
+    return replyAndDone(p, `已回收${name} x${count}，获得${total}金币`);
+  }, '出售宠物装备', 'wanwu-all', '万象篇');
+
+  main.registerCommand('销毁宠物装备', (ctx, msg, p) => {
+    const name = p.p1;
+    const count = Math.max(1, parseInt(p.p2) || 1);
+    const data = DB.equip.get(p.uid);
+    if (!EQUIPS[name] || (data.bag[name] || 0) < count) return replyAndDone(p, '装备不存在或数量不足');
+    data.bag[name] -= count;
+    if (data.bag[name] <= 0) delete data.bag[name];
+    DB.equip.save(p.uid, data);
+    return replyAndDone(p, `已销毁${name} x${count}`);
+  }, '销毁宠物装备', 'wanwu-all', '万象篇');
+
+  main.registerCommand('卸下装备', (ctx, msg, p) => {
+    const petIdx = parseInt(p.p1);
+    if (!petIdx) return replyAndDone(p, '用法: .宠物 卸下装备 <宠物编号> [装备类型]');
+    const mainData = getUserData(main, p.uid);
+    const pet = mainData?.pets?.[petIdx - 1];
+    if (!pet) return replyAndDone(p, '宠物不存在');
+    const data = DB.equip.get(p.uid);
+    const equipped = data.equipped[pet.id] || {};
+    const type = p.p2 ? EQUIP_TYPES[p.p2]?.slot ?? parseInt(p.p2) : null;
+    const slot = type === null ? Object.keys(equipped).find(key => equipped[key]) : String(type);
+    const name = slot === undefined ? null : equipped[slot];
+    const eq = name && EQUIPS[name];
+    if (!eq) return replyAndDone(p, '该宠物没有对应装备');
+    data.bag[name] = (data.bag[name] || 0) + 1;
+    delete equipped[slot];
+    data.equipped[pet.id] = equipped;
+    if (eq.atk) pet.atk = Math.max(1, (pet.atk || 10) - eq.atk);
+    if (eq.def) pet.def = Math.max(1, (pet.def || 10) - eq.def);
+    if (eq.hp) { pet.maxHp = Math.max(10, (pet.maxHp || 50) - eq.hp); pet.hp = Math.min(pet.hp, pet.maxHp); }
+    if (eq.spd) pet.spd = Math.max(1, (pet.spd || 100) - eq.spd);
+    if (eq.luck) pet.luck = Math.max(0, (pet.luck || 0) - eq.luck);
+    DB.equip.save(p.uid, data);
+    saveUserData(main, p.uid, mainData);
+    return replyAndDone(p, `${pet.name}已卸下${name}`);
+  }, '卸下宠物装备', 'wanwu-all', '万象篇');
+
   main.registerCommand('穿戴装备', (ctx, msg, p) => {
     const petIdx = parseInt(p.p1), equipName = p.p2;
     if (!petIdx || !equipName) return replyAndDone(p, '用法: .宠物 穿戴装备 <编号> <装备名>');
@@ -1049,7 +1103,9 @@ function init() {
     const eq = EQUIPS[equipName]; if (!eq) return replyAndDone(p, '未知装备');
     const slot = EQUIP_TYPES[eq.type].slot;
     const equipped = data.equipped[pet.id] || {};
-    
+    const mainSnapshot = JSON.parse(JSON.stringify(mainData));
+    const equipSnapshot = JSON.parse(JSON.stringify(data));
+
     // 卸下旧装备：返还背包并扣除属性
     if (equipped[slot]) {
       const oldName = equipped[slot];
@@ -1075,8 +1131,14 @@ function init() {
     if (eq.spd) pet.spd = (pet.spd || 100) + eq.spd;
     if (eq.luck) pet.luck = (pet.luck || 0) + eq.luck;
 
-    DB.equip.save(p.uid, data);
-    saveUserData(main, p.uid, mainData);
+    try {
+      DB.equip.save(p.uid, data);
+      saveUserData(main, p.uid, mainData);
+    } catch (e) {
+      DB.equip.save(p.uid, equipSnapshot);
+      saveUserData(main, p.uid, mainSnapshot);
+      return replyAndDone(p, '装备保存失败，已恢复原装备状态');
+    }
     p.reply(`${pet.name} 穿戴了 ${equipName}\n${eq.desc}\n${getRandomTip()}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '宠物穿戴装备', 'wanwu-all', '万象篇');
