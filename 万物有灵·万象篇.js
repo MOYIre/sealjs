@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.5');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.7');
   seal.ext.register(ext);
 }
 
@@ -74,13 +74,14 @@ const TaskNotifier = {
   // 发送通知给用户
   notify(uid, text) {
     const context = this.userContexts[uid];
-    if (!context) return;
+    if (!context) return false;
 
     try {
-      // 使用存储的上下文发送消息
       seal.replyToSender(context.ctx, context.msg, text);
+      return true;
     } catch (e) {
       console.log('[万物有灵-扩展合集] 通知发送失败:', e);
+      return false;
     }
   },
 
@@ -125,14 +126,16 @@ const TaskNotifier = {
 
         // 发送通知
         if (notifications.length > 0) {
-          this.notify(uid, notifications.join('\n\n'));
           saveUserData(main, uid, userData);
-          this.clear(uid);
-
-          // 清理已通知的任务
+          data.pendingNotifications = [...(data.pendingNotifications || []), ...notifications];
           data.explore = (data.explore || []).filter(e => e.endTime > now || !e.notified);
           data.work = (data.work || []).filter(w => w.endTime > now || !w.notified);
           DB.ext.save(uid, data);
+        }
+        if (data.pendingNotifications?.length && this.notify(uid, data.pendingNotifications.join('\n\n'))) {
+          data.pendingNotifications = [];
+          DB.ext.save(uid, data);
+          if (!data.explore?.length && !data.work?.length) this.clear(uid);
         }
       } catch (e) {
         console.log('[万物有灵-扩展合集] 任务检查错误:', e);
@@ -758,6 +761,11 @@ function cleanExpired() {
 
     const main = getMain();
     let recovered = false;
+    delete marketData.listings[id];
+    if (!saveMarket()) {
+      marketData.listings[id] = item;
+      return;
+    }
 
     if (main && item.type === 'pet') {
       try {
@@ -787,6 +795,7 @@ function cleanExpired() {
       // 卖家空间/数据暂不可用时延期，避免挂单资产丢失
       item.expire = now + 6 * 60 * 60 * 1000;
       item.recoverAttempts = (item.recoverAttempts || 0) + 1;
+      marketData.listings[id] = item;
       changed = true;
     } else {
       delete marketData.listings[id];
@@ -855,7 +864,7 @@ function init() {
     const extData = DB.ext.get(uid);
     const arena = extData.arenaPending;
     const arenaBattle = !isNPC && mode === 'pvp' && arena && arena.targetUid === targetUid && arena.expiresAt > Date.now();
-    if (arena && (!arenaBattle || arena.expiresAt <= Date.now())) {
+    if (arena) {
       delete extData.arenaPending;
       DB.ext.save(uid, extData);
     }
@@ -899,6 +908,7 @@ function init() {
           extData.arenaRank = Math.max(0, (extData.arenaRank || 1000) - change);
           targetData.arenaRank = (targetData.arenaRank || 1000) + change;
         }
+        delete extData.arenaPending;
         DB.ext.save(uid, extData); DB.ext.save(targetUid, targetData);
       }
     }
@@ -1136,7 +1146,7 @@ function init() {
       marketData.listings[listingId] = { type: 'pet', pet: petForSale, price, sellerId: p.uid, sellerName: msg.sender.nickname || p.uid, time: Date.now(), expire: Date.now() + MARKET_CONFIG.listingExpire };
       try {
         saveUserData(main, p.uid, mainData);
-        saveMarket();
+        if (!saveMarket()) throw new Error('市场保存失败');
       } catch (e) {
         if (petNum <= 3) mainData.pets.splice(petNum - 1, 0, pet);
         else mainData.storage.splice(storageIdx, 0, pet);
@@ -1195,7 +1205,11 @@ function init() {
     const equipSnapshot = item.type === 'item' && item.source === 'equip' ? DB.equip.get(p.uid) : null;
     const skillbookSnapshot = item.type === 'item' && item.source === 'skillbook' ? DB.skillbook.get(p.uid) : null;
     delete marketData.listings[listingId];
-    saveMarket();
+    if (!saveMarket()) {
+      marketData.listings[listingId] = item;
+      saveMarket();
+      return replyAndDone(p, '市场锁单失败，请稍后再试');
+    }
     try {
       mainData.money -= item.price;
       if (item.type === 'item') {
@@ -1247,18 +1261,24 @@ function init() {
     const item = marketData.listings[listingId];
     if (!item) return replyAndDone(p, '未找到');
     if (item.sellerId !== p.uid) return replyAndDone(p, '只能取消自己的挂单');
-    if (item.type === 'pet') {
-      const data = getUserData(main, p.uid);
-      if (!data) return replyAndDone(p, '读取玩家数据失败');
-      if (!addPetToAvailableSlot(main, data, normalizePetState(item.pet))) {
-        return replyAndDone(p, '队伍和仓库都已满，暂时无法取回宠物');
-      }
-      saveUserData(main, p.uid, data);
-    } else if (!addMarketItemToOwner(main, p.uid, item)) {
-      return replyAndDone(p, '取回物品失败，请稍后再试');
+    const data = getUserData(main, p.uid);
+    if (!data) return replyAndDone(p, '读取玩家数据失败');
+    if (item.type === 'pet' && !addPetToAvailableSlot(main, data, normalizePetState(item.pet))) {
+      return replyAndDone(p, '队伍和仓库都已满，暂时无法取回宠物');
     }
     delete marketData.listings[listingId];
-    saveMarket();
+    if (!saveMarket()) {
+      marketData.listings[listingId] = item;
+      return replyAndDone(p, '市场锁单失败，请稍后再试');
+    }
+    try {
+      if (item.type === 'pet') saveUserData(main, p.uid, data);
+      else if (!addMarketItemToOwner(main, p.uid, item)) throw new Error('取回物品失败');
+    } catch (e) {
+      marketData.listings[listingId] = item;
+      saveMarket();
+      return replyAndDone(p, '取回失败，挂单已恢复，请稍后再试');
+    }
     p.reply(item.type === 'pet' ? `已取消出售，${item.pet.name}已放入仓库` : `已取消出售，取回 ${item.itemName}x${item.count}`);
     return seal.ext.newCmdExecuteResult(true);
   }, '取消出售', 'wanwu-all', '万象篇');

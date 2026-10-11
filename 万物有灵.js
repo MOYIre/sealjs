@@ -3476,6 +3476,7 @@ const DB = {
       ext.storageSet('u_' + userId, JSON.stringify(data));
     } catch (e) {
       console.log('[万物有灵] 数据保存失败:', e);
+      throw e;
     }
   },
   genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); },
@@ -3846,14 +3847,16 @@ function formatAttrDelta(attrs = {}) {
     .join(' ');
 }
 
-function grantPlayerExp(player, amount) {
+function grantPlayerExp(player, amount, uid = null) {
   player.exp = (player.exp || 0) + Math.max(0, Math.floor(amount));
   let levels = 0;
   while (player.exp >= (PLAYER_EXP_TABLE[player.level] || player.level * 500)) {
     player.exp -= PLAYER_EXP_TABLE[player.level] || player.level * 500;
-    player.level = (player.level || 1) + 1;
+    const oldLevel = player.level || 1;
+    player.level = oldLevel + 1;
     applyPlayerRaceGrowth(player);
     levels++;
+    if (uid) WanwuYouling.emit('levelup', { uid, oldLevel, newLevel: player.level });
   }
   return levels;
 }
@@ -5095,7 +5098,7 @@ function checkItemConditions(conditions, context) {
 
 function executeItemEffect(effect, context) {
   if (!effect || typeof effect !== 'object') return { ok: false, msg: '该道具没有可执行效果' };
-  const { data, petIdx, getPet } = context;
+  const { data, petIdx, getPet, uid } = context;
   const amount = Math.max(0, Math.floor(Number(effect.amount || 0)));
   const count = Math.max(1, Math.floor(Number(effect.count || 1)));
   switch (effect.action) {
@@ -5191,6 +5194,7 @@ function executeItemEffect(effect, context) {
       const operation = effect.operation || 'add';
       const target = effect.target || 'user';
       const resAmount = amount || 0;
+      if (!['add', 'subtract'].includes(operation)) return { ok: false, msg: `不支持的资源操作: ${operation}` };
       if (target === 'guild') {
         if (!data.guild) return { ok: false, msg: '你未加入公会' };
         GuildManager.load();
@@ -5213,7 +5217,7 @@ function executeItemEffect(effect, context) {
         case 'exp':
         case '经验':
           data.player = data.player || {};
-          const expLevels = grantPlayerExp(data.player, resAmount);
+          const expLevels = grantPlayerExp(data.player, resAmount, uid);
           return { ok: true, msg: `获得经验 +${resAmount}${expLevels ? `，升级${expLevels}级` : ''}` };
         default:
           return { ok: false, msg: `资源 ${resource} 暂不支持` };
@@ -5222,8 +5226,12 @@ function executeItemEffect(effect, context) {
     case 'custom': {
       const handler = effect.handler || 'default';
       const params = effect.params || {};
-      WanwuYouling.emit('customItemEffect', { uid, handler, params, effect, data, context });
-      return { ok: true, msg: `自定义效果 [${handler}] 已触发，请检查是否有扩展模块处理` };
+      const listeners = WanwuYouling._hooks.customItemEffect || [];
+      if (!listeners.some(listener => listener.mode === 'event')) return { ok: false, msg: `自定义效果【${handler}】没有可用处理器` };
+      const payload = { uid, handler, params, effect, data, context, result: null };
+      WanwuYouling.emit('customItemEffect', payload);
+      if (payload.result && typeof payload.result.ok === 'boolean') return payload.result;
+      return { ok: false, msg: `自定义效果【${handler}】未返回处理结果` };
     }
     case 'summonWorldBoss': {
       WorldBossManager.load();
@@ -6040,7 +6048,7 @@ cmd.solve = async (ctx, msg, argv) => {
         // 给玩家加经验
         const playerExpGain = Math.floor(expGain * 0.5);
         data.player = data.player || { level: 1, exp: 0, str: 10, agi: 10, int: 10, vit: 10, energy: 100, maxEnergy: 100, equipment: {}, skills: [], dailyTrain: 0, lastTrainDate: '' };
-        const playerLevels = grantPlayerExp(data.player, playerExpGain);
+        const playerLevels = grantPlayerExp(data.player, playerExpGain, uid);
         if (playerLevels) logs.push(`训练师升级到 Lv.${data.player.level}！`);
 
         if (hasCharm) {
@@ -6800,7 +6808,14 @@ cmd.solve = async (ctx, msg, argv) => {
 
     // 检查是否有空间
     const hasTwinPotion = data.items['多胞胎药水'] > 0;
-    const isTwin = hasTwinPotion || Math.random() < 0.08; // 8%多胞胎概率
+    const breedChance = WanwuYouling.runHook('breedChance', {
+      uid,
+      data,
+      pet1,
+      pet2,
+      twinChance: 0.08,
+    });
+    const isTwin = hasTwinPotion || Math.random() < Math.max(0, Math.min(1, breedChance.twinChance));
     const babyCount = isTwin ? 2 : 1;
 
     if (data.pets.length + babyCount > CONFIG.maxPets && data.storage.length + babyCount > data.maxStorage) {
@@ -6834,7 +6849,7 @@ cmd.solve = async (ctx, msg, argv) => {
       }
 
       // 确保子代元素在其种族的可用元素列表中
-      const speciesData = SPECIES[child.species];
+      const speciesData = SPECIES[child.species] || { elements: [pet1.element, pet2.element].filter(Boolean) };
       const parentElements = [pet1.element, pet2.element];
       const validElements = speciesData.elements.filter(e => parentElements.includes(e));
       child.element = validElements.length > 0
@@ -8170,7 +8185,8 @@ cmd.solve = async (ctx, msg, argv) => {
   //   训练师锻炼
   if (action === '锻炼' || action === '训练') {
     const player = data.player;
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
     if (player.lastTrainDate !== today) {
       player.lastTrainDate = today;
       player.dailyTrain = 0;
@@ -8186,7 +8202,7 @@ cmd.solve = async (ctx, msg, argv) => {
     data.money -= 100;
     player[attr] = (player[attr] || 10) + 1;
     player.dailyTrain++;
-    const levels = grantPlayerExp(player, 50);
+    const levels = grantPlayerExp(player, 50, uid);
     save();
     return reply(`【锻炼完成】${attr === 'str' ? '力量' : attr === 'agi' ? '敏捷' : attr === 'int' ? '智力' : '体质'}+1\n训练师经验+50${levels ? `，升级${levels}级` : ''}\n今日次数: ${player.dailyTrain}/${limit}`);
   }
@@ -8410,7 +8426,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.7',
+  version: '4.8',
   ext,
 
   DB: {
