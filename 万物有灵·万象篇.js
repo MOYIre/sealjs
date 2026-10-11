@@ -518,9 +518,29 @@ function grantTaskExp(pet, amount) {
   return { exp, levels };
 }
 
+function completeDueTasks(main, uid, playerData, data) {
+  const now = Date.now();
+  const messages = [];
+  for (const task of [...(data.explore || [])]) {
+    if (task.endTime <= now && !task.notified) {
+      const result = completeExploreTask(uid, playerData, data, task);
+      if (result) messages.push(`【探险完成】\n${result}`);
+    }
+  }
+  for (const task of [...(data.work || [])]) {
+    if (task.endTime <= now && !task.notified) {
+      const result = completeWorkTask(uid, playerData, data, task);
+      if (result) messages.push(`【打工完成】\n${result}`);
+    }
+  }
+  data.explore = (data.explore || []).filter(task => !task.notified);
+  data.work = (data.work || []).filter(task => !task.notified);
+  return messages;
+}
+
 function completeExploreTask(uid, playerData, data, task) {
   const seasonalArea = getSeasonalArea();
-  const area = [...EXPLORE_AREAS, seasonalArea].find(a => a.name === task.area);
+  const area = task.areaData || [...EXPLORE_AREAS, seasonalArea].find(a => a.name === task.area);
   if (!area) return null;
   const found = findPetById(playerData, task.petId);
   if (!found) return null;
@@ -1387,12 +1407,18 @@ function init() {
     if (!area) return replyAndDone(p, `未知区域\n可用: ${[...EXPLORE_AREAS, seasonalArea].map(a => a.name).join('、')}`);
 
     const data = DB.ext.get(p.uid);
+    const dueMessages = completeDueTasks(main, p.uid, p, data);
+    if (dueMessages.length) {
+      p.save();
+      DB.ext.save(p.uid, data);
+      p.reply(dueMessages.join('\n\n'));
+    }
     const now = Date.now();
-    data.explore = (data.explore || []).filter(e => e.endTime > now);
+    data.explore = data.explore || [];
     if (data.explore.length >= EXT_CONFIG.maxExplore) return replyAndDone(p, `探险队伍已满(最多${EXT_CONFIG.maxExplore}只)`);
     if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return replyAndDone(p, '该宠物正在执行任务');
 
-    data.explore.push({ petId: pet.id, endTime: now + EXT_CONFIG.exploreTime * 60000, area: area.name });
+    data.explore.push({ petId: pet.id, endTime: now + EXT_CONFIG.exploreTime * 60000, area: area.name, areaData: { ...area, foods: [...area.foods] } });
     pet.energy -= 15;
     p.save();
     DB.ext.save(p.uid, data);
@@ -1437,8 +1463,14 @@ function init() {
     if (pet.energy < work.energy) return replyAndDone(p, `精力不足，需要${work.energy}点`);
 
     const data = DB.ext.get(p.uid);
+    const dueMessages = completeDueTasks(main, p.uid, p, data);
+    if (dueMessages.length) {
+      p.save();
+      DB.ext.save(p.uid, data);
+      p.reply(dueMessages.join('\n\n'));
+    }
     const now = Date.now();
-    data.work = (data.work || []).filter(w => w.endTime > now);
+    data.work = data.work || [];
     if (data.work.length >= EXT_CONFIG.maxWork) return replyAndDone(p, `打工位置已满(最多${EXT_CONFIG.maxWork}只)`);
     if ([...(data.explore || []), ...(data.work || [])].find(e => e.petId === pet.id)) return replyAndDone(p, '该宠物正在执行任务');
 

@@ -2954,18 +2954,36 @@ const QuestManager = {
     }
   },
 
+  refreshMainProgress(data) {
+    const pets = [...(data.pets || []), ...(data.storage || [])];
+    const values = {
+      pet_count: new Set(pets.map(pet => pet.species)).size,
+      pet_level: Math.max(0, ...pets.map(pet => pet.level || 1)),
+      legendary_pet: pets.filter(pet => ['传说', '神话'].includes(pet.rarity)).length,
+    };
+    for (const quest of QUESTS.main) {
+      const progress = data.quests.main[quest.id];
+      if (!progress || progress.claimed) continue;
+      progress.progress = Math.max(progress.progress, Math.min(values[quest.type] || 0, quest.target));
+      progress.completed = progress.progress >= quest.target;
+    }
+  },
+
   acceptQuest(data, questRef) {
+    this.initPlayerQuests(data);
     const quest = this.resolveQuest(questRef);
     if (!quest) return { success: false, msg: '任务不存在' };
     const questId = quest.id;
     const type = QUESTS.daily.includes(quest) ? 'daily' : 'main';
     if (data.quests[type][questId]) return { success: false, msg: '已接受该任务' };
     data.quests[type][questId] = { progress: 0, completed: false, claimed: false };
+    this.refreshMainProgress(data);
     return { success: true, msg: `已接受任务: ${quest.name}` };
   },
 
   updateProgress(data, type, amount = 1) {
     this.initPlayerQuests(data);
+    this.refreshMainProgress(data);
     this.checkDailyReset(data);
     const allQuests = [...QUESTS.daily, ...QUESTS.main];
     let updated = [];
@@ -2983,6 +3001,8 @@ const QuestManager = {
   },
 
   claimReward(data, questRef) {
+    this.initPlayerQuests(data);
+    this.refreshMainProgress(data);
     const quest = this.resolveQuest(questRef);
     if (!quest) return { success: false, msg: '任务不存在' };
     const questId = quest.id;
@@ -2994,10 +3014,15 @@ const QuestManager = {
     progress.claimed = true;
 
     const rewards = [];
-    if (quest.reward.money) { data.money += quest.reward.money; rewards.push(`金币+${quest.reward.money}`); }
+    if (quest.reward.money) { data.money = (data.money || 0) + quest.reward.money; rewards.push(`金币+${quest.reward.money}`); }
     if (quest.reward.exp) {
-      const pet = data.pets.find(p => p.id === data.activePet);
-      if (pet) { pet.exp = (pet.exp || 0) + quest.reward.exp; rewards.push(`经验+${quest.reward.exp}`); }
+      const pet = [...(data.pets || []), ...(data.storage || [])].find(p => p.id === data.activePet) || data.pets?.[0] || data.storage?.[0];
+      if (pet) {
+        const leveledUp = grantPetExp(pet, quest.reward.exp);
+        rewards.push(`经验+${quest.reward.exp}${leveledUp ? `，升级到Lv.${pet.level}` : ''}`);
+      } else {
+        rewards.push(`经验+${quest.reward.exp}（暂无可用宠物）`);
+      }
     }
     if (quest.reward.item) {
       data.items = data.items || {};
@@ -6131,6 +6156,7 @@ cmd.solve = async (ctx, msg, argv) => {
                 data.storage.push(wildPet);
                 logs.push(`队伍已满，已存入仓库 (${data.storage.length}/${data.maxStorage})`);
               }
+              QuestManager.updateProgress(data, 'catch');
               logs.push(`获得 ${expGain} 经验，${goldGain} 金币`);
             }
           } else {
@@ -6215,7 +6241,6 @@ cmd.solve = async (ctx, msg, argv) => {
 
         // 更新任务进度
         QuestManager.updateProgress(data, 'battle');
-        if (hasCharm && result.winner === fighter) QuestManager.updateProgress(data, 'catch');
         if (regionId) QuestManager.updateProgress(data, 'explore');
 
         save();
