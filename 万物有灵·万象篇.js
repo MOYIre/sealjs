@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵·万象篇
 // @author      铭茗
-// @version     3.2.9
+// @version     3.2.10
 // @description 万物有灵扩展合集：图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动
 // @timestamp   1776696320
 // @license     Apache-2
@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.9');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.10');
   seal.ext.register(ext);
 }
 
@@ -109,7 +109,15 @@ const TaskNotifier = {
           for (const e of data.explore) {
             if (e.endTime <= now && !e.notified) {
               const result = completeExploreTask(uid, userData, data, e);
-              if (result) notifications.push(`【探险完成】\n${result}`);
+              if (result) {
+                notifications.push(`【探险完成】\n${result}`);
+              } else {
+                e.failCount = (e.failCount || 0) + 1;
+                if (e.failCount >= 3) {
+                  e.drop = true;
+                  notifications.push('【探险取消】派遣宠物已不在，任务已自动清理');
+                }
+              }
             }
           }
         }
@@ -119,7 +127,15 @@ const TaskNotifier = {
           for (const w of data.work) {
             if (w.endTime <= now && !w.notified) {
               const result = completeWorkTask(uid, userData, data, w);
-              if (result) notifications.push(`【打工完成】\n${result}`);
+              if (result) {
+                notifications.push(`【打工完成】\n${result}`);
+              } else {
+                w.failCount = (w.failCount || 0) + 1;
+                if (w.failCount >= 3) {
+                  w.drop = true;
+                  notifications.push('【打工取消】派遣宠物已不在，任务已自动清理');
+                }
+              }
             }
           }
         }
@@ -128,8 +144,8 @@ const TaskNotifier = {
         if (notifications.length > 0) {
           saveUserData(main, uid, userData);
           data.pendingNotifications = [...(data.pendingNotifications || []), ...notifications];
-          data.explore = (data.explore || []).filter(e => e.endTime > now || !e.notified);
-          data.work = (data.work || []).filter(w => w.endTime > now || !w.notified);
+          data.explore = (data.explore || []).filter(e => (e.endTime > now || !e.notified) && !e.drop);
+          data.work = (data.work || []).filter(w => (w.endTime > now || !w.notified) && !w.drop);
           DB.ext.save(uid, data);
         }
         if (data.pendingNotifications?.length && this.notify(uid, data.pendingNotifications.join('\n\n'))) {
@@ -414,6 +430,13 @@ const FESTIVALS = [
   { name: '万圣节', dates: [[10, 25], [11, 1]], bonus: { captureChance: 0.2 }, pets: ['南瓜精', '幽灵王'] },
   { name: '圣诞节', dates: [[12, 20], [12, 26]], bonus: { exp: 1.5 }, pets: ['圣诞驯鹿', '雪人'] },
 ];
+
+const FESTIVAL_PET_META = {
+  '春节': [{ species: '年兽', element: '火', rarity: '传说', bonus: { atk: 15, hp: 10 } }],
+  '情人节': [{ species: '爱神丘比特', element: '超能', rarity: '超稀有', bonus: { energy: 20 } }],
+  '万圣节': [{ species: '南瓜精', element: '草', rarity: '稀有', bonus: { hp: 8 } }, { species: '幽灵王', element: '超能', rarity: '传说', bonus: { atk: 12, energy: 10 } }],
+  '圣诞节': [{ species: '圣诞驯鹿', element: '水', rarity: '超稀有', bonus: { hp: 10, energy: 10 } }, { species: '雪人', element: '水', rarity: '稀有', bonus: { def: 12 } }],
+};
 
 const SEASONAL_AREAS = { spring: { name: '花海', gold: [50, 100], foods: ['花蜜', '春茶'], danger: 0.2 }, summer: { name: '火山', gold: [80, 150], foods: ['火龙果', '冰淇淋'], danger: 0.35 }, autumn: { name: '枫林', gold: [60, 120], foods: ['枫糖', '栗子'], danger: 0.25 }, winter: { name: '冰原', gold: [70, 130], foods: ['热可可', '烤红薯'], danger: 0.3 } };
 
@@ -833,7 +856,7 @@ function init() {
   if (!main) return console.log('[万物有灵-扩展合集] 主插件未找到');
 
   // 注册Mod
-  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.9', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
+  main.registerMod({ id: 'wanwu-all', name: '万物有灵-扩展合集', version: '3.2.10', author: '铭茗', description: '图鉴、探险、打工、竞技场、成就、装备、技能书、市场、季节活动', dependencies: [{ id: 'wanwu-core' }], hotReloadable: true }, {
     onUnload() {
       if (TaskNotifier._interval) clearInterval(TaskNotifier._interval);
       TaskNotifier.clear();
@@ -899,8 +922,10 @@ function init() {
   main.on('battle', ({ uid, winner, draw, isNPC, targetUid, pet1, mode, playerMode }) => {
     const extData = DB.ext.get(uid);
     const arena = extData.arenaPending;
-    const arenaBattle = !isNPC && mode === 'pvp' && arena && arena.targetUid === targetUid && arena.expiresAt > Date.now();
-    if (arena) {
+    const arenaExpired = arena && arena.expiresAt <= Date.now();
+    const arenaBattle = !isNPC && mode === 'pvp' && arena && arena.targetUid === targetUid && !arenaExpired;
+    // 仅PVP对局或挑战过期时清除待挑战状态，野外/副本等战斗不影响
+    if (arena && (mode === 'pvp' || arenaExpired) && !arenaBattle) {
       delete extData.arenaPending;
       DB.ext.save(uid, extData);
     }
@@ -978,9 +1003,10 @@ function init() {
   main.registerCommand('竞技场', (ctx, msg, p) => {
     const data = DB.ext.get(p.uid);
     if (p.p1 === '挑战' || p.p1 === 'challenge') {
-      const target = p.p2 || '';
+      const parts = (p.p2 || '').trim().split(/\s+/).filter(Boolean);
+      const target = parts[0] || '';
       if (!target) return replyAndDone(p, '用法: .宠物 竞技场 挑战 <QQ号> [己方宠物编号]');
-      const petIndex = p.p3 || '1';
+      const petIndex = String(p.p3 || parts[1] || '1');
       data.arenaPending = { targetUid: target.startsWith('QQ:') ? target : `QQ:${target}`, petIndex, expiresAt: Date.now() + 10 * 60 * 1000 };
       DB.ext.save(p.uid, data);
       p.reply(`竞技场挑战已发起：对手 ${target}\n请在10分钟内使用 .宠物 对战 ${petIndex} ${target} 完成结算`);
@@ -1466,11 +1492,24 @@ function init() {
     const s = SEASONS[season], area = SEASONAL_AREAS[season], pets = SEASONAL_PETS[season];
     const festival = getCurrentFestival();
     if (p.p1 === '领取' || p.p1 === '获取') {
-      const target = pets.find(item => item.species === p.p2) || pets[0];
       const extData = DB.ext.get(p.uid);
       extData.seasonalClaims = extData.seasonalClaims || {};
-      const claimKey = `${season}:${target.species}`;
-      if (extData.seasonalClaims[claimKey]) return replyAndDone(p, '这只季节限定宠物本季已经领取过了');
+      const festivalPets = festival ? (FESTIVAL_PET_META[festival.name] || []) : [];
+      let target = null, claimKey = '', label = '季节限定';
+      if (p.p2) {
+        const seasonHit = pets.find(item => item.species === p.p2);
+        const festivalHit = festivalPets.find(item => item.species === p.p2);
+        if (seasonHit) { target = seasonHit; claimKey = `${season}:${target.species}`; }
+        else if (festivalHit) { target = festivalHit; claimKey = `festival:${festival.name}:${target.species}`; label = `${festival.name}限定`; }
+        else return replyAndDone(p, '没有找到该限定宠物');
+      } else {
+        const unclaimedSeasonal = pets.find(item => !extData.seasonalClaims[`${season}:${item.species}`]);
+        const unclaimedFestival = festivalPets.find(item => !extData.seasonalClaims[`festival:${festival.name}:${item.species}`]);
+        if (unclaimedSeasonal) { target = unclaimedSeasonal; claimKey = `${season}:${target.species}`; }
+        else if (unclaimedFestival) { target = unclaimedFestival; claimKey = `festival:${festival.name}:${target.species}`; label = `${festival.name}限定`; }
+        else { target = pets[0]; claimKey = `${season}:${target.species}`; }
+      }
+      if (extData.seasonalClaims[claimKey]) return replyAndDone(p, '这只限定宠物已经领取过了');
       const mainData = getUserData(main, p.uid);
       if (!mainData) return replyAndDone(p, '读取玩家数据失败');
       if (!addPetToAvailableSlot(main, mainData, {
@@ -1496,10 +1535,14 @@ function init() {
       saveUserData(main, p.uid, mainData);
       extData.seasonalClaims[claimKey] = Date.now();
       DB.ext.save(p.uid, extData);
-      return replyAndDone(p, `已领取季节限定宠物【${target.species}】`);
+      return replyAndDone(p, `已领取${label}宠物【${target.species}】`);
     }
     const lines = [`【${s.name}】`, `限定区域: ${area.name}`, `限定宠物: ${pets.map(x => x.species).join('、')}`, '领取: .宠物 季节 领取 [宠物名]'];
-    if (festival) lines.push(`[活动] ${festival.name}进行中`);
+    if (festival) {
+      const fp = FESTIVAL_PET_META[festival.name] || [];
+      if (fp.length) lines.push(`${festival.name}限定宠物: ${fp.map(x => x.species).join('、')}`);
+      lines.push(`[活动] ${festival.name}进行中`);
+    }
     p.reply(lines.join('\n'));
     return seal.ext.newCmdExecuteResult(true);
   }, '查看季节或领取限定宠物', 'wanwu-all', '万象篇');

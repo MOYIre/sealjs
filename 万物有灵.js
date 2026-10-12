@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.12
+// @version     4.13
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.12');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.13');
   seal.ext.register(ext);
 }
 
@@ -131,6 +131,21 @@ const SPECIES = {
   '蘑菇族': { elements: ['草', '超能'], baseMod: { hp: 1.06, atk: 0.94, def: 0.98, energy: 1.12 } },
   '美人鱼': { elements: ['水', '超能'], baseMod: { hp: 0.9, atk: 1, def: 0.9, energy: 1.4 } },
   '天使': { elements: ['超能'], baseMod: { hp: 1, atk: 1.1, def: 1, energy: 1.4 } },
+  // 季节/节日限定种族（仅通过限定渠道获得，不进入野外捕捉池）
+  '花仙子': { elements: ['草'], baseMod: { hp: 1, atk: 1, def: 1, energy: 1.1 } },
+  '春风精灵': { elements: ['超能'], baseMod: { hp: 0.95, atk: 0.95, def: 0.95, energy: 1.15 } },
+  '烈焰凤凰': { elements: ['火'], baseMod: { hp: 0.9, atk: 1.25, def: 0.85, energy: 1.1 } },
+  '海神之子': { elements: ['水'], baseMod: { hp: 1.15, atk: 1, def: 1.1, energy: 1 } },
+  '丰收之灵': { elements: ['草'], baseMod: { hp: 1.1, atk: 0.95, def: 1.1, energy: 1 } },
+  '月光狼': { elements: ['超能'], baseMod: { hp: 1, atk: 1.1, def: 1, energy: 1.1 } },
+  '冰霜巨龙': { elements: ['水'], baseMod: { hp: 1.25, atk: 1.15, def: 1.15, energy: 0.9 } },
+  '雪女': { elements: ['超能'], baseMod: { hp: 0.95, atk: 1, def: 1.15, energy: 1.1 } },
+  '年兽': { elements: ['火'], baseMod: { hp: 1.2, atk: 1.3, def: 1.1, energy: 0.9 } },
+  '爱神丘比特': { elements: ['超能'], baseMod: { hp: 0.95, atk: 1, def: 0.95, energy: 1.3 } },
+  '南瓜精': { elements: ['草'], baseMod: { hp: 1.05, atk: 1, def: 1, energy: 1.05 } },
+  '幽灵王': { elements: ['超能'], baseMod: { hp: 0.9, atk: 1.2, def: 0.9, energy: 1.3 } },
+  '圣诞驯鹿': { elements: ['水'], baseMod: { hp: 1.1, atk: 1, def: 1, energy: 1.1 } },
+  '雪人': { elements: ['水'], baseMod: { hp: 1.2, atk: 0.85, def: 1.2, energy: 0.9 } },
 };
 
 //   进化系统
@@ -698,16 +713,18 @@ const LeaderboardManager = {
   // 获取排行榜
   getRanking(allData, type = 'power') {
     const entries = [];
+    const nameMap = DB.getNameMap();
     for (const [uid, data] of Object.entries(allData)) {
-      if (!data.pets || data.pets.length === 0) continue;
-      const topPet = data.pets.reduce((a, b) => this.calcPower(a) > this.calcPower(b) ? a : b);
+      const allPets = [...(data.pets || []), ...(data.storage || [])];
+      if (allPets.length === 0) continue;
+      const topPet = allPets.reduce((a, b) => this.calcPower(a) > this.calcPower(b) ? a : b);
       entries.push({
         uid,
-        name: data.name || uid,
+        name: data.name || nameMap[uid] || uid,
         topPet: topPet.name,
         topPower: this.calcPower(topPet),
-        petCount: data.pets.length,
-        maxLevel: Math.max(...data.pets.map(p => p.level || 1)),
+        petCount: allPets.length,
+        maxLevel: Math.max(...allPets.map(p => p.level || 1)),
         money: data.money || 0,
       });
     }
@@ -2982,7 +2999,7 @@ const QuestManager = {
     return { success: true, msg: `已接受任务: ${quest.name}` };
   },
 
-  updateProgress(data, type, amount = 1) {
+  updateProgress(data, type, amount = 1, meta = null) {
     this.initPlayerQuests(data);
     this.refreshMainProgress(data);
     this.checkDailyReset(data);
@@ -2993,7 +3010,14 @@ const QuestManager = {
       const questType = QUESTS.daily.includes(quest) ? 'daily' : 'main';
       const progress = data.quests[questType][quest.id];
       if (progress && !progress.completed) {
-        progress.progress = Math.min(progress.progress + amount, quest.target);
+        if (type === 'explore' && meta) {
+          // 探索任务按地区去重计数
+          progress.regions = progress.regions || [];
+          if (!progress.regions.includes(meta)) progress.regions.push(meta);
+          progress.progress = Math.min(progress.regions.length, quest.target);
+        } else {
+          progress.progress = Math.min(progress.progress + amount, quest.target);
+        }
         if (progress.progress >= quest.target) progress.completed = true;
         updated.push(quest.name);
       }
@@ -3290,6 +3314,11 @@ const ITEMS = {
 
   // 复活相关
   '复活药': { cost: 1000, desc: '复活一只死亡的宠物', type: 'revive' },
+
+  // 稀有养成道具
+  '天赋果实': { cost: 360, desc: '使用后随机更换一只宠物的天赋', type: 'talent' },
+  '神话召唤石': { cost: 5000, desc: '被动道具：持有即提升孤品宠物出现概率(每个+1%)', type: 'misc' },
+  '神话契约碎片': { cost: 300, desc: '集齐10个可使用合成1个神话契约', type: 'contract' },
 
   // 其他
   '扩容卡': { cost: 5000, desc: '仓库容量+5', type: 'misc' },
@@ -5542,8 +5571,9 @@ const HELP_PAGES = {
 
 【市场交易】
 .宠物 市场 - 查看在售宠物
-.宠物 挂售 <编号> <价格> - 挂售宠物
+.宠物 挂售 <宠物编号/物品名> <价格> - 挂售宠物或物品
 .宠物 购买宠物 <编号> - 购买宠物
+.宠物 取消出售 <编号> - 取消自己的挂单
 .宠物 机构 - 生灵保护机构
 .宠物 领养 <编号> - 领养被出售的宠物
 
@@ -5552,6 +5582,9 @@ const HELP_PAGES = {
 .宠物 购买宠物装备 <名称> - 购买装备
 .宠物 宠物装备背包 - 查看已有装备
 .宠物 穿戴装备 <宠物编号> <装备名> - 穿戴
+.宠物 卸下装备 <宠物编号> - 卸下装备
+.宠物 出售宠物装备 <名称> [数量] - 系统回收(半价)
+.宠物 销毁宠物装备 <名称> [数量] - 直接销毁
 
 【宠物技能书】(探险/打工获得)
 .宠物 宠物技能书 - 查看技能书
@@ -5562,13 +5595,17 @@ const HELP_PAGES = {
 .宠物 探险状态 - 查看探险进度
 .宠物 打工 <宠物编号> <类型> - 派宠物打工
 .宠物 打工状态 - 查看打工进度
+.宠物 使用 加速卡 - 立即完成一个派遣任务
+.宠物 使用 全速卡 - 立即完成全部派遣任务
 
 【数据统计】
 .宠物 竞技场 - 查看竞技场积分
+.宠物 竞技场 挑战 <QQ号> [宠物编号] - 发起挑战(10分钟内完成对战结算)
 .宠物 成就 - 查看已解锁成就
 .宠物 成就列表 - 查看全部成就
 .宠物 捕捉统计 - 查看捕捉记录
-.宠物 季节 - 查看当前季节`,
+.宠物 季节 - 查看当前季节与限定宠物
+.宠物 季节 领取 [宠物名] - 领取限定宠物(每季/每节日每种一次)`,
 
   社交: `【社交命令】
 .宠物 城镇 - 进入城镇
@@ -6321,7 +6358,7 @@ cmd.solve = async (ctx, msg, argv) => {
 
         // 更新任务进度
         QuestManager.updateProgress(data, 'battle');
-        if (regionId) QuestManager.updateProgress(data, 'explore');
+        if (regionId) QuestManager.updateProgress(data, 'explore', 1, regionId);
 
         save();
       } else {
@@ -6337,7 +6374,7 @@ cmd.solve = async (ctx, msg, argv) => {
         }
         // 更新任务进度
         QuestManager.updateProgress(data, 'battle');
-        if (regionId) QuestManager.updateProgress(data, 'explore');
+        if (regionId) QuestManager.updateProgress(data, 'explore', 1, regionId);
         save();
       }
 
@@ -7037,6 +7074,8 @@ cmd.solve = async (ctx, msg, argv) => {
     // 显示探索信息
     const weather = WorldManager.getWeather(regionId);
     const weatherData = WEATHERS[weather];
+    const questUpdates = QuestManager.updateProgress(data, 'explore', 1, regionId);
+    if (questUpdates.length) save();
     const lines = [
       `【探索】${region.name}`,
       `${region.desc}`,
@@ -7046,6 +7085,7 @@ cmd.solve = async (ctx, msg, argv) => {
       '',
       '使用 .宠物 捉宠 [地区] 在此地区捕捉宠物',
     ];
+    if (questUpdates.length) lines.push('', `【任务进度】${questUpdates.join('、')}`);
     return reply(lines.join('\n'));
   }
 
@@ -7178,6 +7218,30 @@ cmd.solve = async (ctx, msg, argv) => {
         return reply(`${pet.name} 已复活！生命和精力已恢复\n${getRandomTip()}`);
       }
 
+      case 'talent': {
+        const pet = getPet(petIdx);
+        if (!pet) return reply('请指定正确的宠物编号');
+        const pool = Object.keys(TALENTS).filter(t => t !== pet.talent);
+        if (!pool.length) return reply('没有可更换的天赋');
+        const oldTalent = pet.talent || '无';
+        pet.talent = pool[Math.floor(Math.random() * pool.length)];
+        useItem();
+        save();
+        WanwuYouling.emit('useItem', { uid, item: itemName, pet });
+        return reply(`${pet.name} 的天赋从【${oldTalent}】变更为【${pet.talent}】\n${TALENTS[pet.talent]?.desc || ''}\n${getRandomTip()}`);
+      }
+
+      case 'contract': {
+        const need = 10;
+        if ((data.items[itemName] || 0) < need) return reply(`碎片不足，合成神话契约需要 ${need} 个（当前持有 ${data.items[itemName] || 0} 个）`);
+        data.items[itemName] -= need;
+        if (data.items[itemName] <= 0) delete data.items[itemName];
+        data.items['神话契约'] = (data.items['神话契约'] || 0) + 1;
+        save();
+        WanwuYouling.emit('useItem', { uid, item: itemName });
+        return reply(`合成成功！消耗 ${need} 个神话契约碎片，获得 神话契约 x1\n${getRandomTip()}`);
+      }
+
       case 'misc': {
         if (item.effect) {
           const result = applyCustomItemEffect(item, { uid, data, itemName, petIdx, getPet, useItem, save });
@@ -7190,6 +7254,9 @@ cmd.solve = async (ctx, msg, argv) => {
           save();
           WanwuYouling.emit('useItem', { uid, item: itemName });
           return reply(`仓库容量已扩展！当前容量: ${data.maxStorage}\n${getRandomTip()}`);
+        }
+        if (itemName === '神话召唤石') {
+          return reply(`神话召唤石是被动道具：持有期间每个提升孤品宠物出现概率1%（当前持有 ${data.items[itemName] || 0} 个），捉宠时自动生效，无需使用`);
         }
         return reply(`${itemName} 无法直接使用`);
       }
@@ -7216,7 +7283,7 @@ cmd.solve = async (ctx, msg, argv) => {
   //   扩展命令  
   if (WanwuYouling._extCommands[action]) {
     const p = {
-      uid, data, args, p1, p2, reply,
+      uid, data, args, p1, p2, p3, reply,
       save: () => { DB.save(uid, data); },
       getPet,
       DB, PetFactory, Battle, CONFIG, FOODS, SPECIES,
@@ -8521,7 +8588,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.8',
+  version: '4.13',
   ext,
 
   DB: {
