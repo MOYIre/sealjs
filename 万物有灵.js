@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.14
+// @version     5.0
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.14');
+  ext = seal.ext.new('万物有灵', '铭茗', '5.0');
   seal.ext.register(ext);
 }
 
@@ -5108,6 +5108,14 @@ function pushCompactBattleLogs(logs, fightLogs, maxFightLogs = CONFIG.fightLogLi
   logs.push(...fightLogs.slice(tailTurnStart));
 }
 
+// 群聊回复截断：保留开头与结尾（胜负/奖励等结果行），省略中间回合
+function buildReplyLogs(logs, maxLines = 15) {
+  if (!Array.isArray(logs) || logs.length <= maxLines) return logs.slice();
+  const tail = logs.slice(-4);
+  const head = logs.slice(0, Math.max(1, maxLines - 1 - tail.length));
+  return [...head, '...（省略部分回合）...', ...tail];
+}
+
 //   命令处理
 function grantPetExp(pet, exp) {
   pet.exp = (pet.exp || 0) + exp;
@@ -6389,10 +6397,8 @@ cmd.solve = async (ctx, msg, argv) => {
         logs.push(getRandomTip());
       }
       
-      // 群聊回复截断长日志
-      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-      if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
-      reply(replyLogs.join('\n'));
+      // 群聊回复截断长日志：保留开头与结尾结果，省略中间回合
+      reply(buildReplyLogs(logs).join('\n'));
     } catch (e) {
       console.log('[万物有灵] 捉宠错误:', e);
       reply('捉宠过程发生错误，请稍后重试');
@@ -6937,10 +6943,8 @@ cmd.solve = async (ctx, msg, argv) => {
         playerMode: pet1 && pet1.isPlayer ? 'body' : 'pet'
       });
 
-      // 群聊回复截断长日志
-      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-      if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
-      reply(replyLogs.join('\n'));
+      // 群聊回复截断长日志：保留开头与结尾结果，省略中间回合
+      reply(buildReplyLogs(logs).join('\n'));
     } catch (e) {
       console.log('[万物有灵] 对战错误:', e);
       reply('对战过程发生错误，请稍后重试');
@@ -7805,23 +7809,13 @@ cmd.solve = async (ctx, msg, argv) => {
       const resultLog = `【胜利】击败${bossName}！获得: ${money}金币, ${item}`;
       logs.push(resultLog);
 
-      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-      if (logs.length > 15) {
-          replyLogs.push('...（省略部分回合）...');
-          replyLogs.push(resultLog);
-      }
-      return reply(replyLogs.join('\n'));
+      return reply(buildReplyLogs(logs).join('\n'));
     } else {
       save();
       const resultLog = `【失败】被${bossName}击败...`;
       logs.push(resultLog);
 
-      let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-      if (logs.length > 15) {
-          replyLogs.push('...（省略部分回合）...');
-          replyLogs.push(resultLog);
-      }
-      return reply(replyLogs.join('\n'));
+      return reply(buildReplyLogs(logs).join('\n'));
     }
   }
   //   公会系统
@@ -8166,10 +8160,8 @@ cmd.solve = async (ctx, msg, argv) => {
           }
 
         }
-        // 群聊回复截断长日志
-        let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-        if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
-        return reply(replyLogs.join('\n'));
+        // 群聊回复截断长日志：保留开头与结尾结果，省略中间回合
+        return reply(buildReplyLogs(logs).join('\n'));
       } else {
         if (isWorldBoss) {
           const damageByUid = {};
@@ -8183,10 +8175,8 @@ cmd.solve = async (ctx, msg, argv) => {
           logs.push(`\n【失败】被${bossData.name}击败...`);
 
         }
-        // 群聊回复截断长日志
-        let replyLogs = logs.length > 15 ? logs.slice(0, 14) : logs.slice();
-        if (logs.length > 15) replyLogs.push('...（省略部分回合）...');
-        return reply(replyLogs.join('\n'));
+        // 群聊回复截断长日志：保留开头与结尾结果，省略中间回合
+        return reply(buildReplyLogs(logs).join('\n'));
       }
     }
     return reply('用法: .宠物 组队 [创建/加入/退出/开始]');
@@ -8234,10 +8224,8 @@ cmd.solve = async (ctx, msg, argv) => {
           lines.push('无达标奖励成员');
         }
       }
-      // 群聊回复截断长日志
-      let replyLines = lines.length > 15 ? lines.slice(0, 14) : lines.slice();
-      if (lines.length > 15) replyLines.push('...（省略部分回合）...');
-      return reply(replyLines.join('\n'));
+      // 群聊回复截断长日志：保留开头与结尾结果，省略中间回合
+      return reply(buildReplyLogs(lines).join('\n'));
     }
     if (p1 === '排行' || p1 === 'rank') {
       if (!spawnResult.boss) return reply('当前没有世界Boss');
@@ -8594,7 +8582,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.14',
+  version: '5.0',
   ext,
 
   DB: {
@@ -8610,6 +8598,10 @@ const WanwuYouling = {
   Tips: {
     list: GAME_TIPS,
     getRandom: () => getRandomTip(),
+  },
+
+  LogUtils: {
+    buildReplyLogs,
   },
 
   Storage: {
