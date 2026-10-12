@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.11
+// @version     4.12
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.11');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.12');
   seal.ext.register(ext);
 }
 
@@ -3295,7 +3295,21 @@ const ITEMS = {
   '扩容卡': { cost: 5000, desc: '仓库容量+5', type: 'misc' },
 };
 
-//   玩家系统  
+for (const chain of Object.values(EVOLUTIONS)) {
+  for (const evo of chain) {
+    if (!ITEMS[evo.req.item]) ITEMS[evo.req.item] = { cost: 100, desc: '进化材料', type: 'evolution' };
+    if (evo.bonus?.skill && !SKILLS[evo.bonus.skill]) {
+      SKILLS[evo.bonus.skill] = {
+        power: Math.floor(55 + evo.stage * 25),
+        acc: 90,
+        cost: Math.floor(10 + evo.stage * 10),
+        desc: '进化专属技能',
+      };
+    }
+  }
+}
+
+//   玩家系统
 // 玩家装备
 const PLAYER_EQUIPMENT = {
   weapon: {
@@ -3391,6 +3405,7 @@ const DB = {
         if (!pet.parents) pet.parents = null;
         pet.breedCount = pet.breedCount ?? 0;
         pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
+        delete pet._availableEvos;
         // 更新旧宠物的初始技能
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
@@ -3402,6 +3417,7 @@ const DB = {
         if (!pet.parents) pet.parents = null;
         pet.breedCount = pet.breedCount ?? 0;
         pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
+        delete pet._availableEvos;
         // 更新旧宠物的初始技能
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
@@ -5323,6 +5339,34 @@ function applyCustomItemEffect(item, context) {
   context.save();
   WanwuYouling.emit('useItem', { uid: context.uid, item: context.itemName, pet: lastPet, effects });
   return { ok: true, pet: lastPet, msg: messages.join('\n') || '道具已使用' };
+}
+
+function applyEvolution(data, uid, pet, evo) {
+  const oldName = pet.name;
+  data.items[evo.req.item] -= evo.req.count;
+  if (data.items[evo.req.item] <= 0) delete data.items[evo.req.item];
+  pet.name = evo.name;
+  pet.evoStage = evo.stage;
+  pet.evolved = true;
+  pet.maxBattles = 30;
+  const bonus = evo.bonus || {};
+  if (bonus.hp) pet.maxHp += bonus.hp;
+  if (bonus.atk) pet.atk += bonus.atk;
+  if (bonus.def) pet.def += bonus.def;
+  if (bonus.spd) pet.spd += bonus.spd;
+  if (bonus.energy) pet.maxEnergy += bonus.energy;
+  if (bonus.all) {
+    pet.maxHp += bonus.all;
+    pet.atk += bonus.all;
+    pet.def += bonus.all;
+    pet.spd += bonus.all;
+    pet.maxEnergy += bonus.all;
+  }
+  pet.hp = pet.maxHp;
+  pet.energy = pet.maxEnergy;
+  if (bonus.skill && !pet.skills.includes(bonus.skill)) pet.skills.push(bonus.skill);
+  delete pet._availableEvos;
+  return { oldName, newName: pet.name };
 }
 
 const cmd = seal.ext.newCmdItemInfo();
@@ -7393,32 +7437,10 @@ cmd.solve = async (ctx, msg, argv) => {
 
     // 如果只有一个选项，直接进化
     if (availableEvos.length === 1) {
-      const evo = availableEvos[0];
-      data.items[evo.req.item] -= evo.req.count;
-      if (data.items[evo.req.item] <= 0) delete data.items[evo.req.item];
-
-      const oldName = pet.name;
-      pet.name = evo.name;
-      pet.evoStage = evo.stage;
-      pet.evolved = true;
-      pet.maxBattles = 30;
-      if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
-      if (evo.bonus.atk) pet.atk += evo.bonus.atk;
-      if (evo.bonus.def) pet.def += evo.bonus.def;
-      if (evo.bonus.spd) pet.spd += evo.bonus.spd;
-      if (evo.bonus.energy) pet.maxEnergy += evo.bonus.energy;
-      if (evo.bonus.all) {
-        pet.maxHp += evo.bonus.all; pet.hp = pet.maxHp;
-        pet.atk += evo.bonus.all; pet.def += evo.bonus.all;
-        pet.spd += evo.bonus.all;
-        pet.maxEnergy += evo.bonus.all;
-      }
-      if (evo.bonus.skill && !pet.skills.includes(evo.bonus.skill)) {
-        pet.skills.push(evo.bonus.skill);
-      }
+      const result = applyEvolution(data, uid, pet, availableEvos[0]);
       save();
-      WanwuYouling.emit('evolution', { uid, pet, oldSpecies: oldName, newSpecies: pet.name });
-      return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
+      WanwuYouling.emit('evolution', { uid, pet, species: pet.species, oldName: result.oldName, newName: result.newName });
+      return reply(`【进化成功】${result.oldName}进化为${result.newName}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
     }
 
     // 多个选项，显示分支选择
@@ -7430,8 +7452,6 @@ cmd.solve = async (ctx, msg, argv) => {
     });
     lines.push('');
     lines.push(`.宠物 进化 ${p1} <编号> 选择进化路线`);
-    pet._availableEvos = availableEvos;
-    save();
     return reply(lines.join('\n'));
   }
 
@@ -7472,32 +7492,10 @@ cmd.solve = async (ctx, msg, argv) => {
 
     if (choiceIdx < 0 || choiceIdx >= availableEvos.length) return reply('选择编号无效');
     
-    const evo = availableEvos[choiceIdx];
-    data.items[evo.req.item] -= evo.req.count;
-    if (data.items[evo.req.item] <= 0) delete data.items[evo.req.item];
-
-    const oldName = pet.name;
-    pet.name = evo.name;
-    pet.evoStage = evo.stage;
-    pet.evolved = true;
-    pet.maxBattles = 30;
-    if (evo.bonus.hp) { pet.maxHp += evo.bonus.hp; pet.hp = pet.maxHp; }
-    if (evo.bonus.atk) pet.atk += evo.bonus.atk;
-    if (evo.bonus.def) pet.def += evo.bonus.def;
-    if (evo.bonus.spd) pet.spd += evo.bonus.spd;
-    if (evo.bonus.energy) pet.maxEnergy += evo.bonus.energy;
-    if (evo.bonus.all) {
-      pet.maxHp += evo.bonus.all; pet.hp = pet.maxHp;
-      pet.atk += evo.bonus.all; pet.def += evo.bonus.all;
-      pet.spd += evo.bonus.all;
-      pet.maxEnergy += evo.bonus.all;
-    }
-    if (evo.bonus.skill && !pet.skills.includes(evo.bonus.skill)) {
-      pet.skills.push(evo.bonus.skill);
-    }
+    const result = applyEvolution(data, uid, pet, availableEvos[choiceIdx]);
     save();
-    WanwuYouling.emit('evolution', { uid, pet, oldSpecies: oldName, newSpecies: pet.name });
-    return reply(`【进化成功】${oldName}进化为${pet.name}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
+    WanwuYouling.emit('evolution', { uid, pet, species: pet.species, oldName: result.oldName, newName: result.newName });
+    return reply(`【进化成功】${result.oldName}进化为${result.newName}！\n${PetFactory.info(pet, parseInt(p1) - 1)}\n${getRandomTip()}`);
   }
 
   //   守护者挑战系统（第3阶进化前置条件）
