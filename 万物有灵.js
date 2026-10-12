@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        万物有灵
 // @author      铭茗
-// @version     4.13
+// @version     4.14
 // @description 宠物核心：捕捉、培养、对战、育种、进化、仓库。如有问题请联系铭茗QQ:3029590078
 // @timestamp   1777276347
 // @license     Apache-2
@@ -10,7 +10,7 @@
 //如果你打开了代码就会看到我！有任何问题请及时拷打铭茗:3029590078，欢迎交流与讨论
 let ext = seal.ext.find('万物有灵');
 if (!ext) {
-  ext = seal.ext.new('万物有灵', '铭茗', '4.13');
+  ext = seal.ext.new('万物有灵', '铭茗', '4.14');
   seal.ext.register(ext);
 }
 
@@ -3454,6 +3454,9 @@ const DB = {
         pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
         delete pet._availableEvos;
         // 更新旧宠物的初始技能
+        if ((!pet.skills || pet.skills.length === 0) && INITIAL_SKILLS[pet.element]) {
+          pet.skills = [INITIAL_SKILLS[pet.element]];
+        }
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
         }
@@ -3466,6 +3469,9 @@ const DB = {
         pet.canBreed = pet.canBreed ?? (pet.breedCount < 1);
         delete pet._availableEvos;
         // 更新旧宠物的初始技能
+        if ((!pet.skills || pet.skills.length === 0) && INITIAL_SKILLS[pet.element]) {
+          pet.skills = [INITIAL_SKILLS[pet.element]];
+        }
         if (pet.skills && pet.skills[0] === '冲撞' && INITIAL_SKILLS[pet.element]) {
           pet.skills[0] = INITIAL_SKILLS[pet.element];
         }
@@ -5798,7 +5804,7 @@ cmd.solve = async (ctx, msg, argv) => {
         maxEnergy: Math.floor(base.energy * speciesData.baseMod.energy * v),
         sp: 0,
         affection: 50,
-        skills: [],
+        skills: [INITIAL_SKILLS[element] || '冲撞'],
         items: [],
         evolved: false,
         retired: false,
@@ -8588,7 +8594,7 @@ for (const aliasName of aliasNames) {
 
 //   外部接口
 const WanwuYouling = {
-  version: '4.13',
+  version: '4.14',
   ext,
 
   DB: {
