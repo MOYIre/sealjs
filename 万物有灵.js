@@ -3299,11 +3299,29 @@ for (const chain of Object.values(EVOLUTIONS)) {
   for (const evo of chain) {
     if (!ITEMS[evo.req.item]) ITEMS[evo.req.item] = { cost: 100, desc: '进化材料', type: 'evolution' };
     if (evo.bonus?.skill && !SKILLS[evo.bonus.skill]) {
-      SKILLS[evo.bonus.skill] = {
+      const skill = evo.bonus.skill;
+      const effectMap = {
+        '九命重生': { effect: 'revive', desc: '受到致命伤害时有机会复活' },
+        '涅槃重生': { effect: 'revive', desc: '受到致命伤害时有机会复活' },
+        '不死之身': { effect: 'revive', desc: '受到致命伤害时有机会复活' },
+        '魅惑': { effect: 'charm', effectChance: 0.35, effectDuration: 2, desc: '有概率使敌人混乱' },
+        '幻术': { effect: 'charm', effectChance: 0.3, effectDuration: 2, desc: '有概率使敌人混乱' },
+        '剧毒之息': { effect: 'poison', effectChance: 0.5, effectDuration: 4, desc: '有概率使敌人中毒' },
+        '毒龙领域': { effect: 'poison', effectChance: 0.6, effectDuration: 4, desc: '有概率使敌人中毒' },
+        '暗影吞噬': { effect: 'lifesteal', lifestealRate: 0.35, desc: '攻击并回复部分生命' },
+        '血月斩': { effect: 'lifesteal', lifestealRate: 0.3, desc: '攻击并回复部分生命' },
+        '神圣守护': { effect: 'shield', shieldCount: 1, desc: '获得护盾' },
+        '玄武之盾': { effect: 'shield', shieldCount: 2, desc: '获得护盾' },
+        '海神庇护': { effect: 'shield', shieldCount: 2, desc: '获得护盾' },
+        '冰封': { effect: 'freeze', effectChance: 0.35, effectDuration: 2, desc: '有概率冻结敌人' },
+        '绝对零度': { effect: 'freeze', effectChance: 0.5, effectDuration: 2, desc: '有概率冻结敌人' },
+      }[skill] || {};
+      SKILLS[skill] = {
         power: Math.floor(55 + evo.stage * 25),
         acc: 90,
         cost: Math.floor(10 + evo.stage * 10),
-        desc: '进化专属技能',
+        desc: effectMap.desc || '进化专属技能',
+        ...effectMap,
       };
     }
   }

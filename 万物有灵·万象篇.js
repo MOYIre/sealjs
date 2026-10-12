@@ -10,7 +10,7 @@
 
 let ext = seal.ext.find('万物有灵·万象篇');
 if (!ext) {
-  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.8');
+  ext = seal.ext.new('万物有灵·万象篇', '铭茗', '3.2.9');
   seal.ext.register(ext);
 }
 
